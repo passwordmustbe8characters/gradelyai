@@ -1,13 +1,15 @@
-import Database from 'better-sqlite3'
-import { existsSync, mkdirSync } from 'fs'
+/* eslint-disable no-undef */
+import { createClient } from '@libsql/client'
+import dotenv from 'dotenv'
+dotenv.config()
 
-if (!existsSync('./data')) {
-  mkdirSync('./data')
-}
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL || 'file:./data/gradely.db',
+  authToken: process.env.TURSO_AUTH_TOKEN
+})
 
-const db = new Database('./data/gradely.db')
-
-db.exec(`
+// Initialize tables
+await client.execute(`
   CREATE TABLE IF NOT EXISTS guides (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     university TEXT NOT NULL,
@@ -18,16 +20,20 @@ db.exec(`
     writing_expectations TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  )
+`)
 
+await client.execute(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  )
+`)
 
+await client.execute(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -47,8 +53,10 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
-  );
+  )
+`)
 
+await client.execute(`
   CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     reference TEXT UNIQUE NOT NULL,
@@ -57,8 +65,10 @@ db.exec(`
     amount INTEGER NOT NULL,
     status TEXT DEFAULT 'success',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  )
+`)
 
+await client.execute(`
   CREATE TABLE IF NOT EXISTS test_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -72,7 +82,7 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (project_id) REFERENCES projects(id)
-  );
+  )
 `)
 
-export default db
+export default client

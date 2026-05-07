@@ -1,5 +1,4 @@
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
+/* eslint-disable no-undef */
 import express from 'express'
 import cors from 'cors'
 import fetch from 'node-fetch'
@@ -7,7 +6,8 @@ import dotenv from 'dotenv'
 import session from 'express-session'
 import multer from 'multer'
 import fs from 'fs'
-import process from 'process'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
 import db from './database.js'
 
 dotenv.config()
@@ -16,7 +16,7 @@ const app = express()
 const upload = multer({ dest: 'uploads/' })
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 app.use(session({
   secret: process.env.ADMIN_SESSION_SECRET || 'gradelyai-secret-2025',
   resave: false,
@@ -25,10 +25,10 @@ app.use(session({
 }))
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'gradely2025'
-const JWT_SECRET = process.env.JWT_SECRET || 'gradelyai-jwt-secret-2025'
 const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY
+const JWT_SECRET = process.env.JWT_SECRET || 'gradelyai-jwt-secret-2025'
 
-// ─── AUTH MIDDLEWARE ──────────────────────────────────────────────────────────
+// ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 
 function requireAdmin(req, res, next) {
   if (req.session?.isAdmin) return next()
@@ -47,7 +47,7 @@ function requireAuth(req, res, next) {
   }
 }
 
-// ─── PROXY: OpenAI ────────────────────────────────────────────────────────────
+// ─── PROXY: Claude ────────────────────────────────────────────────────────────
 
 app.post('/api/claude', async (req, res) => {
   try {
@@ -78,16 +78,41 @@ app.post('/api/claude', async (req, res) => {
   }
 })
 
+// ─── PROXY: OpenAI (fallback) ─────────────────────────────────────────────────
+
+app.post('/api/ai', async (req, res) => {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_KEY}`
+      },
+      body: JSON.stringify(req.body)
+    })
+    const text = await response.text()
+    if (!text || text.trim() === '') {
+      return res.status(500).json({ error: { message: 'Empty response from OpenAI' } })
+    }
+    try {
+      const data = JSON.parse(text)
+      if (!response.ok) return res.status(response.status).json(data)
+      res.json(data)
+    } catch {
+      res.status(500).json({ error: { message: 'Invalid response from OpenAI' } })
+    }
+  } catch (err) {
+    res.status(500).json({ error: { message: err.message } })
+  }
+})
+
 // ─── PROXY: Semantic Scholar ──────────────────────────────────────────────────
 
 app.get('/api/papers', async (req, res) => {
   const { query } = req.query
   if (!query) return res.json({ data: [] })
 
-  const queries = [
-    query.split(' ').slice(0, 4).join(' '),
-    query,
-  ]
+  const queries = [query.split(' ').slice(0, 4).join(' '), query]
 
   for (const q of queries) {
     try {
@@ -101,11 +126,10 @@ app.get('/api/papers', async (req, res) => {
       continue
     }
   }
-
   res.json({ data: [] })
 })
 
-// ─── ADMIN: Login ─────────────────────────────────────────────────────────────
+// ─── ADMIN: Auth ──────────────────────────────────────────────────────────────
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body
@@ -128,81 +152,90 @@ app.get('/api/admin/check', (req, res) => {
 
 // ─── GUIDES: Public ───────────────────────────────────────────────────────────
 
-app.get('/api/guides', (req, res) => {
-  const { university, department } = req.query
-  
-  let guides
+app.get('/api/guides', async (req, res) => {
+  try {
+    const { university, department } = req.query
+    let result
 
-  if (university && department) {
-    // Try exact match first
-    guides = db.prepare(`
-      SELECT * FROM guides 
-      WHERE university = ? AND department = ?
-      ORDER BY year DESC
-    `).all(university, department)
-
-    // Fall back to university match
-    if (guides.length === 0) {
-      guides = db.prepare(`
-        SELECT * FROM guides 
-        WHERE university = ?
-        ORDER BY year DESC
-      `).all(university)
+    if (university && department) {
+      result = await db.execute({
+        sql: 'SELECT * FROM guides WHERE university = ? AND department = ? ORDER BY year DESC',
+        args: [university, department]
+      })
+      if (result.rows.length === 0) {
+        result = await db.execute({
+          sql: 'SELECT * FROM guides WHERE university = ? ORDER BY year DESC',
+          args: [university]
+        })
+      }
+    } else {
+      result = await db.execute('SELECT * FROM guides ORDER BY university, department')
     }
-  } else {
-    guides = db.prepare('SELECT * FROM guides ORDER BY university, department').all()
+    res.json({ guides: result.rows })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
-
-  res.json({ guides })
 })
 
-app.get('/api/guides/:id', (req, res) => {
-  const guide = db.prepare('SELECT * FROM guides WHERE id = ?').get(req.params.id)
-  if (!guide) return res.status(404).json({ error: 'Guide not found' })
-  res.json({ guide })
+app.get('/api/guides/:id', async (req, res) => {
+  try {
+    const result = await db.execute({ sql: 'SELECT * FROM guides WHERE id = ?', args: [req.params.id] })
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Guide not found' })
+    res.json({ guide: result.rows[0] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ─── GUIDES: Admin ────────────────────────────────────────────────────────────
 
-app.get('/api/admin/guides', requireAdmin, (req, res) => {
-  const guides = db.prepare('SELECT * FROM guides ORDER BY university, department').all()
-  res.json({ guides })
+app.get('/api/admin/guides', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM guides ORDER BY university, department')
+    res.json({ guides: result.rows })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
-app.post('/api/admin/guides', requireAdmin, (req, res) => {
+app.post('/api/admin/guides', requireAdmin, async (req, res) => {
   const { university, department, year, label, structure, writing_expectations } = req.body
-
   if (!university || !department || !label || !structure) {
     return res.status(400).json({ error: 'University, department, label and structure are required' })
   }
-
-  const result = db.prepare(`
-    INSERT INTO guides (university, department, year, label, structure, writing_expectations)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(university, department, year, label, structure, writing_expectations || '')
-
-  const guide = db.prepare('SELECT * FROM guides WHERE id = ?').get(result.lastInsertRowid)
-  res.json({ guide })
+  try {
+    const result = await db.execute({
+      sql: 'INSERT INTO guides (university, department, year, label, structure, writing_expectations) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [university, department, year, label, structure, writing_expectations || '']
+    })
+    const guide = await db.execute({ sql: 'SELECT * FROM guides WHERE id = ?', args: [result.lastInsertRowid] })
+    res.json({ guide: guide.rows[0] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
-app.put('/api/admin/guides/:id', requireAdmin, (req, res) => {
+app.put('/api/admin/guides/:id', requireAdmin, async (req, res) => {
   const { university, department, year, label, structure, writing_expectations } = req.body
-
-  db.prepare(`
-    UPDATE guides 
-    SET university = ?, department = ?, year = ?, label = ?, 
-        structure = ?, writing_expectations = ?,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).run(university, department, year, label, structure, writing_expectations || '', req.params.id)
-
-  const guide = db.prepare('SELECT * FROM guides WHERE id = ?').get(req.params.id)
-  res.json({ guide })
+  try {
+    await db.execute({
+      sql: 'UPDATE guides SET university = ?, department = ?, year = ?, label = ?, structure = ?, writing_expectations = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      args: [university, department, year, label, structure, writing_expectations || '', req.params.id]
+    })
+    const result = await db.execute({ sql: 'SELECT * FROM guides WHERE id = ?', args: [req.params.id] })
+    res.json({ guide: result.rows[0] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
-app.delete('/api/admin/guides/:id', requireAdmin, (req, res) => {
-  db.prepare('DELETE FROM guides WHERE id = ?').run(req.params.id)
-  res.json({ success: true })
+app.delete('/api/admin/guides/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.execute({ sql: 'DELETE FROM guides WHERE id = ?', args: [req.params.id] })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ─── GUIDES: PDF Upload ───────────────────────────────────────────────────────
@@ -210,115 +243,95 @@ app.delete('/api/admin/guides/:id', requireAdmin, (req, res) => {
 app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async (req, res) => {
   try {
     const { university, department, year, label } = req.body
-    
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' })
-    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
     let text = ''
-
     if (req.file.mimetype === 'application/pdf') {
-  const pdfParseModule = await import('pdf-parse')
-  const pdfParse = pdfParseModule.default || pdfParseModule
-  const buffer = fs.readFileSync(req.file.path)
-  const data = await pdfParse(buffer)
-  text = data.text
+      const pdfParseModule = await import('pdf-parse')
+      const pdfParse = pdfParseModule.default || pdfParseModule
+      const buffer = fs.readFileSync(req.file.path)
+      const data = await pdfParse(buffer)
+      text = data.text
     } else {
       text = fs.readFileSync(req.file.path, 'utf-8')
     }
 
-    // Clean up uploaded file
     fs.unlinkSync(req.file.path)
 
-    // Use AI to extract clean structure from the guide
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_KEY}`
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
-        messages: [
-          {
-            role: 'system',
-            content: `You are an academic document analyst. Extract the chapter and subsection structure from Nigerian university project guides. Return only the clean structure as plain text with chapter headings and numbered subsections. Also extract any writing expectations or formatting requirements mentioned.`
-          },
-          {
-            role: 'user',
-            content: `Extract the project structure and any writing/formatting requirements from this Nigerian university project guide:
+        messages: [{
+          role: 'user',
+          content: `Extract the project structure and writing requirements from this Nigerian university project guide:
 
 ${text.substring(0, 8000)}
 
 Return in this format:
 STRUCTURE:
-[chapter and subsection structure here]
+[chapter and subsection structure]
 
 WRITING EXPECTATIONS:
-[any formatting rules, writing style requirements, page limits, font requirements, etc.]`
-          }
-        ]
+[formatting rules, font, spacing, citation style, page limits etc]`
+        }]
       })
     })
 
     const aiData = await aiResponse.json()
-    const aiText = aiData.choices[0].message.content
+    const aiText = aiData.content[0].text
 
     const structureMatch = aiText.match(/STRUCTURE:\n([\s\S]*?)(?=WRITING EXPECTATIONS:|$)/i)
     const expectationsMatch = aiText.match(/WRITING EXPECTATIONS:\n([\s\S]*?)$/i)
 
     const structure = structureMatch ? structureMatch[1].trim() : text.substring(0, 3000)
     const writing_expectations = expectationsMatch ? expectationsMatch[1].trim() : ''
+    const finalLabel = label || `${university} ${department} — ${year}`
 
-    const result = db.prepare(`
-      INSERT INTO guides (university, department, year, label, structure, writing_expectations)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      university || 'Unknown University',
-      department || 'Unknown Department',
-      year || new Date().getFullYear().toString(),
-      label || `${university} ${department} — ${year}`,
-      structure,
-      writing_expectations
-    )
+    const result = await db.execute({
+      sql: 'INSERT INTO guides (university, department, year, label, structure, writing_expectations) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [
+        university || 'Unknown University',
+        department || 'Unknown Department',
+        year || new Date().getFullYear().toString(),
+        finalLabel,
+        structure,
+        writing_expectations
+      ]
+    })
 
-    const guide = db.prepare('SELECT * FROM guides WHERE id = ?').get(result.lastInsertRowid)
-    res.json({ guide })
-
+    const guide = await db.execute({ sql: 'SELECT * FROM guides WHERE id = ?', args: [result.lastInsertRowid] })
+    res.json({ guide: guide.rows[0] })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── START ────────────────────────────────────────────────────────────────────
-
-const PORT = 3001
 // ─── AUTH: Register ───────────────────────────────────────────────────────────
 
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body
-
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email and password are required' })
-  }
-
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' })
-  }
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
 
   try {
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email)
-    if (existing) {
-      return res.status(400).json({ error: 'An account with this email already exists' })
-    }
+    const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] })
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'An account with this email already exists' })
 
     const hashed = await bcrypt.hash(password, 10)
-    const result = db.prepare(
-      'INSERT INTO users (name, email, password) VALUES (?, ?, ?)'
-    ).run(name, email.toLowerCase().trim(), hashed)
+    const result = await db.execute({
+      sql: 'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+      args: [name, email.toLowerCase().trim(), hashed]
+    })
 
-    const user = db.prepare('SELECT id, name, email, created_at FROM users WHERE id = ?').get(result.lastInsertRowid)
+    const userResult = await db.execute({ sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?', args: [result.lastInsertRowid] })
+    const user = userResult.rows[0]
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
 
     res.json({ user, token })
@@ -331,21 +344,15 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' })
-  }
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' })
 
   try {
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim())
-    if (!user) {
-      return res.status(401).json({ error: 'No account found with this email' })
-    }
+    const result = await db.execute({ sql: 'SELECT * FROM users WHERE email = ?', args: [email.toLowerCase().trim()] })
+    if (result.rows.length === 0) return res.status(401).json({ error: 'No account found with this email' })
 
+    const user = result.rows[0]
     const valid = await bcrypt.compare(password, user.password)
-    if (!valid) {
-      return res.status(401).json({ error: 'Incorrect password' })
-    }
+    if (!valid) return res.status(401).json({ error: 'Incorrect password' })
 
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
     const safeUser = { ...user }
@@ -359,33 +366,35 @@ app.post('/api/auth/login', async (req, res) => {
 
 // ─── AUTH: Me ─────────────────────────────────────────────────────────────────
 
-app.get('/api/auth/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, created_at FROM users WHERE id = ?').get(req.user.id)
-  if (!user) return res.status(404).json({ error: 'User not found' })
-  res.json({ user })
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const result = await db.execute({ sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?', args: [req.user.id] })
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' })
+    res.json({ user: result.rows[0] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ─── PROJECTS: Save ───────────────────────────────────────────────────────────
 
-app.post('/api/projects', requireAuth, (req, res) => {
-  const { title, university, department, project_type, status, is_paid, chapters, abstract, refs, structure, project_info } = req.body
-
+app.post('/api/projects', requireAuth, async (req, res) => {
+  const { title, university, department, project_type, status, is_paid, chapters, abstract, references, structure, project_info } = req.body
   try {
-    const result = db.prepare(`
-      INSERT INTO projects (user_id, title, university, department, project_type, status, is_paid, chapters, abstract, refs, structure, project_info)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      req.user.id, title, university, department, project_type,
-      status || 'in_progress', is_paid ? 1 : 0,
-      JSON.stringify(chapters || []),
-      abstract || '',
-      JSON.stringify(refs || []),
-      JSON.stringify(structure || {}),
-      JSON.stringify(project_info || {})
-    )
-
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid)
-    res.json({ project })
+    const result = await db.execute({
+      sql: 'INSERT INTO projects (user_id, title, university, department, project_type, status, is_paid, chapters, abstract, refs, structure, project_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [
+        req.user.id, title, university, department, project_type,
+        status || 'in_progress', is_paid ? 1 : 0,
+        JSON.stringify(chapters || []),
+        abstract || '',
+        JSON.stringify(references || []),
+        JSON.stringify(structure || {}),
+        JSON.stringify(project_info || {})
+      ]
+    })
+    const project = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ?', args: [result.lastInsertRowid] })
+    res.json({ project: project.rows[0] })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -393,51 +402,46 @@ app.post('/api/projects', requireAuth, (req, res) => {
 
 // ─── PROJECTS: Update ─────────────────────────────────────────────────────────
 
-app.put('/api/projects/:id', requireAuth, (req, res) => {
-  const { title, status, is_paid, chapters, abstract, refs, structure, project_info, flashcard_scores, defense_readiness } = req.body
-
+app.put('/api/projects/:id', requireAuth, async (req, res) => {
+  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness } = req.body
   try {
-    const project = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
-    if (!project) return res.status(404).json({ error: 'Project not found' })
+    const existing = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
+    const p = existing.rows[0]
 
-    db.prepare(`
-      UPDATE projects SET
-        title = ?, status = ?, is_paid = ?,
-        chapters = ?, abstract = ?, refs = ?,
-        structure = ?, project_info = ?,
-        flashcard_scores = ?, defense_readiness = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).run(
-      title || project.title,
-      status || project.status,
-      is_paid !== undefined ? (is_paid ? 1 : 0) : project.is_paid,
-      JSON.stringify(chapters) || project.chapters,
-      abstract || project.abstract,
-      JSON.stringify(refs) || project.refs,
-      JSON.stringify(structure) || project.structure,
-      JSON.stringify(project_info) || project.project_info,
-      JSON.stringify(flashcard_scores) || project.flashcard_scores,
-      defense_readiness || project.defense_readiness,
-      req.params.id, req.user.id
-    )
+    await db.execute({
+      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      args: [
+        title || p.title,
+        status || p.status,
+        is_paid !== undefined ? (is_paid ? 1 : 0) : p.is_paid,
+        chapters ? JSON.stringify(chapters) : p.chapters,
+        abstract || p.abstract,
+        references ? JSON.stringify(references) : p.refs,
+        structure ? JSON.stringify(structure) : p.structure,
+        project_info ? JSON.stringify(project_info) : p.project_info,
+        flashcard_scores ? JSON.stringify(flashcard_scores) : p.flashcard_scores,
+        defense_readiness || p.defense_readiness,
+        req.params.id, req.user.id
+      ]
+    })
 
-    const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id)
-    res.json({ project: updated })
+    const updated = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ?', args: [req.params.id] })
+    res.json({ project: updated.rows[0] })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── PROJECTS: Get all for user ───────────────────────────────────────────────
+// ─── PROJECTS: Get all ────────────────────────────────────────────────────────
 
-app.get('/api/projects', requireAuth, (req, res) => {
+app.get('/api/projects', requireAuth, async (req, res) => {
   try {
-    const projects = db.prepare(`
-      SELECT id, title, university, department, project_type, status, is_paid, defense_readiness, created_at, updated_at
-      FROM projects WHERE user_id = ? ORDER BY updated_at DESC
-    `).all(req.user.id)
-    res.json({ projects })
+    const result = await db.execute({
+      sql: 'SELECT id, title, university, department, project_type, status, is_paid, defense_readiness, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC',
+      args: [req.user.id]
+    })
+    res.json({ projects: result.rows })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -445,12 +449,11 @@ app.get('/api/projects', requireAuth, (req, res) => {
 
 // ─── PROJECTS: Get single ─────────────────────────────────────────────────────
 
-app.get('/api/projects/:id', requireAuth, (req, res) => {
+app.get('/api/projects/:id', requireAuth, async (req, res) => {
   try {
-    const project = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
-    if (!project) return res.status(404).json({ error: 'Project not found' })
-
-    // Parse JSON fields
+    const result = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
+    const project = result.rows[0]
     const parsed = {
       ...project,
       chapters: JSON.parse(project.chapters || '[]'),
@@ -459,7 +462,6 @@ app.get('/api/projects/:id', requireAuth, (req, res) => {
       project_info: JSON.parse(project.project_info || '{}'),
       flashcard_scores: JSON.parse(project.flashcard_scores || 'null'),
     }
-
     res.json({ project: parsed })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -468,54 +470,49 @@ app.get('/api/projects/:id', requireAuth, (req, res) => {
 
 // ─── PROJECTS: Delete ─────────────────────────────────────────────────────────
 
-app.delete('/api/projects/:id', requireAuth, (req, res) => {
+app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
-    const project = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id)
-    if (!project) return res.status(404).json({ error: 'Project not found' })
-    db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.id)
+    const existing = await db.execute({ sql: 'SELECT id FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
+    await db.execute({ sql: 'DELETE FROM projects WHERE id = ?', args: [req.params.id] })
     res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── TEST SESSIONS: Save ──────────────────────────────────────────────────────
+// ─── TEST SESSIONS ────────────────────────────────────────────────────────────
 
-app.post('/api/test-sessions', requireAuth, (req, res) => {
+app.post('/api/test-sessions', requireAuth, async (req, res) => {
   const { project_id, mode, score, total, got, almost, missed } = req.body
-
   try {
-    const result = db.prepare(`
-      INSERT INTO test_sessions (user_id, project_id, mode, score, total, got, almost, missed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.id, project_id, mode, score, total, got || 0, almost || 0, missed || 0)
-
-    // Update project defense readiness
-    db.prepare('UPDATE projects SET defense_readiness = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(score, project_id)
-
-    const session = db.prepare('SELECT * FROM test_sessions WHERE id = ?').get(result.lastInsertRowid)
-    res.json({ session })
+    const result = await db.execute({
+      sql: 'INSERT INTO test_sessions (user_id, project_id, mode, score, total, got, almost, missed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [req.user.id, project_id, mode, score, total, got || 0, almost || 0, missed || 0]
+    })
+    await db.execute({ sql: 'UPDATE projects SET defense_readiness = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', args: [score, project_id] })
+    const session = await db.execute({ sql: 'SELECT * FROM test_sessions WHERE id = ?', args: [result.lastInsertRowid] })
+    res.json({ session: session.rows[0] })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── TEST SESSIONS: Get history ───────────────────────────────────────────────
-
-app.get('/api/test-sessions/:project_id', requireAuth, (req, res) => {
+app.get('/api/test-sessions/:project_id', requireAuth, async (req, res) => {
   try {
-    const sessions = db.prepare(`
-      SELECT * FROM test_sessions 
-      WHERE user_id = ? AND project_id = ? 
-      ORDER BY created_at DESC
-    `).all(req.user.id, req.params.project_id)
-    res.json({ sessions })
+    const result = await db.execute({
+      sql: 'SELECT * FROM test_sessions WHERE user_id = ? AND project_id = ? ORDER BY created_at DESC',
+      args: [req.user.id, req.params.project_id]
+    })
+    res.json({ sessions: result.rows })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
+// ─── START ────────────────────────────────────────────────────────────────────
+
+const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
-  console.log(`GradelyAI server running on http://localhost:${PORT}`)
+  console.log(`GradelyAI server running on port ${PORT}`)
 })

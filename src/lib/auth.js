@@ -2,6 +2,7 @@
 
 const TOKEN_KEY = 'gradelyToken'
 const USER_KEY = 'gradelyUser'
+const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 export function saveAuth(token, user) {
   localStorage.setItem(TOKEN_KEY, token)
@@ -36,10 +37,10 @@ export function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-// ─── API CALLS ────────────────────────────────────────────────────────────────
+// ─── AUTH API ─────────────────────────────────────────────────────────────────
 
 export async function register(name, email, password) {
-  const res = await fetch('/api/auth/register', {
+  const res = await fetch(`${BASE_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, email, password })
@@ -51,7 +52,7 @@ export async function register(name, email, password) {
 }
 
 export async function login(email, password) {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
@@ -63,7 +64,7 @@ export async function login(email, password) {
 }
 
 export async function fetchMe() {
-  const res = await fetch('/api/auth/me', {
+  const res = await fetch(`${BASE_URL}/api/auth/me`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders() }
   })
   const data = await res.json()
@@ -74,7 +75,7 @@ export async function fetchMe() {
 // ─── PROJECT API ──────────────────────────────────────────────────────────────
 
 export async function saveProject(projectData) {
-  const res = await fetch('/api/projects', {
+  const res = await fetch(`${BASE_URL}/api/projects`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(projectData)
@@ -85,7 +86,7 @@ export async function saveProject(projectData) {
 }
 
 export async function updateProject(id, projectData) {
-  const res = await fetch(`/api/projects/${id}`, {
+  const res = await fetch(`${BASE_URL}/api/projects/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(projectData)
@@ -96,7 +97,7 @@ export async function updateProject(id, projectData) {
 }
 
 export async function fetchProjects() {
-  const res = await fetch('/api/projects', {
+  const res = await fetch(`${BASE_URL}/api/projects`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders() }
   })
   const data = await res.json()
@@ -105,7 +106,7 @@ export async function fetchProjects() {
 }
 
 export async function fetchProject(id) {
-  const res = await fetch(`/api/projects/${id}`, {
+  const res = await fetch(`${BASE_URL}/api/projects/${id}`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders() }
   })
   const data = await res.json()
@@ -114,7 +115,7 @@ export async function fetchProject(id) {
 }
 
 export async function deleteProject(id) {
-  const res = await fetch(`/api/projects/${id}`, {
+  const res = await fetch(`${BASE_URL}/api/projects/${id}`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', ...authHeaders() }
   })
@@ -124,7 +125,7 @@ export async function deleteProject(id) {
 }
 
 export async function saveTestSession(projectId, sessionData) {
-  const res = await fetch('/api/test-sessions', {
+  const res = await fetch(`${BASE_URL}/api/test-sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ project_id: projectId, ...sessionData })
@@ -135,7 +136,7 @@ export async function saveTestSession(projectId, sessionData) {
 }
 
 export async function fetchTestSessions(projectId) {
-  const res = await fetch(`/api/test-sessions/${projectId}`, {
+  const res = await fetch(`${BASE_URL}/api/test-sessions/${projectId}`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders() }
   })
   const data = await res.json()

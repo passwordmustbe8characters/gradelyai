@@ -1,7 +1,9 @@
-// GradelyAI — Core AI Engine (OpenAI + Semantic Scholar)
+// GradelyAI — Core AI Engine (Claude)
+
+const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
-  const res = await fetch('/api/claude', {
+  const res = await fetch(`${BASE_URL}/api/claude`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -95,7 +97,7 @@ export async function fetchRealPapers(topic, department) {
   for (const q of queries) {
     try {
       const encoded = encodeURIComponent(q)
-      const res = await fetch(`/api/papers?query=${encoded}`)
+      const res = await fetch(`${BASE_URL}/api/papers?query=${encoded}`)
       if (!res.ok) continue
       const data = await res.json()
       if (data.data && data.data.length > 0) return data.data
