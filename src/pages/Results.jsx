@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { saveProject, updateProject } from '../lib/auth'
+import { saveProject } from '../lib/auth'
 import { useAuth } from '../lib/AuthContext'
 import {
   humanizeText,
@@ -446,33 +446,67 @@ export default function Results() {
         <div style={{ flex: 1, minWidth: 0 }}>
 
           {/* Project tab */}
-          {activeTab === 'project' && result.chapters[activeChapter] && (
-            <div className="card">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-                <div>
-                  <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
-                    Chapter {result.chapters[activeChapter].number}: {result.chapters[activeChapter].title}
-                  </h2>
-                  {result.humanized && (
-                    <span style={{ fontSize: 12, color: 'var(--success)', marginTop: 4, display: 'block' }}>
-                      Personal Voice applied
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {activeChapter > 0 && paid && (
-                    <button className="btn-ghost" onClick={() => setActiveChapter(i => i - 1)} style={{ fontSize: 13 }}>← Prev</button>
-                  )}
-                  {activeChapter < result.chapters.length - 1 && paid && (
-                    <button className="btn-ghost" onClick={() => setActiveChapter(i => i + 1)} style={{ fontSize: 13 }}>Next →</button>
-                  )}
-                </div>
-              </div>
-              <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)' }}>
-                {renderContentWithSources(result.chapters[activeChapter].content)}
-              </div>
-            </div>
-          )}
+    {activeTab === 'project' && result.chapters[activeChapter] && (
+  <div>
+    {/* Sticky chapter bar */}
+    <div style={{
+      position: 'sticky',
+      top: 65,
+      zIndex: 9,
+      background: 'rgba(154,209,212,0.09)',
+      backdropFilter: 'blur(12px)',
+      borderBottom: '1px solid var(--border)',
+      padding: '14px 24px',
+      marginBottom: 0,
+      borderRadius: '16px 16px 0 0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      flexWrap: 'wrap',
+    }}>
+      <div>
+        <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
+          Chapter {result.chapters[activeChapter].number}: {result.chapters[activeChapter].title}
+        </h2>
+        {result.humanized && (
+          <span style={{ fontSize: 12, color: 'var(--success)' }}>
+            Personal Voice applied
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {activeChapter > 0 && paid && (
+          <button className="btn-ghost"
+            onClick={() => setActiveChapter(i => i - 1)}
+            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            Prev
+          </button>
+        )}
+        {activeChapter < result.chapters.length - 1 && paid && (
+          <button className="btn-ghost"
+            onClick={() => setActiveChapter(i => i + 1)}
+            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Next
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+
+    {/* Chapter content */}
+    <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none' }}>
+      <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)' }}>
+        {renderContentWithSources(result.chapters[activeChapter].content)}
+      </div>
+    </div>
+  </div>
+)}
 
           {/* Breakdown tab */}
           {activeTab === 'breakdown' && (
@@ -605,9 +639,8 @@ export default function Results() {
               )}
             </div>
           )}
-
         </div>
-      </div>
+      </div>  
 
       {/* Sticky unlock bar */}
       {!paid && (
@@ -645,7 +678,6 @@ export default function Results() {
           userEmail={user?.email}
         />
       )}
-
     </div>
   )
 }
