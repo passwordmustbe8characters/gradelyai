@@ -11,6 +11,17 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
 
+      {mobileMenuOpen && (
+  <div
+    onClick={() => setMobileMenuOpen(false)}
+    style={{
+      position: 'fixed', inset: 0, zIndex: 40,
+      background: 'rgba(0,0,0,0.5)',
+      backdropFilter: 'blur(4px)',
+    }}
+  />
+)}
+
 
 <nav style={{
   position: 'sticky', top: 0, zIndex: 50,
@@ -239,9 +250,9 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
       {/* How it works */}
       <section id="how-it-works" style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px' }}>
        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 40, alignItems: 'center' }}>
-          <div>
+          <div style={{ textAlign: 'center', marginBottom: 48 }}>
             <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>How It Works</p>
-            <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 20, letterSpacing: '-0.02em' }}>
+            <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em', maxWidth: 600, margin: '0 auto' }}>
               From blank page to defended project
             </h2>
             <p style={{ fontSize: 16, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 32 }}>
@@ -367,16 +378,16 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
       {/* Pricing */}
       <section id="pricing" style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 60, alignItems: 'start' }}>
-            <div>
-              <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>Pricing</p>
-              <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(28px, 3vw, 44px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 16, letterSpacing: '-0.02em' }}>
-                Simple. One-time. Worth it.
-              </h2>
-              <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.7 }}>
-                Less than the cost of printing and binding your project.
-              </p>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, maxWidth: 700, margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: 48 }}>
+  <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>Pricing</p>
+  <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(28px, 3vw, 44px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 16, letterSpacing: '-0.02em' }}>
+    Simple. One-time. Worth it.
+  </h2>
+  <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+    Less than the cost of printing and binding your project.
+  </p>
+</div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
               {/* Free */}

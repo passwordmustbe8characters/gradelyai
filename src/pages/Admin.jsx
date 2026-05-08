@@ -1,3 +1,5 @@
+const BASE_URL = import.meta.env.VITE_API_URL || ''
+
 import { useState, useEffect } from 'react'
 
 import { NIGERIAN_UNIVERSITIES, ALL_DEPARTMENTS } from '../lib/universities'
@@ -33,7 +35,7 @@ export default function Admin() {
     let cancelled = false
 
     async function initAuth() {
-      const res = await fetch('/api/admin/check')
+      const res = await fetch('${BASE_URL}/api/admin//check')
       const data = await res.json()
       if (!cancelled && data.isAdmin) {
         setIsAdmin(true)
@@ -48,8 +50,9 @@ export default function Admin() {
   }, [])
 
   const handleLogin = async () => {
-    setLoginError('')
-    const res = await fetch('/api/admin/login', {
+  setLoginError('')
+  try {
+    const res = await fetch('${BASE_URL}/api/admin//login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password })
@@ -59,17 +62,20 @@ export default function Admin() {
       setIsAdmin(true)
       loadGuides()
     } else {
-      setLoginError('Wrong password. Try again.')
+      setLoginError(data.error || 'Wrong password')
     }
+  } catch (err) {
+    setLoginError('Cannot connect to server: ' + err.message)
   }
+}
 
   const handleLogout = async () => {
-    await fetch('/api/admin/logout', { method: 'POST' })
+    await fetch('${BASE_URL}/api/admin//logout', { method: 'POST' })
     setIsAdmin(false)
   }
 
   async function loadGuides() {
-    const res = await fetch('/api/admin/guides')
+    const res = await fetch('${BASE_URL}/api/admin//guides')
     const data = await res.json()
     setGuides(data.guides || [])
   }
@@ -84,7 +90,7 @@ export default function Admin() {
     setMessage('')
     try {
       const payload = { ...form, label: form.label || autoLabel(form) }
-      const res = await fetch('/api/admin/guides', {
+      const res = await fetch('${BASE_URL}/api/admin//guides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -109,7 +115,7 @@ export default function Admin() {
     setMessage('')
     try {
       const payload = { ...form, label: form.label || autoLabel(form) }
-      const res = await fetch(`/api/admin/guides/${selected.id}`, {
+      const res = await fetch(`${BASE_URL}/api/admin//guides/${selected.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -130,7 +136,7 @@ export default function Admin() {
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this guide?')) return
-    await fetch(`/api/admin/guides/${id}`, { method: 'DELETE' })
+    await fetch(`${BASE_URL}/api/admin//guides/${id}`, { method: 'DELETE' })
     loadGuides()
   }
 
@@ -149,7 +155,7 @@ export default function Admin() {
       formData.append('year', uploadForm.year)
       formData.append('label', uploadForm.label || autoLabel(uploadForm))
 
-      const res = await fetch('/api/admin/guides/upload', {
+      const res = await fetch('${BASE_URL}/api/admin//guides/upload', {
         method: 'POST',
         body: formData
       })
