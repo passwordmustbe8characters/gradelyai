@@ -7,6 +7,7 @@ import multer from 'multer'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import pdfParse from 'pdf-parse'
 import db from './database.js'
 
 dotenv.config()
@@ -24,7 +25,7 @@ app.use(cors({
     /\.vercel\.app$/
   ],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'] // <-- THIS IS THE MAGIC KEY
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json({ limit: '10mb' }))
 
@@ -143,7 +144,7 @@ app.get('/api/papers', async (req, res) => {
   res.json({ data: [] })
 })
 
-// ─── ADMIN: Auth (Now using JWT) ──────────────────────────────────────────────
+// ─── ADMIN: Auth (Using JWT) ──────────────────────────────────────────────────
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body
@@ -156,12 +157,10 @@ app.post('/api/admin/login', (req, res) => {
 })
 
 app.post('/api/admin/logout', (req, res) => {
-  // Client side handles deleting the token
   res.json({ success: true })
 })
 
 app.get('/api/admin/check', requireAdmin, (req, res) => {
-  // If requireAdmin passes, they are a valid admin
   res.json({ isAdmin: true })
 })
 
@@ -262,8 +261,6 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
 
     let text = ''
     if (req.file.mimetype === 'application/pdf') {
-      const pdfParseModule = await import('pdf-parse')
-      const pdfParse = pdfParseModule.default || pdfParseModule
       const buffer = fs.readFileSync(req.file.path)
       const data = await pdfParse(buffer)
       text = data.text
@@ -300,6 +297,17 @@ WRITING EXPECTATIONS:
     })
 
     const aiData = await aiResponse.json()
+
+    if (aiData.error) {
+      console.error('Anthropic API Error:', aiData.error)
+      return res.status(500).json({ error: `Anthropic API Error: ${aiData.error.message}` })
+    }
+
+    if (!aiData.content || !aiData.content[0]) {
+      console.error('Unexpected AI Response:', aiData)
+      return res.status(500).json({ error: 'AI returned an empty or unexpected response.' })
+    }
+
     const aiText = aiData.content[0].text
 
     const structureMatch = aiText.match(/STRUCTURE:\n([\s\S]*?)(?=WRITING EXPECTATIONS:|$)/i)
