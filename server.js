@@ -12,7 +12,7 @@ import db from './database.js'
 // ⬇️ THE BULLETPROOF FIX: Force Node to load the legacy package correctly ⬇️
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
-const pdfParse = require('pdf-parse')
+const pdfParse = require('pdf-parse-new')
 // ⬆️ END FIX ⬆️
 
 dotenv.config()
