@@ -264,10 +264,22 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
     const { university, department, year, label } = req.body
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
-    let text = ''
+   let text = ''
     if (req.file.mimetype === 'application/pdf') {
       const buffer = fs.readFileSync(req.file.path)
-      const data = await pdfParse(buffer)
+      
+      // THE FIX: The Ultimate Defensive Unwrapper
+      // This forces Node to find the function, no matter how deeply it nested it.
+      let parseFunction = pdfParse
+      if (typeof parseFunction !== 'function') parseFunction = pdfParse.default
+      if (typeof parseFunction !== 'function') parseFunction = Object.values(pdfParse).find(val => typeof val === 'function')
+      
+      if (typeof parseFunction !== 'function') {
+        console.error("PDF Library Object:", pdfParse)
+        return res.status(500).json({ error: 'Server configuration error: PDF library failed to load.' })
+      }
+
+      const data = await parseFunction(buffer)
       text = data.text
     } else {
       text = fs.readFileSync(req.file.path, 'utf-8')
