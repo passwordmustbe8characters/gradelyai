@@ -261,8 +261,10 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
 
     let text = ''
     if (req.file.mimetype === 'application/pdf') {
+      // THE FIX: Safely unwrap the CommonJS function from the ES Module
+      const parse = pdfParse.default || pdfParse
       const buffer = fs.readFileSync(req.file.path)
-      const data = await pdfParse(buffer)
+      const data = await parse(buffer)
       text = data.text
     } else {
       text = fs.readFileSync(req.file.path, 'utf-8')
