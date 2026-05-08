@@ -125,7 +125,7 @@ export default function Dashboard() {
 
         {/* Stats row */}
         {projects.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 40 }}>
+         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 40 }}>
             {[
               {
                 label: 'Total Projects',
@@ -183,15 +183,16 @@ export default function Dashboard() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%' }}>
             {projects.map(project => (
-              <div key={project.id} style={{
-                background: 'var(--bg-card)', borderRadius: 20,
-                padding: '24px 28px', boxShadow: 'var(--shadow)',
-                border: '1.5px solid var(--border)',
-                transition: 'border-color 0.2s, box-shadow 0.2s',
-                display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap'
-              }}
+             <div key={project.id} style={{
+  background: 'var(--bg-card)', borderRadius: 20,
+  padding: '20px', boxShadow: 'var(--shadow)',
+  border: '1.5px solid var(--border)',
+  transition: 'border-color 0.2s, box-shadow 0.2s',
+  display: 'flex', alignItems: 'flex-start',
+  gap: 16, flexWrap: 'wrap'
+}}
                 onMouseEnter={e => {
                   e.currentTarget.style.borderColor = 'var(--accent)'
                   e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,126,167,0.1)'

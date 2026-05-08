@@ -6,6 +6,8 @@ export default function Landing() {
   const navigate = useNavigate()
   const { user } = useAuth()
 
+const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
 
@@ -13,62 +15,95 @@ export default function Landing() {
 <nav style={{
   position: 'sticky', top: 0, zIndex: 50,
   background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(20px)',
-  borderBottom: '1px solid var(--border)', padding: '0 40px'
+  borderBottom: '1px solid var(--border)', padding: '0 24px'
 }}>
   <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
-    
+
     {/* Logo */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', zIndex: 60 }} onClick={() => navigate('/')}>
       <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'white' }}>G</div>
       <span style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>GradelyAI</span>
     </div>
 
-    {/* Nav links */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 32, position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+    {/* Desktop nav links */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 32, position: 'absolute', left: '50%', transform: 'translateX(-50%)' }} className="hide-mobile">
       {[
-  { label: 'Features', href: 'features' },
-  { label: 'How it Works', href: 'how-it-works' },
-  { label: 'Pricing', href: 'pricing' },
-  { label: 'FAQ', href: 'faq' }
-].map(link => (
-  <span key={link.label}
-    onClick={() => document.getElementById(link.href)?.scrollIntoView({ behavior: 'smooth' })}
-    style={{ fontSize: 14, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 500, transition: 'color 0.15s' }}
-    onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
-    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
-    {link.label}
-  </span>
-))}
+        { label: 'Features', href: 'features' },
+        { label: 'How it Works', href: 'how-it-works' },
+        { label: 'Pricing', href: 'pricing' },
+        { label: 'FAQ', href: 'faq' }
+      ].map(link => (
+        <span key={link.label}
+          onClick={() => document.getElementById(link.href)?.scrollIntoView({ behavior: 'smooth' })}
+          style={{ fontSize: 14, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 500, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+          {link.label}
+        </span>
+      ))}
     </div>
 
-    {/* Right side */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    {/* Desktop buttons */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }} className="hide-mobile">
       {user ? (
         <>
-            <button className="btn-ghost" style={{ fontSize: 14 }}
-            onClick={() => navigate('/dashboard')}>
-            Dashboard
-          </button>
-          <button className="btn-primary" style={{ fontSize: 14 }}
-            onClick={() => navigate('/start')}>
-            New Project →
-          </button>
+          <button className="btn-ghost" style={{ fontSize: 14 }} onClick={() => navigate('/dashboard')}>Dashboard</button>
+          <button className="btn-primary" style={{ fontSize: 14 }} onClick={() => navigate('/start')}>New Project →</button>
         </>
       ) : (
         <>
-          <button className="btn-ghost" style={{ fontSize: 14 }}
-            onClick={() => navigate('/auth', { state: { mode: 'login' } })}>
-            Sign in
-          </button>
-          <button className="btn-primary" style={{ fontSize: 14 }}
-            onClick={() => navigate('/auth', { state: { mode: 'register' } })}>
-            Get Started →
-          </button>
+          <button className="btn-ghost" style={{ fontSize: 14 }} onClick={() => navigate('/auth', { state: { mode: 'login' } })}>Sign in</button>
+          <button className="btn-primary" style={{ fontSize: 14 }} onClick={() => navigate('/auth', { state: { mode: 'register' } })}>Get Started →</button>
         </>
       )}
     </div>
 
+    {/* Mobile hamburger */}
+    <button className="show-mobile" onClick={() => setMobileMenuOpen(o => !o)}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, zIndex: 60 }}>
+      {mobileMenuOpen ? (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      ) : (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      )}
+    </button>
+
   </div>
+
+  {/* Mobile menu */}
+  {mobileMenuOpen && (
+    <div style={{
+      position: 'fixed', top: 64, left: 0, right: 0, bottom: 0,
+      background: 'var(--bg)', zIndex: 50, padding: 24,
+      display: 'flex', flexDirection: 'column', gap: 8
+    }}>
+      {[
+        { label: 'Features', href: 'features' },
+        { label: 'How it Works', href: 'how-it-works' },
+        { label: 'Pricing', href: 'pricing' },
+        { label: 'FAQ', href: 'faq' }
+      ].map(link => (
+        <button key={link.label}
+          onClick={() => { document.getElementById(link.href)?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false) }}
+          style={{ padding: '16px', fontSize: 18, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text)', borderBottom: '1px solid var(--border)', fontFamily: 'Geist, sans-serif' }}>
+          {link.label}
+        </button>
+      ))}
+      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {user ? (
+          <>
+            <button className="btn-ghost" onClick={() => { navigate('/dashboard'); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>Dashboard</button>
+            <button className="btn-primary" onClick={() => { navigate('/start'); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>New Project →</button>
+          </>
+        ) : (
+          <>
+            <button className="btn-ghost" onClick={() => { navigate('/auth', { state: { mode: 'login' } }); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>Sign in</button>
+            <button className="btn-primary" onClick={() => { navigate('/auth', { state: { mode: 'register' } }); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>Get Started →</button>
+          </>
+        )}
+      </div>
+    </div>
+  )}
 </nav>
 
       {/* Hero */}
@@ -184,26 +219,26 @@ export default function Landing() {
       {/* Stats bar */}
       <section style={{ background: 'var(--text)', color: 'white' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 24px', display: 'flex', flexWrap: 'wrap' }}>
-          {[
-            { value: '5', label: 'Chapter Generation' },
-            { value: '20+', label: 'Panel Questions Prepared' },
-            { value: '100+', label: 'Universities Supported' },
-            { value: '₦5k', label: 'One-Time Price' },
-          ].map((s, i) => (
-            <div key={i} style={{
-              flex: 1, minWidth: 160, padding: '32px 24px', textAlign: 'center',
-              borderRight: i < 3 ? '1px solid rgba(255,255,255,0.1)' : 'none'
-            }}>
-              <p style={{ fontFamily: 'Melodrama, serif', fontSize: 40, fontWeight: 400, color: '#9AD1D4', marginBottom: 6 }}>{s.value}</p>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{s.label}</p>
-            </div>
-          ))}
-        </div>
+  {[
+    { value: '5', label: 'Chapters Generated' },
+    { value: '20+', label: 'Panel Questions Prepared' },
+    { value: '10+', label: 'Universities Supported' },
+    { value: '₦5k', label: 'One-Time Price' },
+  ].map((s, i) => (
+    <div key={i} style={{
+      flex: '1 1 140px', padding: '24px 16px', textAlign: 'center',
+      borderRight: i < 3 ? '1px solid rgba(255,255,255,0.1)' : 'none'
+    }}>
+      <p style={{ fontFamily: 'Melodrama, serif', fontSize: 36, fontWeight: 400, color: '#9AD1D4', marginBottom: 6 }}>{s.value}</p>
+      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{s.label}</p>
+    </div>
+  ))}
+</div>
       </section>
 
       {/* How it works */}
       <section id="how-it-works" style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
+       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 40, alignItems: 'center' }}>
           <div>
             <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>How It Works</p>
             <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 20, letterSpacing: '-0.02em' }}>
@@ -332,7 +367,7 @@ export default function Landing() {
       {/* Pricing */}
       <section id="pricing" style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 60, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 60, alignItems: 'start' }}>
             <div>
               <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>Pricing</p>
               <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(28px, 3vw, 44px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 16, letterSpacing: '-0.02em' }}>
@@ -343,7 +378,7 @@ export default function Landing() {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
               {/* Free */}
               <div style={{ background: 'var(--bg-card)', borderRadius: 20, padding: '32px 28px', boxShadow: 'var(--shadow)' }}>
                 <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>Free</p>
@@ -447,7 +482,7 @@ export default function Landing() {
       {/* FAQ */}
       <section id="faq" style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 80, alignItems: 'start' }}>
+         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 80, alignItems: 'start' }}>
             <div style={{ position: 'sticky', top: 80 }}>
               <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>FAQ</p>
               <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(28px, 3vw, 44px)', fontWeight: 400, lineHeight: 1.1, letterSpacing: '-0.02em' }}>

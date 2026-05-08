@@ -294,12 +294,14 @@ export default function Results() {
 
       {/* Top bar */}
       <div style={{
-        position: 'sticky', top: 0, zIndex: 10,
-        background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border)',
-        padding: '12px 32px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap'
-      }}>
+  position: 'sticky', top: 0, zIndex: 10,
+  background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(12px)',
+  borderBottom: '1px solid var(--border)',
+  padding: '12px 16px',
+  display: 'flex', alignItems: 'center',
+  justifyContent: 'space-between', gap: 12,
+  overflowX: 'auto', flexWrap: 'nowrap'
+}}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
           <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18 }}>GradelyAI</span>
@@ -363,8 +365,51 @@ export default function Results() {
 
       <div style={{ display: 'flex', flex: 1, maxWidth: 1200, margin: '0 auto', width: '100%', padding: paid ? '32px 24px' : '32px 24px 100px 24px', gap: 24, position: 'relative', zIndex: 1 }}>
 
+        {/* Mobile tab bar */}
+  <div className="show-mobile" style={{
+    position: 'fixed', bottom: paid ? 0 : 80, left: 0, right: 0,
+    background: 'rgba(247,245,240,0.96)', backdropFilter: 'blur(12px)',
+    borderTop: '1px solid var(--border)', zIndex: 40,
+    display: 'flex', overflowX: 'auto', padding: '8px 16px', gap: 8
+  }}>
+    {result.chapters.map((ch, i) => (
+      <button key={i}
+        onClick={() => {
+          if (!paid && ch.number > 1) { setShowPaywall(true); return }
+          setActiveTab('project')
+          setActiveChapter(i)
+        }}
+        style={{
+          padding: '8px 14px', borderRadius: 20, border: 'none',
+          background: activeTab === 'project' && activeChapter === i ? 'var(--accent)' : 'var(--bg-elevated)',
+          color: activeTab === 'project' && activeChapter === i ? 'white' : 'var(--text-muted)',
+          fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+          fontFamily: 'Geist, sans-serif', opacity: !paid && ch.number > 1 ? 0.4 : 1,
+          flexShrink: 0
+        }}>
+        Ch {ch.number}
+      </button>
+    ))}
+    {paid && (
+      <>
+        <button onClick={() => { setActiveTab('breakdown'); handleBreakdown() }}
+          style={{ padding: '8px 14px', borderRadius: 20, border: 'none', background: activeTab === 'breakdown' ? 'var(--accent)' : 'var(--bg-elevated)', color: activeTab === 'breakdown' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Geist, sans-serif', flexShrink: 0 }}>
+          Breakdown
+        </button>
+        <button onClick={() => { setActiveTab('weaknesses'); handleWeaknesses() }}
+          style={{ padding: '8px 14px', borderRadius: 20, border: 'none', background: activeTab === 'weaknesses' ? 'var(--accent)' : 'var(--bg-elevated)', color: activeTab === 'weaknesses' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Geist, sans-serif', flexShrink: 0 }}>
+          Weak Spots
+        </button>
+        <button onClick={() => setActiveTab('references')}
+          style={{ padding: '8px 14px', borderRadius: 20, border: 'none', background: activeTab === 'references' ? 'var(--accent)' : 'var(--bg-elevated)', color: activeTab === 'references' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Geist, sans-serif', flexShrink: 0 }}>
+          References
+        </button>
+      </>
+    )}
+  </div>
+
         {/* Sidebar */}
-        <div style={{ width: 240, flexShrink: 0 }}>
+        <div style={{ width: 240, flexShrink: 0 }} className="hide-mobile">
           <div className="card" style={{ position: 'sticky', top: 90 }}>
             <p style={{ fontFamily: 'Melodrama, serif', fontSize: 15, fontWeight: 700, marginBottom: 4, lineHeight: 1.4, color: 'var(--text)' }}>
               {result.projectInfo.topic}
@@ -443,7 +488,7 @@ export default function Results() {
         </div>
 
         {/* Main content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+         <div style={{ flex: 1, minWidth: 0, paddingBottom: window.innerWidth < 768 ? '80px' : 0 }}>
 
           {/* Project tab */}
     {activeTab === 'project' && result.chapters[activeChapter] && (

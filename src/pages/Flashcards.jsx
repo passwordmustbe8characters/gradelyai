@@ -148,7 +148,7 @@ export default function Flashcards() {
         {mode === 'menu' && (
           <div style={{ animation: 'fadeUp 0.4s ease' }}>
             <div style={{ textAlign: 'center', marginBottom: 48 }}>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
                 <StudyIcon3D />
               </div>
               <h1 style={{ fontFamily: 'Melodrama, serif', fontSize: 36, fontWeight: 700, marginBottom: 12, color: 'var(--text)' }}>
@@ -289,7 +289,7 @@ export default function Flashcards() {
                 <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 12, textAlign: 'center' }}>
                   How did you do?
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 16, marginBottom: 24 }}>
                   {[
                     { key: 'got', label: 'Got it', color: 'var(--success)', bg: 'rgba(45,155,111,0.08)', icon: <GotItIcon /> },
                     { key: 'almost', label: 'Almost', color: '#E8A020', bg: 'rgba(232,160,32,0.08)', icon: <AlmostIcon /> },
@@ -326,7 +326,7 @@ export default function Flashcards() {
             </p>
 
             <div className="card" style={{ marginBottom: 24 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
                 {[
                   { label: 'Got it', value: scores.got, color: 'var(--success)' },
                   { label: 'Almost', value: scores.almost, color: '#E8A020' },

@@ -338,7 +338,7 @@ export default function Intake() {
 
 function StepCard({ title, subtitle, children }) {
   return (
-    <div className="card" style={{ padding: '36px 32px', animation: 'fadeUp 0.35s ease' }}>
+   <div className="card" style={{ padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 32px)', animation: 'fadeUp 0.35s ease' }}>
       <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 26, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>{title}</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: 28, fontSize: 15, fontFamily: 'Geist, sans-serif' }}>{subtitle}</p>
       {children}
