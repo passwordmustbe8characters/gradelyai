@@ -18,7 +18,7 @@ const upload = multer({ dest: 'uploads/' })
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://gradelyai.vercel.app',
+    'https://gradelyai-chi.vercel.app',
     /\.vercel\.app$/
   ],
   credentials: true
