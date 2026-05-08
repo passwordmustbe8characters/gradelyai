@@ -7,8 +7,13 @@ import multer from 'multer'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import pdfParse from 'pdf-parse'
 import db from './database.js'
+
+// ⬇️ THE BULLETPROOF FIX: Force Node to load the legacy package correctly ⬇️
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const pdfParse = require('pdf-parse')
+// ⬆️ END FIX ⬆️
 
 dotenv.config()
 
@@ -261,10 +266,8 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
 
     let text = ''
     if (req.file.mimetype === 'application/pdf') {
-      // THE FIX: Safely unwrap the CommonJS function from the ES Module
-      const parse = pdfParse.default || pdfParse
       const buffer = fs.readFileSync(req.file.path)
-      const data = await parse(buffer)
+      const data = await pdfParse(buffer)
       text = data.text
     } else {
       text = fs.readFileSync(req.file.path, 'utf-8')
