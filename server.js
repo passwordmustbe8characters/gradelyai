@@ -15,7 +15,14 @@ dotenv.config()
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 
-app.use(cors())
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://gradelyai.vercel.app',
+    /\.vercel\.app$/
+  ],
+  credentials: true
+}))
 app.use(express.json({ limit: '10mb' }))
 app.use(session({
   secret: process.env.ADMIN_SESSION_SECRET || 'gradelyai-secret-2025',
