@@ -119,7 +119,7 @@ export default function Admin() {
       })
       const data = await res.json()
       if (data.guide) {
-        setMessage('Guide added successfully.')
+        setMessage('✅ Guide added successfully.')
         loadGuides()
         setView('list')
         setForm({ university: '', department: '', year: new Date().getFullYear().toString(), label: '', structure: '', writing_expectations: '' })
@@ -144,7 +144,7 @@ export default function Admin() {
       })
       const data = await res.json()
       if (data.guide) {
-        setMessage('Guide updated successfully.')
+        setMessage('✅ Guide updated successfully.')
         loadGuides()
         setView('list')
       } else {
@@ -190,7 +190,7 @@ export default function Admin() {
       
       const data = await res.json()
       if (data.guide) {
-        setMessage('Guide uploaded and processed successfully.')
+        setMessage('✅ Guide uploaded and processed successfully.')
         loadGuides()
         setView('list')
         setUploadForm({ university: '', department: '', year: new Date().getFullYear().toString(), label: '', file: null })
