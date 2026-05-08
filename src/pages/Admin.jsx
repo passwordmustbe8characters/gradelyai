@@ -35,7 +35,9 @@ export default function Admin() {
     let cancelled = false
 
     async function initAuth() {
-      const res = await fetch('${BASE_URL}/api/admin//check')
+      const res = await fetch(`${BASE_URL}/api/admin/check`, {
+        credentials: 'include'
+      })
       const data = await res.json()
       if (!cancelled && data.isAdmin) {
         setIsAdmin(true)
@@ -52,10 +54,11 @@ export default function Admin() {
   const handleLogin = async () => {
   setLoginError('')
   try {
-    const res = await fetch('${BASE_URL}/api/admin//login', {
+    const res = await fetch(`${BASE_URL}/api/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
+      body: JSON.stringify({ password }),
+      credentials: 'include'
     })
     const data = await res.json()
     if (data.success) {
@@ -70,12 +73,17 @@ export default function Admin() {
 }
 
   const handleLogout = async () => {
-    await fetch('${BASE_URL}/api/admin//logout', { method: 'POST' })
+    await fetch(`${BASE_URL}/api/admin/logout`, { 
+      method: 'POST',
+      credentials: 'include' 
+    })
     setIsAdmin(false)
   }
 
   async function loadGuides() {
-    const res = await fetch('${BASE_URL}/api/admin//guides')
+    const res = await fetch(`${BASE_URL}/api/admin/guides`, {
+      credentials: 'include'
+    })
     const data = await res.json()
     setGuides(data.guides || [])
   }
@@ -90,10 +98,11 @@ export default function Admin() {
     setMessage('')
     try {
       const payload = { ...form, label: form.label || autoLabel(form) }
-      const res = await fetch('${BASE_URL}/api/admin//guides', {
+      const res = await fetch(`${BASE_URL}/api/admin/guides`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        credentials: 'include'
       })
       const data = await res.json()
       if (data.guide) {
@@ -115,10 +124,11 @@ export default function Admin() {
     setMessage('')
     try {
       const payload = { ...form, label: form.label || autoLabel(form) }
-      const res = await fetch(`${BASE_URL}/api/admin//guides/${selected.id}`, {
+      const res = await fetch(`${BASE_URL}/api/admin/guides/${selected.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        credentials: 'include'
       })
       const data = await res.json()
       if (data.guide) {
@@ -136,7 +146,10 @@ export default function Admin() {
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this guide?')) return
-    await fetch(`${BASE_URL}/api/admin//guides/${id}`, { method: 'DELETE' })
+    await fetch(`${BASE_URL}/api/admin/guides/${id}`, { 
+      method: 'DELETE',
+      credentials: 'include'
+    })
     loadGuides()
   }
 
@@ -155,9 +168,10 @@ export default function Admin() {
       formData.append('year', uploadForm.year)
       formData.append('label', uploadForm.label || autoLabel(uploadForm))
 
-      const res = await fetch('${BASE_URL}/api/admin//guides/upload', {
+      const res = await fetch(`${BASE_URL}/api/admin/guides/upload`, {
         method: 'POST',
-        body: formData
+        body: formData,
+        credentials: 'include'
       })
       const data = await res.json()
       if (data.guide) {
@@ -318,7 +332,7 @@ export default function Admin() {
                         background: 'transparent', color: 'var(--danger)',
                         cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans, sans-serif'
                       }}>
-                        
+                        Delete
                       </button>
                     </div>
                   </div>

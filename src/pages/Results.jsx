@@ -1,6 +1,6 @@
+import { saveProject, updateProject } from '../lib/auth'
 import { useState, useEffect, } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { saveProject } from '../lib/auth'
 import { useAuth } from '../lib/AuthContext'
 import {
   humanizeText,
@@ -218,11 +218,25 @@ export default function Results() {
     setExporting(false)
   }
 
-  const handleUnlock = () => {
-    setPaid(true)
-    setShowPaywall(false)
-    navigate('/generate')
+  const handleUnlock = async () => {
+  setPaid(true)
+  setShowPaywall(false)
+
+  // Mark as paid in database
+  const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+  if (projectId && user) {
+    try {
+      await updateProject(projectId, { is_paid: true })
+    } catch (err) {
+      console.error('Failed to mark project as paid:', err)
+    }
   }
+
+  // Clear payment from session so next project requires payment
+  sessionStorage.removeItem('gradelyPaid')
+
+  navigate('/generate')
+}
 
   const renderContentWithSources = (text) => {
     if (!text) return null
@@ -307,26 +321,38 @@ export default function Results() {
           <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18 }}>GradelyAI</span>
         </div>
 
-        <button className="btn-ghost" 
+       <button className="btn-ghost"
   onClick={async () => {
     if (!user) { navigate('/auth'); return }
     try {
-      await saveProject({
-        title: result.projectInfo.topic,
-        university: result.projectInfo.university,
-        department: result.projectInfo.department,
-        project_type: result.projectInfo.projectType,
-        status: paid ? 'complete' : 'in_progress',
-        is_paid: paid,
-        chapters: result.chapters,
-        abstract: result.abstract,
-        references: result.references,
-        structure: result.structure,
-        project_info: result.projectInfo,
-      })
+      const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      if (projectId) {
+        await updateProject(projectId, {
+          status: paid ? 'complete' : 'in_progress',
+          is_paid: paid,
+          chapters: result.chapters,
+          abstract: result.abstract,
+          references: result.references,
+          project_info: result.projectInfo,
+        })
+      } else {
+        await saveProject({
+          title: result.projectInfo.topic,
+          university: result.projectInfo.university,
+          department: result.projectInfo.department,
+          project_type: result.projectInfo.projectType,
+          status: paid ? 'complete' : 'in_progress',
+          is_paid: paid,
+          chapters: result.chapters,
+          abstract: result.abstract,
+          references: result.references,
+          structure: result.structure,
+          project_info: result.projectInfo,
+        })
+      }
       navigate('/dashboard')
     } catch (err) {
-      alert('Failed to save project: ' + err.message)
+      alert('Failed to save: ' + err.message)
     }
   }}
   style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>

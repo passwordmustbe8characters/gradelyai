@@ -1,10 +1,8 @@
-// GradelyAI — Paystack Payment Integration
-
 const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
 
 export function initiatePayment({ email, name, onSuccess, onClose }) {
   if (!window.PaystackPop) {
-    alert('Payment system is loading. Please wait a moment and try again.')
+    alert('Payment system not loaded. Please refresh and try again.')
     onClose && onClose()
     return
   }
@@ -36,11 +34,9 @@ export function initiatePayment({ email, name, onSuccess, onClose }) {
         onClose && onClose()
       }
     })
-
     handler.openIframe()
   } catch (err) {
     console.error('Paystack error:', err)
-    alert('Payment failed to open. Please refresh and try again.')
     onClose && onClose()
   }
 }
@@ -48,8 +44,12 @@ export function initiatePayment({ email, name, onSuccess, onClose }) {
 export function isPaid() {
   const saved = sessionStorage.getItem('gradelyPaid')
   if (!saved) return false
-  const data = JSON.parse(saved)
-  return data.paid === true
+  try {
+    const data = JSON.parse(saved)
+    return data.paid === true
+  } catch {
+    return false
+  }
 }
 
 export function markAsPaid(reference) {

@@ -1,3 +1,4 @@
+import { saveProject, updateProject, getToken } from '../lib/auth'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -24,41 +25,42 @@ export default function Generate() {
   const logRef = useRef(null)
 
   const startGeneration = async (info) => {
-    try {
-      // Step 1 — Analyze writing style
-      let styleProfile = null
-      if (info.styleSample && info.styleSample.trim().length > 50) {
-        addLog('Capturing your writing voice...')
-        styleProfile = await analyzeWritingStyle(info.styleSample)
-        if (styleProfile) addLog('✓ Your voice has been captured.')
-      }
+  try {
+    let styleProfile = null
+    if (info.styleSample && info.styleSample.trim().length > 50) {
+      addLog('Capturing your writing voice...')
+      styleProfile = await analyzeWritingStyle(info.styleSample)
+      if (styleProfile) addLog('✓ Your voice has been captured.')
+    }
 
-      const enrichedInfo = { ...info, styleProfile }
+    const enrichedInfo = { ...info, styleProfile }
 
       // Step 2 — Build structure
-      setStatus('structuring')
-      addLog('Analysing your project details...')
-      const struct = await generateProjectStructure(enrichedInfo)
-      setStructure(struct)
-      addLog(`Structure ready — ${struct.chapters.length} chapters mapped out.`)
+     setStatus('structuring')
+    addLog('Analysing your project details...')
+    const struct = await generateProjectStructure(enrichedInfo)
+    setStructure(struct)
+    addLog(`Structure ready — ${struct.chapters.length} chapters mapped out.`)
 
       // Step 3 — Fetch real papers
       addLog('Sourcing academic references for your project...')
-      const realPapers = await fetchRealPapers(enrichedInfo.topic, enrichedInfo.department)
-      if (realPapers.length > 0) {
-        addLog('✓ Academic sources ready.')
-      } else {
-        addLog('No external sources found. Project will be generated without inline citations.')
-      }
+    const realPapers = await fetchRealPapers(enrichedInfo.topic, enrichedInfo.department)
+    if (realPapers.length > 0) {
+      addLog('✓ Academic sources ready.')
+    } else {
+      addLog('No external sources found. Project will be generated without inline citations.')
+    }
+
 
       // Step 4 — Check payment — free users only get chapter 1
       const paid = sessionStorage.getItem('gradelyPaid')
-const paidStatus = paid ? JSON.parse(paid).paid : false
-setIsPaidUser(paidStatus)
-const chaptersToGenerate = paidStatus ? struct.chapters : [struct.chapters[0]]
+    const paidStatus = paid ? JSON.parse(paid).paid : false
+    setIsPaidUser(paidStatus)
+    const chaptersToGenerate = paidStatus ? struct.chapters : [struct.chapters[0]]
+    
       // Step 5 — Generate chapters
       setStatus('generating')
-      const generatedChapters = []
+    const generatedChapters = []
 
       for (let i = 0; i < chaptersToGenerate.length; i++) {
         const chapter = chaptersToGenerate[i]
@@ -75,36 +77,110 @@ const chaptersToGenerate = paidStatus ? struct.chapters : [struct.chapters[0]]
         addLog(`✓ Chapter ${chapter.number} done.`)
       }
 
-      // Step 6 — Abstract
-      addLog('Writing abstract...')
-      const allText = generatedChapters.map(c => c.content).join('\n\n')
-      const abstract = await generateAbstract(enrichedInfo, allText)
-      addLog('✓ Abstract done.')
 
-      // Step 7 — References
-      addLog('Compiling references...')
-      const refs = await generateReferences(enrichedInfo, realPapers)
-      addLog('✓ References compiled.')
-
-      // Save everything
-      sessionStorage.setItem('gradelyResult', JSON.stringify({
-        projectInfo: enrichedInfo,
-        structure: struct,
-        chapters: generatedChapters,
-        abstract,
-        references: refs.references,
-        realPapers,
-        isPaidUser
-      }))
-
-      setStatus('done')
-      addLog(isPaidUser ? 'Your full project is ready!' : '✓ Chapter 1 is ready. Unlock the full project to continue.')
-
-    } catch (err) {
-      setStatus('error')
-      setError(err.message || 'Something went wrong during generation. Please try again.')
+      // Create project in database immediately if user is logged in
+    let projectId = null
+    if (getToken()) {
+      try {
+        const saved = await saveProject({
+          title: enrichedInfo.topic,
+          university: enrichedInfo.university,
+          department: enrichedInfo.department,
+          project_type: enrichedInfo.projectType,
+          status: 'in_progress',
+          is_paid: paidStatus,
+          chapters: [],
+          abstract: '',
+          references: [],
+          structure: struct,
+          project_info: enrichedInfo,
+        })
+        projectId = saved.id
+        sessionStorage.setItem('gradelyProjectDbId', saved.id)
+      } catch (err) {
+        console.error('Failed to create project in DB:', err)
+      }
     }
+
+    for (let i = 0; i < chaptersToGenerate.length; i++) {
+      const chapter = chaptersToGenerate[i]
+      setCurrentChapter(i)
+      addLog(`Writing Chapter ${chapter.number}: ${chapter.title}...`)
+
+      const content = await generateChapter(
+        { chapter, realPapers },
+        { ...enrichedInfo, referenceStyle: struct.referenceStyle }
+      )
+
+      generatedChapters.push({ ...chapter, content })
+      setChapters(prev => [...prev, { ...chapter, content }])
+      addLog(`✓ Chapter ${chapter.number} done.`)
+
+// Auto-save progress after each chapter
+      if (projectId && getToken()) {
+        try {
+          await updateProject(projectId, {
+            chapters: generatedChapters,
+            status: 'in_progress',
+          })
+        } catch (err) {
+          console.error('Failed to auto-save chapter:', err)
+        }
+      }
+    }
+
+    addLog('Writing abstract...')
+    const allText = generatedChapters.map(c => c.content).join('\n\n')
+    const abstract = await generateAbstract(enrichedInfo, allText)
+    addLog('✓ Abstract done.')
+
+    addLog('Compiling references...')
+    const refs = await generateReferences(enrichedInfo, realPapers)
+    addLog('✓ References compiled.')
+
+    const resultData = {
+      projectInfo: enrichedInfo,
+      structure: struct,
+      chapters: generatedChapters,
+      abstract,
+      references: refs.references,
+      realPapers,
+      isPaidUser: paidStatus,
+      dbProjectId: projectId,
+    }
+
+    sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+
+
+
+    // Final save to database
+    if (projectId && getToken()) {
+      try {
+        await updateProject(projectId, {
+          title: enrichedInfo.topic,
+          status: paidStatus ? 'complete' : 'in_progress',
+          is_paid: paidStatus,
+          chapters: generatedChapters,
+          abstract,
+          references: refs.references,
+          structure: struct,
+          project_info: enrichedInfo,
+        })
+      } catch (err) {
+        console.error('Failed to final-save project:', err)
+      }
+    }
+
+    setStatus('done')
+    addLog(paidStatus
+      ? 'Your full project is ready!'
+      : '✓ Chapter 1 is ready. Unlock the full project to continue.')
+
+  } catch (err) {
+    setStatus('error')
+    setError(err.message || 'Something went wrong during generation. Please try again.')
   }
+}
 
   useEffect(() => {
     if (hasStarted.current) return

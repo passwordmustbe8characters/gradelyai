@@ -92,8 +92,8 @@ export default function Auth() {
           <span style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)' }}>GradelyAI</span>
         </div>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
-          {mode === 'login' ? 'Sign in to your account' : 'Create your free account'}
-        </p>
+  {location.state?.message || (mode === 'login' ? 'Sign in to your account' : 'Create your free account')}
+</p>
       </div>
 
       {/* Card */}

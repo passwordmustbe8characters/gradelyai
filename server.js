@@ -15,20 +15,32 @@ dotenv.config()
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 
+// Trust proxy is required for Railway to correctly pass secure cross-domain cookies
+app.set('trust proxy', 1)
+
 app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://gradelyai-chi.vercel.app',
+    'https://gradelyai-production.up.railway.app',
     /\.vercel\.app$/
   ],
   credentials: true
 }))
 app.use(express.json({ limit: '10mb' }))
+
+// Detect if running on Railway (production) to enable cross-domain cookies
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT
+
 app.use(session({
   secret: process.env.ADMIN_SESSION_SECRET || 'gradelyai-secret-2025',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  cookie: { 
+    secure: isProduction ? true : false,     // Must be true for cross-domain on Vercel/Railway
+    sameSite: isProduction ? 'none' : 'lax', // Must be 'none' for cross-domain on Vercel/Railway
+    maxAge: 24 * 60 * 60 * 1000 
+  }
 }))
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'gradely2025'
@@ -142,7 +154,11 @@ app.post('/api/admin/login', (req, res) => {
   const { password } = req.body
   if (password === ADMIN_PASSWORD) {
     req.session.isAdmin = true
-    res.json({ success: true })
+    // FORCE the session to save before sending the response
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: 'Session save failed' })
+      res.json({ success: true })
+    })
   } else {
     res.status(401).json({ error: 'Wrong password' })
   }

@@ -74,21 +74,30 @@ export default function Intake() {
   }
 
   const handleContinue = () => {
-    const styleAnswers = form.styleAnswers || {}
-    const styleSample = Object.values(styleAnswers).filter(v => v.trim()).join('\n\n')
-    const autoGuide = !form.guideContent
-      ? null
-      : null
+  const styleAnswers = form.styleAnswers || {}
+  const styleSample = Object.values(styleAnswers).filter(v => v.trim()).join('\n\n')
 
-    sessionStorage.setItem('gradelyProject', JSON.stringify({
-      ...form,
-      topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
-      projectType: form.selectedTopic?.type || form.projectType || 'research',
-      styleSample,
-      guideContent: form.guideContent || autoGuide?.structure || ''
-    }))
-    navigate('/generate')
+  sessionStorage.setItem('gradelyProject', JSON.stringify({
+    ...form,
+    topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
+    projectType: form.selectedTopic?.type || form.projectType || 'research',
+    styleSample,
+    guideContent: form.guideContent || ''
+  }))
+
+  // Clear any previous payment and project data
+  sessionStorage.removeItem('gradelyPaid')
+  sessionStorage.removeItem('gradelyResult')
+  sessionStorage.removeItem('gradelyProjectDbId')
+
+  if (!user) {
+    // Prompt to create account so project is saved
+    navigate('/auth', { state: { mode: 'register', redirect: '/generate', message: 'Create a free account to save your project and access it anytime.' } })
+    return
   }
+
+  navigate('/generate')
+}
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', background: 'var(--bg)' }}>

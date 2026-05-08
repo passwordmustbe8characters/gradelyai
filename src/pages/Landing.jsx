@@ -83,38 +83,84 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   {/* Mobile menu */}
   {mobileMenuOpen && (
+  <>
+    {/* Blur overlay behind menu */}
+    <div
+      onClick={() => setMobileMenuOpen(false)}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 40,
+        background: 'rgba(0,0,0,0.3)',
+        backdropFilter: 'blur(4px)',
+      }}
+    />
+
+    {/* Menu panel */}
     <div style={{
-      position: 'fixed', top: 64, left: 0, right: 0, bottom: 0,
-      background: 'var(--bg)', zIndex: 50, padding: 24,
-      display: 'flex', flexDirection: 'column', gap: 8
+      position: 'fixed', top: 64, left: 0, right: 0,
+      background: 'rgba(247,245,240,0.98)',
+      backdropFilter: 'blur(20px)',
+      zIndex: 50, padding: '16px 24px 28px',
+      borderBottom: '1px solid var(--border)',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
     }}>
-      {[
-        { label: 'Features', href: 'features' },
-        { label: 'How it Works', href: 'how-it-works' },
-        { label: 'Pricing', href: 'pricing' },
-        { label: 'FAQ', href: 'faq' }
-      ].map(link => (
-        <button key={link.label}
-          onClick={() => { document.getElementById(link.href)?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false) }}
-          style={{ padding: '16px', fontSize: 18, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text)', borderBottom: '1px solid var(--border)', fontFamily: 'Geist, sans-serif' }}>
-          {link.label}
-        </button>
-      ))}
-      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Nav links */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {[
+          { label: 'Features', href: 'features' },
+          { label: 'How it Works', href: 'how-it-works' },
+          { label: 'Pricing', href: 'pricing' },
+          { label: 'FAQ', href: 'faq' }
+        ].map(link => (
+          <button key={link.label}
+            onClick={() => {
+              document.getElementById(link.href)?.scrollIntoView({ behavior: 'smooth' })
+              setMobileMenuOpen(false)
+            }}
+            style={{
+              padding: '16px 0', fontSize: 16, fontWeight: 500,
+              background: 'none', border: 'none',
+              borderBottom: '1px solid var(--border)',
+              cursor: 'pointer', textAlign: 'left',
+              color: 'var(--text)', fontFamily: 'Geist, sans-serif',
+            }}>
+            {link.label}
+          </button>
+        ))}
+      </div>
+
+      {/* CTA buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20 }}>
         {user ? (
           <>
-            <button className="btn-ghost" onClick={() => { navigate('/dashboard'); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>Dashboard</button>
-            <button className="btn-primary" onClick={() => { navigate('/start'); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>New Project →</button>
+            <button className="btn-ghost"
+              onClick={() => { navigate('/dashboard'); setMobileMenuOpen(false) }}
+              style={{ width: '100%', justifyContent: 'center' }}>
+              Dashboard
+            </button>
+            <button className="btn-primary"
+              onClick={() => { navigate('/start'); setMobileMenuOpen(false) }}
+              style={{ width: '100%', justifyContent: 'center' }}>
+              New Project →
+            </button>
           </>
         ) : (
           <>
-            <button className="btn-ghost" onClick={() => { navigate('/auth', { state: { mode: 'login' } }); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>Sign in</button>
-            <button className="btn-primary" onClick={() => { navigate('/auth', { state: { mode: 'register' } }); setMobileMenuOpen(false) }} style={{ width: '100%', justifyContent: 'center' }}>Get Started →</button>
+            <button className="btn-ghost"
+              onClick={() => { navigate('/auth', { state: { mode: 'login' } }); setMobileMenuOpen(false) }}
+              style={{ width: '100%', justifyContent: 'center' }}>
+              Sign in
+            </button>
+            <button className="btn-primary"
+              onClick={() => { navigate('/auth', { state: { mode: 'register' } }); setMobileMenuOpen(false) }}
+              style={{ width: '100%', justifyContent: 'center' }}>
+              Get Started →
+            </button>
           </>
         )}
       </div>
     </div>
-  )}
+  </>
+)}
 </nav>
 
       {/* Hero */}
@@ -170,7 +216,7 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
               style={{ fontSize: 16, padding: '15px 36px' }}>
               Start my project — it's free
             </button>
-            <button className="btn-ghost" style={{ fontSize: 15, padding: '15px 28px' }}>
+            <button href="#how-it-works" className="btn-ghost" style={{ fontSize: 15, padding: '15px 28px' }}>
               See how it works
             </button>
           </div>
