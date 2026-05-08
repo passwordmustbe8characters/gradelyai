@@ -3,7 +3,6 @@ import express from 'express'
 import cors from 'cors'
 import fetch from 'node-fetch'
 import dotenv from 'dotenv'
-import session from 'express-session'
 import multer from 'multer'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
@@ -15,7 +14,6 @@ dotenv.config()
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 
-// Trust proxy is required for Railway to correctly pass secure cross-domain cookies
 app.set('trust proxy', 1)
 
 app.use(cors({
@@ -29,20 +27,6 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '10mb' }))
 
-// Detect if running on Railway (production) to enable cross-domain cookies
-const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT
-
-app.use(session({
-  secret: process.env.ADMIN_SESSION_SECRET || 'gradelyai-secret-2025',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { 
-    secure: isProduction ? true : false,     // Must be true for cross-domain on Vercel/Railway
-    sameSite: isProduction ? 'none' : 'lax', // Must be 'none' for cross-domain on Vercel/Railway
-    maxAge: 24 * 60 * 60 * 1000 
-  }
-}))
-
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'gradely2025'
 const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY
 const JWT_SECRET = process.env.JWT_SECRET || 'gradelyai-jwt-secret-2025'
@@ -50,8 +34,18 @@ const JWT_SECRET = process.env.JWT_SECRET || 'gradelyai-jwt-secret-2025'
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 
 function requireAdmin(req, res, next) {
-  if (req.session?.isAdmin) return next()
-  res.status(401).json({ error: 'Unauthorized' })
+  const token = req.headers.authorization?.split(' ')[1]
+  if (!token) return res.status(401).json({ error: 'No admin token provided' })
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET)
+    if (decoded.isAdmin) {
+      req.admin = decoded
+      return next()
+    }
+    res.status(401).json({ error: 'Unauthorized: Not an admin' })
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired admin token' })
+  }
 }
 
 function requireAuth(req, res, next) {
@@ -148,29 +142,26 @@ app.get('/api/papers', async (req, res) => {
   res.json({ data: [] })
 })
 
-// ─── ADMIN: Auth ──────────────────────────────────────────────────────────────
+// ─── ADMIN: Auth (Now using JWT) ──────────────────────────────────────────────
 
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body
   if (password === ADMIN_PASSWORD) {
-    req.session.isAdmin = true
-    // FORCE the session to save before sending the response
-    req.session.save((err) => {
-      if (err) return res.status(500).json({ error: 'Session save failed' })
-      res.json({ success: true })
-    })
+    const token = jwt.sign({ isAdmin: true }, JWT_SECRET, { expiresIn: '7d' })
+    res.json({ success: true, token })
   } else {
     res.status(401).json({ error: 'Wrong password' })
   }
 })
 
 app.post('/api/admin/logout', (req, res) => {
-  req.session.destroy()
+  // Client side handles deleting the token
   res.json({ success: true })
 })
 
-app.get('/api/admin/check', (req, res) => {
-  res.json({ isAdmin: !!req.session?.isAdmin })
+app.get('/api/admin/check', requireAdmin, (req, res) => {
+  // If requireAdmin passes, they are a valid admin
+  res.json({ isAdmin: true })
 })
 
 // ─── GUIDES: Public ───────────────────────────────────────────────────────────
