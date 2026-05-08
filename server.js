@@ -23,7 +23,8 @@ app.use(cors({
     'https://gradelyai-production.up.railway.app',
     /\.vercel\.app$/
   ],
-  credentials: true
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'] // <-- THIS IS THE MAGIC KEY
 }))
 app.use(express.json({ limit: '10mb' }))
 
