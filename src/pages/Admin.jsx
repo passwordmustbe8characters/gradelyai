@@ -35,13 +35,20 @@ export default function Admin() {
     let cancelled = false
 
     async function initAuth() {
-      const res = await fetch(`${BASE_URL}/api/admin/check`, {
-        credentials: 'include'
-      })
-      const data = await res.json()
-      if (!cancelled && data.isAdmin) {
-        setIsAdmin(true)
-        loadGuides()
+      const token = localStorage.getItem('gradelyAdminToken')
+      if (!token) return
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/admin/check`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const data = await res.json()
+        if (!cancelled && data.isAdmin) {
+          setIsAdmin(true)
+          loadGuides()
+        }
+      } catch (err) {
+        console.error(err)
       }
     }
 
@@ -52,37 +59,44 @@ export default function Admin() {
   }, [])
 
   const handleLogin = async () => {
-  setLoginError('')
-  try {
-    const res = await fetch(`${BASE_URL}/api/admin/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-      credentials: 'include'
-    })
-    const data = await res.json()
-    if (data.success) {
-      setIsAdmin(true)
-      loadGuides()
-    } else {
-      setLoginError(data.error || 'Wrong password')
+    setLoginError('')
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      })
+      const data = await res.json()
+      if (data.success && data.token) {
+        localStorage.setItem('gradelyAdminToken', data.token)
+        setIsAdmin(true)
+        loadGuides()
+      } else {
+        setLoginError(data.error || 'Wrong password')
+      }
+    } catch (err) {
+      setLoginError('Cannot connect to server: ' + err.message)
     }
-  } catch (err) {
-    setLoginError('Cannot connect to server: ' + err.message)
   }
-}
 
   const handleLogout = async () => {
+    const token = localStorage.getItem('gradelyAdminToken')
+    localStorage.removeItem('gradelyAdminToken')
     await fetch(`${BASE_URL}/api/admin/logout`, { 
       method: 'POST',
-      credentials: 'include' 
+      headers: { 'Authorization': `Bearer ${token}` }
     })
     setIsAdmin(false)
   }
 
+  const getAuthHeaders = () => ({
+    'Authorization': `Bearer ${localStorage.getItem('gradelyAdminToken')}`,
+    'Content-Type': 'application/json'
+  })
+
   async function loadGuides() {
     const res = await fetch(`${BASE_URL}/api/admin/guides`, {
-      credentials: 'include'
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('gradelyAdminToken')}` }
     })
     const data = await res.json()
     setGuides(data.guides || [])
@@ -100,9 +114,8 @@ export default function Admin() {
       const payload = { ...form, label: form.label || autoLabel(form) }
       const res = await fetch(`${BASE_URL}/api/admin/guides`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include'
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
       })
       const data = await res.json()
       if (data.guide) {
@@ -126,9 +139,8 @@ export default function Admin() {
       const payload = { ...form, label: form.label || autoLabel(form) }
       const res = await fetch(`${BASE_URL}/api/admin/guides/${selected.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        credentials: 'include'
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
       })
       const data = await res.json()
       if (data.guide) {
@@ -148,7 +160,7 @@ export default function Admin() {
     if (!confirm('Are you sure you want to delete this guide?')) return
     await fetch(`${BASE_URL}/api/admin/guides/${id}`, { 
       method: 'DELETE',
-      credentials: 'include'
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('gradelyAdminToken')}` }
     })
     loadGuides()
   }
@@ -161,7 +173,9 @@ export default function Admin() {
     setLoading(true)
     setMessage('')
     try {
+      // THE FIX: Creating the formData variable explicitly here
       const formData = new FormData()
+      
       formData.append('file', uploadForm.file)
       formData.append('university', uploadForm.university)
       formData.append('department', uploadForm.department)
@@ -170,9 +184,10 @@ export default function Admin() {
 
       const res = await fetch(`${BASE_URL}/api/admin/guides/upload`, {
         method: 'POST',
-        body: formData,
-        credentials: 'include'
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('gradelyAdminToken')}` },
+        body: formData // Using the variable created above
       })
+      
       const data = await res.json()
       if (data.guide) {
         setMessage('Guide uploaded and processed successfully.')
