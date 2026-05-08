@@ -1,6 +1,0 @@
-{
-  "buildCommand": "npm install --no-package-lock && npm run build",
-  "outputDirectory": "dist",
-  "framework": "vite",
-  "installCommand": "npm install --no-package-lock"
-}
