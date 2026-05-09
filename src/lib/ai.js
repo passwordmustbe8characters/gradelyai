@@ -458,49 +458,54 @@ STRICT RULES:
     4096
   )
 
-  // Pass 4 — Synonym substitution for high-frequency AI words
+  // Pass 4 — AI word replacement sweep
   const aiWords = {
-    'utilize': 'use',
-    'leverage': 'use',
-    'delve': 'explore',
-    'crucial': 'important',
-    'vital': 'important',
-    'robust': 'strong',
-    'comprehensive': 'thorough',
-    'innovative': 'new',
-    'seamlessly': 'smoothly',
-    'streamline': 'simplify',
-    'paradigm': 'model',
-    'synergy': 'cooperation',
-    'holistic': 'complete',
-    'nuanced': 'detailed',
-    'multifaceted': 'complex',
-    'foster': 'encourage',
-    'underscore': 'highlight',
-    'pivotal': 'key',
-    'mitigate': 'reduce',
-    'endeavor': 'effort',
-    'aforementioned': 'mentioned earlier',
-    'implement': 'apply',
-    'facilitate': 'help',
-    'demonstrate': 'show',
-    'significant': 'major',
-    'substantial': 'large',
-    'commence': 'start',
-    'terminate': 'end',
-    'ascertain': 'find out',
-    'pertaining to': 'about',
+    'utilize': 'use', 'leverage': 'use', 'delve': 'explore',
+    'crucial': 'important', 'vital': 'key', 'robust': 'strong',
+    'comprehensive': 'thorough', 'innovative': 'new', 'seamlessly': 'smoothly',
+    'streamline': 'simplify', 'paradigm': 'model', 'holistic': 'complete',
+    'nuanced': 'detailed', 'multifaceted': 'complex', 'foster': 'encourage',
+    'underscore': 'highlight', 'pivotal': 'central', 'mitigate': 'reduce',
+    'endeavor': 'effort', 'aforementioned': 'mentioned earlier',
+    'facilitate': 'help', 'demonstrate': 'show', 'significant': 'major',
+    'substantial': 'large', 'commence': 'start', 'terminate': 'end',
+    'pertaining to': 'about', 'it is worth noting': 'notably',
+    'it is important to note': 'importantly', 'in order to': 'to',
+    'due to the fact that': 'because', 'at this point in time': 'now',
+    'in the event that': 'if', 'for the purpose of': 'for',
+    'with regard to': 'about', 'in light of': 'given',
   }
 
-  let result = pass3
+  let pass4 = pass3
   for (const [aiWord, human] of Object.entries(aiWords)) {
     const regex = new RegExp(`\\b${aiWord}\\b`, 'gi')
-    result = result.replace(regex, human)
+    pass4 = pass4.replace(regex, human)
   }
 
-  return result
-}
+  // Pass 5 — Final unpredictability pass
+  const pass5 = await callAI(
+    `You are a Nigerian university student doing a final personal edit of your project.
 
+YOUR GOAL: Make this text score below 50% on AI detectors by maximizing unpredictability.
+
+DO ALL OF THESE:
+- Find the 8 longest sentences and split each into 2 shorter ones
+- Find the 5 most formal phrases and replace with how a smart student would actually say it
+- Add 3 specific numbers or percentages with "approximately" or "roughly" before them to seem estimated
+- Insert 2 parenthetical asides (like this one) that add a real-world observation
+- Change 4 passive voice sentences to active voice
+- Add 1 brief hypothetical scenario: "Consider a situation where..."
+- Make sure every paragraph has at least one sentence under 8 words
+- Replace "The study found" with "Results showed" or "Data revealed" or "Findings suggest"
+- Replace "This research" with "This work" or "The investigation" or rewrite around it
+- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers
+- DO NOT add fake citations or made up statistics`,
+    `FINAL UNPREDICTABILITY PASS:\n\n${pass4}`,
+    4096
+  )
+
+  return pass5
+}
 
 // ─── STUDENT BREAKDOWN ───────────────────────────────────────────────────────
 

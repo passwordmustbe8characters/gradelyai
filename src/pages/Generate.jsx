@@ -114,7 +114,8 @@ export default function Generate() {
 
     for (let i = 0; i < chaptersToGenerate.length; i++) {
       const chapter = chaptersToGenerate[i]
-      setCurrentChapter(struct.chapters.findIndex(c => c.number === chapter.number))
+      const chapterIndex = struct.chapters.findIndex(c => c.number === chapter.number)
+setCurrentChapter(chapterIndex)
       addLog(`Writing Chapter ${chapter.number}: ${chapter.title}...`)
 
       const content = await generateChapter(
@@ -237,10 +238,9 @@ export default function Generate() {
         <div className="card" style={{ marginBottom: 24 }}>
           <p className="label" style={{ marginBottom: 16 }}>Chapter Progress</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-         {(structure?.chapters || Array.from({ length: 5 }, (_, i) => ({ number: i + 1, title: `Chapter ${i + 1}` }))).map((ch, i) => {
-  const isDone = chapters.find(c => c.number === ch.number)
-  const isGenerating = status === 'generating' && !isDone &&
-    chapters.length === i // only show generating for the NEXT chapter
+        {(structure?.chapters || Array.from({ length: 5 }, (_, i) => ({ number: i + 1, title: `Chapter ${i + 1}` }))).map((ch, i) => {
+  const isDone = chapters.some(c => c.number === ch.number)
+  const isGenerating = status === 'generating' && i === currentChapter && !isDone
 
   return (
     <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>

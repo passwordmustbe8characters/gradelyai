@@ -22,6 +22,7 @@ export default function Intake() {
 
   const [form, setForm] = useState({
     name: '',
+    guideFound: '',
     university: '',
     department: '',
     hasTopic: null,
@@ -39,6 +40,20 @@ export default function Intake() {
   })
 
   const update = (key, value) => setForm(f => ({ ...f, [key]: value }))
+
+  const fetchGuideFromDB = async (university, department) => {
+  try {
+    const BASE_URL = import.meta.env.VITE_API_URL || ''
+    const res = await fetch(`${BASE_URL}/api/guides?university=${encodeURIComponent(university)}&department=${encodeURIComponent(department)}`)
+    const data = await res.json()
+    if (data.guides && data.guides.length > 0) {
+      return data.guides[0]
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
   useEffect(() => {
     if (user) {
@@ -231,18 +246,32 @@ export default function Intake() {
 
         {/* Step 7 — Project guide */}
         {step === 7 && (
-          <StepCard title="Do you have a project guide?" subtitle="A project manual or guidebook from your department">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <ChoiceButton active={form.hasGuide === true} onClick={() => { update('hasGuide', true); setStep(8) }}>
-                Yes, I have a project guide
-              </ChoiceButton>
-              <ChoiceButton active={form.hasGuide === false} onClick={() => { update('hasGuide', false); setStep(9) }}>
-                No, use a standard structure
-              </ChoiceButton>
-            </div>
-            <StepNav onBack={() => setStep(form.hasTopic ? 5 : 6)} hideNext />
-          </StepCard>
-        )}
+  <StepCard title="Do you have a project guide?" subtitle="A project manual or guidebook from your department">
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <ChoiceButton active={form.hasGuide === true}
+        onClick={() => { update('hasGuide', true); setStep(8) }}>
+        Yes, I have my own project guide to upload
+      </ChoiceButton>
+      <ChoiceButton active={form.hasGuide === false}
+        onClick={async () => {
+          update('hasGuide', false)
+          setLoading(true)
+          const guide = await fetchGuideFromDB(form.university, form.department)
+          if (guide) {
+            update('guideContent', guide.structure)
+            update('guideFound', guide.label)
+          }
+          setLoading(false)
+          setStep(9)
+        }}>
+        {loading ? 'Checking our database...' : 'No — use a standard structure'}
+      </ChoiceButton>
+    </div>
+
+    <StepNav onBack={() => setStep(form.hasTopic ? 5 : 6)} hideNext />
+  </StepCard>
+)}
 
         {/* Step 8 — Upload guide */}
         {step === 8 && (
@@ -260,44 +289,67 @@ export default function Intake() {
         )}
 
         {/* Step 9 — Style capture */}
-        {step === 9 && (
-          <StepCard
-            title="Write in your own voice"
-            subtitle="Answer these naturally — like you're talking to a friend. Don't overthink it.">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {STYLE_QUESTIONS.map((q, i) => (
-                <div key={q.key}>
-                  <label className="label" style={{ textTransform: 'none', fontSize: 14, marginBottom: 8, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                    {i + 1}. {q.question}
-                  </label>
-                  <textarea className="input" rows={3}
-                    placeholder="Write naturally — there's no wrong answer..."
-                    value={form.styleAnswers?.[q.key] || ''}
-                    onChange={e => update('styleAnswers', { ...form.styleAnswers, [q.key]: e.target.value })}
-                    style={{ resize: 'vertical' }} />
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 20, padding: '12px 16px', borderRadius: 'var(--radius-sm)', background: 'rgba(0,126,167,0.06)', border: '1px solid rgba(0,126,167,0.15)' }}>
-              <p style={{ fontSize: 13, color: 'var(--accent)', lineHeight: 1.6 }}>
-                <strong>Why we ask this:</strong> Your answers help GradelyAI write your project in your natural voice — so it sounds like you wrote it.
-              </p>
-            </div>
-            <StepNav
-              onBack={() => setStep(form.hasGuide ? 8 : 7)}
-              onNext={() => {
-                const answers = form.styleAnswers || {}
-                const filled = Object.values(answers).filter(v => v.trim().length > 20)
-                if (filled.length < 3) {
-                  alert('Please answer at least 3 questions to help us capture your voice.')
-                  return
-                }
-                setStep(10)
-              }}
-              nextLabel="Continue →"
-            />
-          </StepCard>
-        )}
+        {/* Step 9 — Style capture */}
+{step === 9 && (
+  <StepCard
+    title="Write in your own voice"
+    subtitle="Answer these naturally — like you're talking to a friend. Don't overthink it.">
+
+    {form.guideFound && (
+      <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 12, background: 'rgba(45,155,111,0.08)', border: '1px solid rgba(45,155,111,0.2)' }}>
+        <p style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>
+          ✓ We found your department guide: {form.guideFound}
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+          Your project will follow this structure exactly.
+        </p>
+      </div>
+    )}
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {STYLE_QUESTIONS.map((q, i) => (
+        <div key={q.key}>
+          <label className="label" style={{ textTransform: 'none', fontSize: 14, marginBottom: 8, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            {i + 1}. {q.question}
+          </label>
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Write naturally — there's no wrong answer..."
+            value={form.styleAnswers?.[q.key] || ''}
+            onChange={e => update('styleAnswers', { ...form.styleAnswers, [q.key]: e.target.value })}
+            style={{ resize: 'vertical' }}
+          />
+        </div>
+      ))}
+    </div>
+
+    <div style={{
+      marginTop: 20, padding: '12px 16px',
+      borderRadius: 'var(--radius-sm)',
+      background: 'rgba(0,126,167,0.06)',
+      border: '1px solid rgba(0,126,167,0.15)'
+    }}>
+      <p style={{ fontSize: 13, color: 'var(--accent)', lineHeight: 1.6 }}>
+        <strong>Why we ask this:</strong> Your answers help GradelyAI write your project in your natural voice — so it sounds like you wrote it.
+      </p>
+    </div>
+
+    <StepNav
+      onBack={() => setStep(form.hasGuide ? 8 : 7)}
+      onNext={() => {
+        const answers = form.styleAnswers || {}
+        const filled = Object.values(answers).filter(v => v.trim().length > 20)
+        if (filled.length < 3) {
+          alert('Please answer at least 3 questions to help us capture your voice.')
+          return
+        }
+        setStep(10)
+      }}
+      nextLabel="Continue →"
+    />
+  </StepCard>
+)}
 
         {/* Step 10 — Final details */}
         {step === 10 && (

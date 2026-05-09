@@ -254,9 +254,11 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   style={{ fontSize: 17, padding: '15px 40px', boxShadow: '0 8px 32px rgba(108,99,255,0.35)' }}>
   Start My Project — It's Free →
 </button>
-            <button href="#how-it-works" className="btn-ghost" style={{ fontSize: 15, padding: '15px 28px' }}>
-              See how it works
-            </button>
+            <button className="btn-ghost"
+  onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+  style={{ fontSize: 15, padding: '15px 28px' }}>
+  See how it works
+</button>
           </div>
           <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>
             Chapter 1 free · Full project from ₦5,000 · No subscription
