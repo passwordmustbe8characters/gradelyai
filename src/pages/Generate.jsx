@@ -14,7 +14,7 @@ export default function Generate() {
   const navigate = useNavigate()
   const [structure, setStructure] = useState(null)
   const [chapters, setChapters] = useState([])
-  const [currentChapter, setCurrentChapter] = useState(0)
+  const [, setCurrentChapter] = useState(0)
   const [status, setStatus] = useState('init')
   const [error, setError] = useState('')
   const [log, setLog] = useState([])
@@ -89,7 +89,7 @@ export default function Generate() {
     let projectId = sessionStorage.getItem('gradelyProjectDbId')
 
     // Only create new project if not continuing
-    if (!projectId && getToken()) {
+    if (!isContinuing && !projectId && getToken()) {
       try {
         const saved = await saveProject({
           title: enrichedInfo.topic,
@@ -205,7 +205,7 @@ export default function Generate() {
   }
 }, [log])
 
-  const totalChapters = structure?.chapters?.length || 5
+  const totalChapters = 5
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
@@ -237,33 +237,34 @@ export default function Generate() {
         <div className="card" style={{ marginBottom: 24 }}>
           <p className="label" style={{ marginBottom: 16 }}>Chapter Progress</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(structure?.chapters || Array.from({ length: 5 }, (_, i) => ({ number: i + 1, title: `Chapter ${i + 1}` }))).map((ch, i) => {
-              const isDone = chapters.find(c => c.number === ch.number)
-              const isGenerating = status === 'generating' && i === currentChapter && !isDone
+         {(structure?.chapters || Array.from({ length: 5 }, (_, i) => ({ number: i + 1, title: `Chapter ${i + 1}` }))).map((ch, i) => {
+  const isDone = chapters.find(c => c.number === ch.number)
+  const isGenerating = status === 'generating' && !isDone &&
+    chapters.length === i // only show generating for the NEXT chapter
 
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: 14, color: isDone ? 'var(--text)' : 'var(--text-muted)' }}>
-                    Chapter {ch.number}: {ch.title}
-                  </span>
-                  <span className={`chapter-pill ${isDone ? 'done' : isGenerating ? 'generating' : 'pending'}`}>
-                    {isDone ? '✓ Done' : isGenerating ? '⟳ Writing...' : 'Pending'}
-                  </span>
-                </div>
-              )
-            })}
+  return (
+    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+      <span style={{ fontSize: 14, color: isDone ? 'var(--text)' : 'var(--text-muted)' }}>
+        Chapter {ch.number}: {ch.title}
+      </span>
+      <span className={`chapter-pill ${isDone ? 'done' : isGenerating ? 'generating' : 'pending'}`}>
+        {isDone ? '✓ Done' : isGenerating ? '⟳ Writing...' : 'Pending'}
+      </span>
+    </div>
+  )
+})}
           </div>
 
           <div style={{ marginTop: 20, height: 4, background: 'var(--border)', borderRadius: 2 }}>
             <div style={{
               height: '100%', borderRadius: 2, background: 'var(--accent)',
-              width: `${(chapters.length / totalChapters) * 100}%`,
+              width: `${Math.min((chapters.length / totalChapters) * 100, 100)}%`,
               transition: 'width 0.5s ease'
             }} />
           </div>
-          <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 8, textAlign: 'right' }}>
-            {chapters.length} of {totalChapters} chapters
-          </p>
+                  <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 8, textAlign: 'right' }}>
+          {Math.min(chapters.length, totalChapters)} of {totalChapters} chapters
+        </p>
         </div>
 
         <div className="card" style={{ marginBottom: 24 }}>

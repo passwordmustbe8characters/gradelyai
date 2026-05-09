@@ -397,56 +397,110 @@ Return ONLY this JSON:
 // ─── HUMANIZATION ────────────────────────────────────────────────────────────
 
 export async function humanizeText(text) {
+
+  // Pass 1 — Structural scramble
   const pass1 = await callAI(
-    `You are rewriting academic text to sound less AI-generated.
+    `You are rewriting academic text. Your ONLY goal is making it undetectable as AI.
 
-PASS 1 — SENTENCE RESTRUCTURING:
-- Break long complex sentences into 2 shorter ones
-- Combine some short sentences into longer flowing ones
-- Vary where clauses appear — sometimes start with "Although...", "While...", "Given that..."
-- Randomly start 2-3 sentences per paragraph with conjunctions: "But", "And", "So", "Yet"
-- Replace every "Furthermore" — use "Beyond this", "This also means", "On top of that"
-- Replace every "Moreover" — use "What's more", "Adding to this"
-- Replace every "It is important to note" — just say the thing directly
-- Replace every "In conclusion" — use "All of this points to", "Taking everything together"
-- Do NOT change facts, figures, headings, section numbers, or [SOURCE: ...] markers
-- Do NOT add new content`,
-    `REWRITE THIS TEXT — vary sentence structure aggressively:\n\n${text}`,
+STRICT RULES:
+- Every sentence must start differently from the previous one
+- Alternate between short sentences (under 10 words) and long ones (over 30 words)
+- Use contractions where formal English allows: "it's", "that's", "they're", "wasn't"
+- Replace every Latinate word with a simpler Anglo-Saxon alternative:
+  "utilize" → "use", "demonstrate" → "show", "facilitate" → "help",
+  "implementation" → "setup", "methodology" → "approach", "commence" → "start"
+- Add 2-3 rhetorical questions per page: "Why does this matter?", "What does this mean in practice?"
+- Start 3 sentences per paragraph with "This", "That", "These", "Those"
+- Never use: "Furthermore", "Moreover", "Additionally", "Subsequently", "Nevertheless",
+  "Consequently", "Notwithstanding", "It is worth noting", "It is important to note",
+  "In conclusion", "To summarize", "This study", "The research"
+- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers
+- DO NOT add new information`,
+    `RESTRUCTURE THIS — make it structurally unpredictable:\n\n${text}`,
     4096
   )
 
+  // Pass 2 — Human imperfection injection
   const pass2 = await callAI(
-    `You are a Nigerian university student who has written this project yourself.
+    `You are injecting human writing imperfections into academic text.
 
-PASS 2 — NATURAL VOICE INJECTION:
-- Add occasional hedging: "It can be argued that", "Evidence suggests", "This appears to indicate"
-- Insert 2-3 short punchy sentences per chapter that land like conclusions: "This is significant." / "The implications are clear."
-- Where a paragraph has 4+ sentences of similar length — break the pattern with one very short sentence
-- Occasionally use a dash — like this — to interrupt the flow naturally
-- Remove any remaining robotic transitions and replace with conversational academic ones
-- Do NOT change facts, figures, headings, section numbers, or [SOURCE: ...] markers
-- Do NOT add new content`,
-    `INJECT NATURAL VOICE into this text:\n\n${pass1}`,
+STRICT RULES — inject ALL of these:
+- Add 1-2 slightly redundant phrases per page that a human would write but an AI wouldn't:
+  "and this is key", "which is worth understanding", "put simply"
+- Occasionally repeat a key word within a sentence for emphasis: "The data shows — and the data is clear —"
+- Add 2-3 personal academic hedges: "it seems reasonable to conclude", "one might argue", "arguably"
+- Break 2-3 sentences mid-thought with an em dash — then complete the thought differently than expected
+- Make 1-2 minor logical leaps that feel human: jump from a point to a conclusion without spelling out every step
+- Vary paragraph length dramatically: one paragraph of 2 sentences, next of 6 sentences
+- Start one paragraph with a single punchy sentence. Just one.
+- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers`,
+    `INJECT HUMAN IMPERFECTIONS:\n\n${pass1}`,
     4096
   )
 
+  // Pass 3 — Burstiness maximization
   const pass3 = await callAI(
-    `You are doing a final polish on academic writing to make it sound authentically human.
+    `You are doing a final pass to maximize "burstiness" — the key metric AI detectors measure.
 
-PASS 3 — RHYTHM AND UNPREDICTABILITY:
-- Read each paragraph and identify the most robotic sounding sentence — rewrite just that one
-- Where you see passive voice convert at least half to active voice
-- Find any word used more than 3 times in a paragraph and replace some with synonyms
-- Make sure no two consecutive paragraphs start with the same word
-- Every paragraph should have at least one short sentence under 12 words and one long sentence over 25 words
-- Do NOT change facts, figures, headings, section numbers, or [SOURCE: ...] markers
-- Do NOT add new content`,
-    `FINAL RHYTHM PASS on this text:\n\n${pass2}`,
+Burstiness = variation in sentence length and complexity within paragraphs.
+AI text has LOW burstiness — sentences are similar lengths.
+Human text has HIGH burstiness — wildly different sentence lengths.
+
+STRICT RULES:
+- Find every paragraph where sentences are similar length — fix it
+- After every long complex sentence, add a very short one. Like this.
+- Find the 5 most "AI-sounding" phrases and rewrite them completely
+- Add 1 specific concrete Nigerian example or reference where relevant
+- Make sure no two consecutive paragraphs start with the same word or type of phrase
+- Final check: read each paragraph aloud mentally — if it sounds like a robot, rewrite it
+- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers`,
+    `MAXIMIZE BURSTINESS:\n\n${pass2}`,
     4096
   )
 
-  return pass3
+  // Pass 4 — Synonym substitution for high-frequency AI words
+  const aiWords = {
+    'utilize': 'use',
+    'leverage': 'use',
+    'delve': 'explore',
+    'crucial': 'important',
+    'vital': 'important',
+    'robust': 'strong',
+    'comprehensive': 'thorough',
+    'innovative': 'new',
+    'seamlessly': 'smoothly',
+    'streamline': 'simplify',
+    'paradigm': 'model',
+    'synergy': 'cooperation',
+    'holistic': 'complete',
+    'nuanced': 'detailed',
+    'multifaceted': 'complex',
+    'foster': 'encourage',
+    'underscore': 'highlight',
+    'pivotal': 'key',
+    'mitigate': 'reduce',
+    'endeavor': 'effort',
+    'aforementioned': 'mentioned earlier',
+    'implement': 'apply',
+    'facilitate': 'help',
+    'demonstrate': 'show',
+    'significant': 'major',
+    'substantial': 'large',
+    'commence': 'start',
+    'terminate': 'end',
+    'ascertain': 'find out',
+    'pertaining to': 'about',
+  }
+
+  let result = pass3
+  for (const [aiWord, human] of Object.entries(aiWords)) {
+    const regex = new RegExp(`\\b${aiWord}\\b`, 'gi')
+    result = result.replace(regex, human)
+  }
+
+  return result
 }
+
 
 // ─── STUDENT BREAKDOWN ───────────────────────────────────────────────────────
 

@@ -93,11 +93,29 @@ function SpinningButton({ onClick, disabled, loading, children, style, className
     <button onClick={onClick} disabled={disabled || loading} className={className}
       style={{ position: 'relative', ...style }}>
       {loading && (
-        <svg style={{ position: 'absolute', inset: -2, width: 'calc(100% + 4px)', height: 'calc(100% + 4px)', borderRadius: 'inherit', pointerEvents: 'none', overflow: 'visible' }}
-          viewBox="0 0 100 100" preserveAspectRatio="none">
-          <rect x="1" y="1" width="98" height="98" rx="50" ry="50" fill="none"
-            stroke="var(--accent)" strokeWidth="2" strokeDasharray="300" strokeDashoffset="300"
-            style={{ animation: 'strokeRun 1.2s linear infinite' }} />
+        <svg
+          style={{
+            position: 'absolute',
+            inset: -2,
+            width: 'calc(100% + 4px)',
+            height: 'calc(100% + 4px)',
+            borderRadius: 'inherit',
+            pointerEvents: 'none',
+          }}
+          viewBox="0 0 100 40"
+          preserveAspectRatio="none"
+        >
+          <rect
+            x="1" y="1"
+            width="98" height="38"
+            rx="20" ry="20"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2"
+            strokeDasharray="280"
+            strokeDashoffset="280"
+            style={{ animation: 'strokeRun 1.2s linear infinite' }}
+          />
         </svg>
       )}
       {children}
