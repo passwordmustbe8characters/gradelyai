@@ -1,5 +1,4 @@
-import { saveProject, updateProject } from '../lib/auth'
-import { useState, useEffect, } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import {
@@ -10,8 +9,8 @@ import {
 } from '../lib/ai'
 import { exportToWord } from '../lib/export'
 import { isPaid } from '../lib/payment'
+import { saveProject, updateProject } from '../lib/auth'
 import Paywall from '../components/Paywall'
-
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 
@@ -39,12 +38,6 @@ function WandIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/>
       <path d="m14 7 3 3"/>
-      <path d="M5 6v4"/>
-      <path d="M19 14v4"/>
-      <path d="M10 2v2"/>
-      <path d="M7 8H3"/>
-      <path d="M21 16h-4"/>
-      <path d="M11 3H9"/>
     </svg>
   )
 }
@@ -83,43 +76,36 @@ function CheckIcon() {
   )
 }
 
+function SaveIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+      <polyline points="17 21 17 13 7 13 7 21"/>
+      <polyline points="7 3 7 8 15 8"/>
+    </svg>
+  )
+}
+
 // ─── SPINNING BUTTON ──────────────────────────────────────────────────────────
 
 function SpinningButton({ onClick, disabled, loading, children, style, className = 'btn-ghost' }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled || loading}
-      className={className}
-      style={{ position: 'relative', ...style }}
-    >
+    <button onClick={onClick} disabled={disabled || loading} className={className}
+      style={{ position: 'relative', ...style }}>
       {loading && (
-        <svg
-          style={{
-            position: 'absolute', inset: -2,
-            width: 'calc(100% + 4px)', height: 'calc(100% + 4px)',
-            borderRadius: 'inherit', pointerEvents: 'none',
-            overflow: 'visible',
-          }}
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-        >
-          <rect
-            x="1" y="1" width="98" height="98"
-            rx="50" ry="50"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="2"
-            strokeDasharray="300"
-            strokeDashoffset="300"
-            style={{ animation: 'strokeRun 1.2s linear infinite' }}
-          />
+        <svg style={{ position: 'absolute', inset: -2, width: 'calc(100% + 4px)', height: 'calc(100% + 4px)', borderRadius: 'inherit', pointerEvents: 'none', overflow: 'visible' }}
+          viewBox="0 0 100 100" preserveAspectRatio="none">
+          <rect x="1" y="1" width="98" height="98" rx="50" ry="50" fill="none"
+            stroke="var(--accent)" strokeWidth="2" strokeDasharray="300" strokeDashoffset="300"
+            style={{ animation: 'strokeRun 1.2s linear infinite' }} />
         </svg>
       )}
       {children}
     </button>
   )
 }
+
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 
 export default function Results() {
   const navigate = useNavigate()
@@ -139,13 +125,13 @@ export default function Results() {
   const [showPaywall, setShowPaywall] = useState(false)
 
   useEffect(() => {
-  const saved = sessionStorage.getItem('gradelyResult')
-  if (!saved) { navigate('/start'); return }
-  setTimeout(() => {
-    setResult(JSON.parse(saved))
-    setPaid(isPaid())
-  }, 0)
-}, [])
+    const saved = sessionStorage.getItem('gradelyResult')
+    if (!saved) { navigate('/start'); return }
+    setTimeout(() => {
+      setResult(JSON.parse(saved))
+      setPaid(isPaid())
+    }, 0)
+  }, [])
 
   const handleHumanize = async () => {
     if (!result) return
@@ -218,25 +204,63 @@ export default function Results() {
     setExporting(false)
   }
 
-  const handleUnlock = async () => {
-  setPaid(true)
-  setShowPaywall(false)
-
-  // Mark as paid in database
-  const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
-  if (projectId && user) {
+  const handleSave = async () => {
+    if (!user) { navigate('/auth'); return }
     try {
-      await updateProject(projectId, { is_paid: true })
+      const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      if (projectId) {
+        await updateProject(projectId, {
+          status: paid ? 'complete' : 'in_progress',
+          is_paid: paid,
+          chapters: result.chapters,
+          abstract: result.abstract,
+          references: result.references,
+          project_info: result.projectInfo,
+        })
+      } else {
+        await saveProject({
+          title: result.projectInfo.topic,
+          university: result.projectInfo.university,
+          department: result.projectInfo.department,
+          project_type: result.projectInfo.projectType,
+          status: paid ? 'complete' : 'in_progress',
+          is_paid: paid,
+          chapters: result.chapters,
+          abstract: result.abstract,
+          references: result.references,
+          structure: result.structure,
+          project_info: result.projectInfo,
+        })
+      }
+      navigate('/dashboard')
     } catch (err) {
-      console.error('Failed to mark project as paid:', err)
+      alert('Failed to save: ' + err.message)
     }
   }
 
-  // Clear payment from session so next project requires payment
-  sessionStorage.removeItem('gradelyPaid')
+  const handleUnlock = async () => {
+    setPaid(true)
+    setShowPaywall(false)
 
-  navigate('/generate')
-}
+    sessionStorage.setItem('gradelyPaid', JSON.stringify({
+      paid: true,
+      timestamp: Date.now()
+    }))
+
+    const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+    if (projectId && user) {
+      try {
+        await updateProject(projectId, { is_paid: true })
+      } catch (err) {
+        console.error('Failed to mark as paid:', err)
+      }
+    }
+
+    sessionStorage.setItem('gradely_continue_from', '2')
+    sessionStorage.setItem('gradely_existing_chapters', JSON.stringify(result.chapters))
+
+    navigate('/generate')
+  }
 
   const renderContentWithSources = (text) => {
     if (!text) return null
@@ -253,6 +277,7 @@ export default function Results() {
           if (i < arr.length - 1) parts.push(<br key={`br-${match.index}-${i}`} />)
         })
       }
+
       const sourceContent = match[1].trim()
       const urlMatch = sourceContent.match(/(https?:\/\/[^\s,]+)/)
       const url = urlMatch ? urlMatch[1] : null
@@ -308,71 +333,34 @@ export default function Results() {
 
       {/* Top bar */}
       <div style={{
-  position: 'sticky', top: 0, zIndex: 10,
-  background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(12px)',
-  borderBottom: '1px solid var(--border)',
-  padding: '12px 16px',
-  display: 'flex', alignItems: 'center',
-  justifyContent: 'space-between', gap: 12,
-  overflowX: 'auto', flexWrap: 'nowrap'
-}}>
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
+        padding: '12px 24px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, flexWrap: 'wrap'
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
           <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18 }}>GradelyAI</span>
         </div>
 
-       <button className="btn-ghost"
-  onClick={async () => {
-    if (!user) { navigate('/auth'); return }
-    try {
-      const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
-      if (projectId) {
-        await updateProject(projectId, {
-          status: paid ? 'complete' : 'in_progress',
-          is_paid: paid,
-          chapters: result.chapters,
-          abstract: result.abstract,
-          references: result.references,
-          project_info: result.projectInfo,
-        })
-      } else {
-        await saveProject({
-          title: result.projectInfo.topic,
-          university: result.projectInfo.university,
-          department: result.projectInfo.department,
-          project_type: result.projectInfo.projectType,
-          status: paid ? 'complete' : 'in_progress',
-          is_paid: paid,
-          chapters: result.chapters,
-          abstract: result.abstract,
-          references: result.references,
-          structure: result.structure,
-          project_info: result.projectInfo,
-        })
-      }
-      navigate('/dashboard')
-    } catch (err) {
-      alert('Failed to save: ' + err.message)
-    }
-  }}
-  style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-    <polyline points="17 21 17 13 7 13 7 21"/>
-    <polyline points="7 3 7 8 15 8"/>
-  </svg>
-  Save to Dashboard
-</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn-ghost" onClick={handleSave}
+            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <SaveIcon /> Save to Dashboard
+          </button>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {paid && (
             <>
-              <SpinningButton onClick={handleFlashcards} loading={loadingFlashcards} style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <SpinningButton onClick={handleFlashcards} loading={loadingFlashcards}
+                style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <CardsIcon /> {loadingFlashcards ? 'Generating...' : 'Study Flashcards'}
               </SpinningButton>
 
               {!humanized ? (
-                <SpinningButton onClick={handleHumanize} loading={humanizing} style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <SpinningButton onClick={handleHumanize} loading={humanizing}
+                  style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <WandIcon /> {humanizing ? 'Applying...' : 'Personal Voice'}
                 </SpinningButton>
               ) : (
@@ -381,7 +369,9 @@ export default function Results() {
                 </div>
               )}
 
-              <SpinningButton onClick={() => handleExport(true)} loading={exporting} className="btn-primary" style={{ fontSize: 13, padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <SpinningButton onClick={() => handleExport(true)} loading={exporting}
+                className="btn-primary"
+                style={{ fontSize: 13, padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <DownloadIcon /> {exporting ? 'Exporting...' : 'Download Project'}
               </SpinningButton>
             </>
@@ -389,52 +379,15 @@ export default function Results() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flex: 1, maxWidth: 1200, margin: '0 auto', width: '100%', padding: paid ? '32px 24px' : '32px 24px 100px 24px', gap: 24, position: 'relative', zIndex: 1 }}>
+      {/* Main layout */}
+      <div style={{
+        display: 'flex', flex: 1,
+        maxWidth: 1200, margin: '0 auto', width: '100%',
+        padding: paid ? '32px 24px' : '32px 24px 100px 24px',
+        gap: 24, position: 'relative', zIndex: 1
+      }}>
 
-        {/* Mobile tab bar */}
-  <div className="show-mobile" style={{
-    position: 'fixed', bottom: paid ? 0 : 80, left: 0, right: 0,
-    background: 'rgba(247,245,240,0.96)', backdropFilter: 'blur(12px)',
-    borderTop: '1px solid var(--border)', zIndex: 40,
-    display: 'flex', overflowX: 'auto', padding: '8px 16px', gap: 8
-  }}>
-    {result.chapters.map((ch, i) => (
-      <button key={i}
-        onClick={() => {
-          if (!paid && ch.number > 1) { setShowPaywall(true); return }
-          setActiveTab('project')
-          setActiveChapter(i)
-        }}
-        style={{
-          padding: '8px 14px', borderRadius: 20, border: 'none',
-          background: activeTab === 'project' && activeChapter === i ? 'var(--accent)' : 'var(--bg-elevated)',
-          color: activeTab === 'project' && activeChapter === i ? 'white' : 'var(--text-muted)',
-          fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-          fontFamily: 'Geist, sans-serif', opacity: !paid && ch.number > 1 ? 0.4 : 1,
-          flexShrink: 0
-        }}>
-        Ch {ch.number}
-      </button>
-    ))}
-    {paid && (
-      <>
-        <button onClick={() => { setActiveTab('breakdown'); handleBreakdown() }}
-          style={{ padding: '8px 14px', borderRadius: 20, border: 'none', background: activeTab === 'breakdown' ? 'var(--accent)' : 'var(--bg-elevated)', color: activeTab === 'breakdown' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Geist, sans-serif', flexShrink: 0 }}>
-          Breakdown
-        </button>
-        <button onClick={() => { setActiveTab('weaknesses'); handleWeaknesses() }}
-          style={{ padding: '8px 14px', borderRadius: 20, border: 'none', background: activeTab === 'weaknesses' ? 'var(--accent)' : 'var(--bg-elevated)', color: activeTab === 'weaknesses' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Geist, sans-serif', flexShrink: 0 }}>
-          Weak Spots
-        </button>
-        <button onClick={() => setActiveTab('references')}
-          style={{ padding: '8px 14px', borderRadius: 20, border: 'none', background: activeTab === 'references' ? 'var(--accent)' : 'var(--bg-elevated)', color: activeTab === 'references' ? 'white' : 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Geist, sans-serif', flexShrink: 0 }}>
-          References
-        </button>
-      </>
-    )}
-  </div>
-
-        {/* Sidebar */}
+        {/* Sidebar — desktop only */}
         <div style={{ width: 240, flexShrink: 0 }} className="hide-mobile">
           <div className="card" style={{ position: 'sticky', top: 90 }}>
             <p style={{ fontFamily: 'Melodrama, serif', fontSize: 15, fontWeight: 700, marginBottom: 4, lineHeight: 1.4, color: 'var(--text)' }}>
@@ -462,7 +415,9 @@ export default function Results() {
                     fontSize: 13, fontFamily: 'Geist, sans-serif', transition: 'all 0.15s',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                     opacity: !paid && ch.number > 1 ? 0.5 : 1
-                  }}>
+                  }}
+                  onMouseEnter={e => { if (activeTab !== 'project' || activeChapter !== i) e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                  onMouseLeave={e => { if (activeTab !== 'project' || activeChapter !== i) e.currentTarget.style.background = 'transparent' }}>
                   <span>Ch {ch.number}: {ch.title.length > 18 ? ch.title.substring(0, 18) + '...' : ch.title}</span>
                   {!paid && ch.number > 1 && (
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
@@ -483,26 +438,21 @@ export default function Results() {
                     { key: 'weaknesses', label: 'Weak Spots', icon: <ShieldIcon /> },
                     { key: 'references', label: 'References', icon: <RefsIcon /> },
                   ].map(t => (
-                    <button onMouseEnter={e => {
-                    if (activeTab !== t.key) e.currentTarget.style.background = 'var(--bg-elevated)'
-                  }}
-                  onMouseLeave={e => {
-                    if (activeTab !== t.key) e.currentTarget.style.background = 'transparent'
-                  }} key={t.key} onClick={()  => {
-                      
-                      setActiveTab(t.key)
-                      if (t.key === 'breakdown') handleBreakdown()
-                      if (t.key === 'weaknesses') handleWeaknesses()
-                        
-                        
-                    }}
+                    <button key={t.key}
+                      onClick={() => {
+                        setActiveTab(t.key)
+                        if (t.key === 'breakdown') handleBreakdown()
+                        if (t.key === 'weaknesses') handleWeaknesses()
+                      }}
                       style={{
                         padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left',
                         background: activeTab === t.key ? 'rgba(0,126,167,0.08)' : 'transparent',
                         color: activeTab === t.key ? 'var(--accent)' : 'var(--text-muted)',
                         fontSize: 13, fontFamily: 'Geist, sans-serif', transition: 'all 0.15s',
                         display: 'flex', alignItems: 'center', gap: 8
-                      }}>
+                      }}
+                      onMouseEnter={e => { if (activeTab !== t.key) e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                      onMouseLeave={e => { if (activeTab !== t.key) e.currentTarget.style.background = 'transparent' }}>
                       <span style={{ color: activeTab === t.key ? 'var(--accent)' : 'var(--text-dim)' }}>{t.icon}</span>
                       {t.label}
                     </button>
@@ -513,80 +463,112 @@ export default function Results() {
           </div>
         </div>
 
+        {/* Mobile tab bar */}
+        <div className="show-mobile" style={{
+          position: 'fixed', bottom: paid ? 0 : 80, left: 0, right: 0,
+          background: 'rgba(247,245,240,0.96)', backdropFilter: 'blur(12px)',
+          borderTop: '1px solid var(--border)', zIndex: 40,
+          display: 'flex', overflowX: 'auto', padding: '8px 16px', gap: 8
+        }}>
+          {result.chapters.map((ch, i) => (
+            <button key={i}
+              onClick={() => {
+                if (!paid && ch.number > 1) { setShowPaywall(true); return }
+                setActiveTab('project')
+                setActiveChapter(i)
+              }}
+              style={{
+                padding: '8px 14px', borderRadius: 20, border: 'none',
+                background: activeTab === 'project' && activeChapter === i ? 'var(--accent)' : 'var(--bg-elevated)',
+                color: activeTab === 'project' && activeChapter === i ? 'white' : 'var(--text-muted)',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                fontFamily: 'Geist, sans-serif', opacity: !paid && ch.number > 1 ? 0.4 : 1,
+                flexShrink: 0
+              }}>
+              Ch {ch.number}
+            </button>
+          ))}
+          {paid && (
+            <>
+              {[
+                { key: 'breakdown', label: 'Breakdown' },
+                { key: 'weaknesses', label: 'Weak Spots' },
+                { key: 'references', label: 'References' },
+              ].map(t => (
+                <button key={t.key}
+                  onClick={() => {
+                    setActiveTab(t.key)
+                    if (t.key === 'breakdown') handleBreakdown()
+                    if (t.key === 'weaknesses') handleWeaknesses()
+                  }}
+                  style={{
+                    padding: '8px 14px', borderRadius: 20, border: 'none',
+                    background: activeTab === t.key ? 'var(--accent)' : 'var(--bg-elevated)',
+                    color: activeTab === t.key ? 'white' : 'var(--text-muted)',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                    fontFamily: 'Geist, sans-serif', flexShrink: 0
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+
         {/* Main content */}
-         <div style={{ flex: 1, minWidth: 0, paddingBottom: window.innerWidth < 768 ? '80px' : 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
 
           {/* Project tab */}
-    {activeTab === 'project' && result.chapters[activeChapter] && (
-  <div>
-    {/* Sticky chapter bar */}
-    <div style={{
-      position: 'sticky',
-      top: 65,
-      zIndex: 9,
-      background: 'rgba(154,209,212,0.09)',
-      backdropFilter: 'blur(12px)',
-      borderBottom: '1px solid var(--border)',
-      padding: '14px 24px',
-      marginBottom: 0,
-      borderRadius: '16px 16px 0 0',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
-      flexWrap: 'wrap',
-    }}>
-      <div>
-        <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
-          Chapter {result.chapters[activeChapter].number}: {result.chapters[activeChapter].title}
-        </h2>
-        {result.humanized && (
-          <span style={{ fontSize: 12, color: 'var(--success)' }}>
-            Personal Voice applied
-          </span>
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        {activeChapter > 0 && paid && (
-          <button className="btn-ghost"
-            onClick={() => setActiveChapter(i => i - 1)}
-            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-            Prev
-          </button>
-        )}
-        {activeChapter < result.chapters.length - 1 && paid && (
-          <button className="btn-ghost"
-            onClick={() => setActiveChapter(i => i + 1)}
-            style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-            Next
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          </button>
-        )}
-      </div>
-    </div>
+          {activeTab === 'project' && result.chapters[activeChapter] && (
+            <div>
+              <div style={{
+                position: 'sticky', top: 65, zIndex: 9,
+                background: 'rgba(247,245,240,0.95)', backdropFilter: 'blur(12px)',
+                borderBottom: '1px solid var(--border)', padding: '14px 24px',
+                marginBottom: 0, borderRadius: '16px 16px 0 0',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, flexWrap: 'wrap',
+              }}>
+                <div>
+                  <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
+                    Chapter {result.chapters[activeChapter].number}: {result.chapters[activeChapter].title}
+                  </h2>
+                  {result.humanized && (
+                    <span style={{ fontSize: 12, color: 'var(--success)' }}>Personal Voice applied</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {activeChapter > 0 && paid && (
+                    <button className="btn-ghost" onClick={() => setActiveChapter(i => i - 1)}
+                      style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+                      Prev
+                    </button>
+                  )}
+                  {activeChapter < result.chapters.length - 1 && paid && (
+                    <button className="btn-ghost" onClick={() => setActiveChapter(i => i + 1)}
+                      style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      Next
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
 
-    {/* Chapter content */}
-    <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none' }}>
-      <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)' }}>
-        {renderContentWithSources(result.chapters[activeChapter].content)}
-      </div>
-    </div>
-  </div>
-)}
+              <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none' }}>
+                <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)' }}>
+                  {renderContentWithSources(result.chapters[activeChapter].content)}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Breakdown tab */}
           {activeTab === 'breakdown' && (
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                 <span style={{ color: 'var(--accent)' }}><BookIcon /></span>
-                <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
-                  Student Breakdown
-                </h2>
+                <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>Student Breakdown</h2>
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24 }}>
                 Read this the night before your defense. This is your confidence builder.
@@ -609,9 +591,7 @@ export default function Results() {
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                 <span style={{ color: 'var(--accent)' }}><ShieldIcon /></span>
-                <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
-                  Panel Weak Spots
-                </h2>
+                <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>Panel Weak Spots</h2>
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 24 }}>
                 These are areas where your panel might challenge you — and how to respond.
@@ -632,7 +612,6 @@ export default function Results() {
                       <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{weaknesses.readinessComment}</p>
                     </div>
                   </div>
-
                   {weaknesses.weaknesses.map(w => (
                     <div key={w.id} style={{ padding: '16px 20px', borderRadius: 12, background: 'var(--bg-elevated)', border: `1px solid ${w.severity === 'high' ? 'rgba(217,79,79,0.2)' : w.severity === 'medium' ? 'rgba(232,160,32,0.2)' : 'var(--border)'}` }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -664,9 +643,7 @@ export default function Results() {
             <div className="card">
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
                 <span style={{ color: 'var(--accent)' }}><RefsIcon /></span>
-                <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
-                  References
-                </h2>
+                <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>References</h2>
               </div>
 
               {result.references && result.references.length > 0 ? (
@@ -674,10 +651,10 @@ export default function Results() {
                   {result.references.map((ref, i) => (
                     <div key={i} style={{ display: 'flex', gap: 14, padding: '12px 16px', borderRadius: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
                       <span style={{ color: 'var(--text-dim)', fontFamily: 'monospace', fontSize: 12, minWidth: 24, paddingTop: 2 }}>{i + 1}.</span>
-                      <div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{ref.citation}</p>
                         {ref.url && (
-                          <a href={ref.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4, display: 'block' }}>
+                          <a href={ref.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4, display: 'block', wordBreak: 'break-all' }}>
                             {ref.url}
                           </a>
                         )}
@@ -687,12 +664,9 @@ export default function Results() {
                 </div>
               ) : (
                 <div style={{ padding: '24px', borderRadius: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)', marginBottom: 24 }}>
-                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>No academic sources were found for this topic</p>
+                  <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>No academic sources were found</p>
                   <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7 }}>
-                    We could not find verified academic papers for your specific topic. Your project has been written without inline citations to avoid fake references.
-                  </p>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7, marginTop: 12 }}>
-                    Search <a href="https://scholar.google.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Google Scholar</a> using your project topic keywords and add references manually before submission.
+                    Search <a href="https://scholar.google.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Google Scholar</a> using your project topic and add references manually before submission.
                   </p>
                 </div>
               )}
@@ -710,17 +684,18 @@ export default function Results() {
               )}
             </div>
           )}
+
         </div>
-      </div>  
+      </div>
 
       {/* Sticky unlock bar */}
       {!paid && (
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
           background: 'var(--text)', color: 'white',
-          padding: '16px 32px',
+          padding: '16px 24px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 20, flexWrap: 'wrap',
+          gap: 16, flexWrap: 'wrap',
           boxShadow: '0 -4px 24px rgba(0,0,0,0.15)'
         }}>
           <div>
@@ -733,7 +708,7 @@ export default function Results() {
           </div>
           <button onClick={() => setShowPaywall(true)} style={{
             background: 'var(--accent)', color: 'white', border: 'none',
-            borderRadius: 100, padding: '12px 28px', fontSize: 15, fontWeight: 600,
+            borderRadius: 100, padding: '12px 24px', fontSize: 15, fontWeight: 600,
             cursor: 'pointer', fontFamily: 'Geist, sans-serif', whiteSpace: 'nowrap',
             boxShadow: '0 4px 16px rgba(0,126,167,0.4)', transition: 'all 0.2s'
           }}>
@@ -749,6 +724,7 @@ export default function Results() {
           userEmail={user?.email}
         />
       )}
+
     </div>
   )
 }

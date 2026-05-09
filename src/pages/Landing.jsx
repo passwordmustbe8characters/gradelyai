@@ -64,7 +64,22 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
       ) : (
         <>
           <button className="btn-ghost" style={{ fontSize: 14 }} onClick={() => navigate('/auth', { state: { mode: 'login' } })}>Sign in</button>
-          <button className="btn-primary" style={{ fontSize: 14 }} onClick={() => navigate('/auth', { state: { mode: 'register' } })}>Get Started →</button>
+          <button className="btn-primary" onClick={() => {
+  if (!user) {
+    navigate('/auth', { 
+      state: { 
+        mode: 'register', 
+        redirect: '/start',
+        message: 'Create a free account to start your project and save it anytime.'
+      } 
+    })
+  } else {
+    navigate('/start')
+  }
+}}
+  style={{ fontSize: 17, padding: '15px 40px', boxShadow: '0 8px 32px rgba(108,99,255,0.35)' }}>
+  Get Started →
+</button>
         </>
       )}
     </div>
@@ -150,11 +165,22 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
               style={{ width: '100%', justifyContent: 'center' }}>
               Sign in
             </button>
-            <button className="btn-primary"
-              onClick={() => { navigate('/auth', { state: { mode: 'register' } }); setMobileMenuOpen(false) }}
-              style={{ width: '100%', justifyContent: 'center' }}>
-              Get Started →
-            </button>
+           <button className="btn-primary" onClick={() => {
+  if (!user) {
+    navigate('/auth', { 
+      state: { 
+        mode: 'register', 
+        redirect: '/start',
+        message: 'Create a free account to start your project and save it anytime.'
+      } 
+    })
+  } else {
+    navigate('/start')
+  }
+}}
+  style={{ fontSize: 17, padding: '15px 40px', boxShadow: '0 8px 32px rgba(108,99,255,0.35)' }}>
+  Get Started →
+</button>
           </>
         )}
       </div>
@@ -212,10 +238,22 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
           {/* CTA */}
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 20 }}>
-            <button className="btn-primary" onClick={() => navigate('/start')}
-              style={{ fontSize: 16, padding: '15px 36px' }}>
-              Start my project — it's free
-            </button>
+            <button className="btn-primary" onClick={() => {
+  if (!user) {
+    navigate('/auth', { 
+      state: { 
+        mode: 'register', 
+        redirect: '/start',
+        message: 'Create a free account to start your project and save it anytime.'
+      } 
+    })
+  } else {
+    navigate('/start')
+  }
+}}
+  style={{ fontSize: 17, padding: '15px 40px', boxShadow: '0 8px 32px rgba(108,99,255,0.35)' }}>
+  Start My Project — It's Free →
+</button>
             <button href="#how-it-works" className="btn-ghost" style={{ fontSize: 15, padding: '15px 28px' }}>
               See how it works
             </button>
@@ -592,7 +630,7 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
             Start my project — free →
           </button>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 20 }}>
-            No account needed · Chapter 1 free · Full project ₦5,000
+           Chapter 1 free · Full project ₦5,000
           </p>
         </div>
 

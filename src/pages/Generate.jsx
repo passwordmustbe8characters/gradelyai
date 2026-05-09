@@ -20,12 +20,17 @@ export default function Generate() {
   const [log, setLog] = useState([])
   const hasStarted = useRef(false)
   const [isPaidUser, setIsPaidUser] = useState(false)
+  const [, setDbProjectId] = useState(null)
 
   const addLog = (msg) => setLog(l => [...l, msg])
   const logRef = useRef(null)
 
   const startGeneration = async (info) => {
   try {
+    const continueFrom = sessionStorage.getItem('gradely_continue_from')
+    const existingChaptersRaw = sessionStorage.getItem('gradely_existing_chapters')
+    const isContinuing = continueFrom && existingChaptersRaw
+
     let styleProfile = null
     if (info.styleSample && info.styleSample.trim().length > 50) {
       addLog('Capturing your writing voice...')
@@ -35,52 +40,56 @@ export default function Generate() {
 
     const enrichedInfo = { ...info, styleProfile }
 
-      // Step 2 — Build structure
-     setStatus('structuring')
+    setStatus('structuring')
     addLog('Analysing your project details...')
     const struct = await generateProjectStructure(enrichedInfo)
+
+    // Clean structure
+    struct.chapters = struct.chapters.map(ch => ({
+      number: ch.number,
+      title: ch.title,
+      subsections: ch.subsections.map(s => ({
+        number: s.number,
+        title: s.title
+      }))
+    }))
+
     setStructure(struct)
     addLog(`Structure ready — ${struct.chapters.length} chapters mapped out.`)
 
-      // Step 3 — Fetch real papers
-      addLog('Sourcing academic references for your project...')
+    addLog('Sourcing academic references for your project...')
     const realPapers = await fetchRealPapers(enrichedInfo.topic, enrichedInfo.department)
     if (realPapers.length > 0) {
       addLog('✓ Academic sources ready.')
     } else {
-      addLog('No external sources found. Project will be generated without inline citations.')
+      addLog('⚠️ No external sources found. Project will be generated without inline citations.')
     }
 
-
-      // Step 4 — Check payment — free users only get chapter 1
-      const paid = sessionStorage.getItem('gradelyPaid')
+    const paid = sessionStorage.getItem('gradelyPaid')
     const paidStatus = paid ? JSON.parse(paid).paid : false
     setIsPaidUser(paidStatus)
-    const chaptersToGenerate = paidStatus ? struct.chapters : [struct.chapters[0]]
-    
-      // Step 5 — Generate chapters
-      setStatus('generating')
-    const generatedChapters = []
 
-      for (let i = 0; i < chaptersToGenerate.length; i++) {
-        const chapter = chaptersToGenerate[i]
-        setCurrentChapter(i)
-        addLog(`Writing Chapter ${chapter.number}: ${chapter.title}...`)
+    setStatus('generating')
 
-        const content = await generateChapter(
-          { chapter, realPapers },
-          { ...enrichedInfo, referenceStyle: struct.referenceStyle }
-        )
+    // If continuing after payment, start from existing chapters
+    let generatedChapters = []
+    if (isContinuing) {
+      generatedChapters = JSON.parse(existingChaptersRaw)
+      setChapters(generatedChapters)
+      addLog(`✓ Chapter 1 already complete. Continuing from Chapter ${continueFrom}...`)
+      sessionStorage.removeItem('gradely_continue_from')
+      sessionStorage.removeItem('gradely_existing_chapters')
+    }
 
-        generatedChapters.push({ ...chapter, content })
-        setChapters(prev => [...prev, { ...chapter, content }])
-        addLog(`✓ Chapter ${chapter.number} done.`)
-      }
+    const startFromIndex = isContinuing ? parseInt(continueFrom) - 1 : 0
+    const chaptersToGenerate = paidStatus
+      ? struct.chapters.slice(startFromIndex)
+      : [struct.chapters[0]]
 
+    let projectId = sessionStorage.getItem('gradelyProjectDbId')
 
-      // Create project in database immediately if user is logged in
-    let projectId = null
-    if (getToken()) {
+    // Only create new project if not continuing
+    if (!projectId && getToken()) {
       try {
         const saved = await saveProject({
           title: enrichedInfo.topic,
@@ -89,13 +98,14 @@ export default function Generate() {
           project_type: enrichedInfo.projectType,
           status: 'in_progress',
           is_paid: paidStatus,
-          chapters: [],
+          chapters: generatedChapters,
           abstract: '',
           references: [],
           structure: struct,
           project_info: enrichedInfo,
         })
         projectId = saved.id
+        setDbProjectId(saved.id)
         sessionStorage.setItem('gradelyProjectDbId', saved.id)
       } catch (err) {
         console.error('Failed to create project in DB:', err)
@@ -104,7 +114,7 @@ export default function Generate() {
 
     for (let i = 0; i < chaptersToGenerate.length; i++) {
       const chapter = chaptersToGenerate[i]
-      setCurrentChapter(i)
+      setCurrentChapter(struct.chapters.findIndex(c => c.number === chapter.number))
       addLog(`Writing Chapter ${chapter.number}: ${chapter.title}...`)
 
       const content = await generateChapter(
@@ -116,7 +126,6 @@ export default function Generate() {
       setChapters(prev => [...prev, { ...chapter, content }])
       addLog(`✓ Chapter ${chapter.number} done.`)
 
-// Auto-save progress after each chapter
       if (projectId && getToken()) {
         try {
           await updateProject(projectId, {
@@ -151,34 +160,28 @@ export default function Generate() {
 
     sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
 
-
-
-    // Final save to database
     if (projectId && getToken()) {
       try {
         await updateProject(projectId, {
-          title: enrichedInfo.topic,
           status: paidStatus ? 'complete' : 'in_progress',
           is_paid: paidStatus,
           chapters: generatedChapters,
           abstract,
           references: refs.references,
-          structure: struct,
-          project_info: enrichedInfo,
         })
       } catch (err) {
-        console.error('Failed to final-save project:', err)
+        console.error('Failed to final-save:', err)
       }
     }
 
     setStatus('done')
     addLog(paidStatus
-      ? 'Your full project is ready!'
+      ? '🎉 Your full project is ready!'
       : '✓ Chapter 1 is ready. Unlock the full project to continue.')
 
   } catch (err) {
     setStatus('error')
-    setError(err.message || 'Something went wrong during generation. Please try again.')
+    setError(err.message || 'Something went wrong. Please try again.')
   }
 }
 

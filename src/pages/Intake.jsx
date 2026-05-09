@@ -85,16 +85,9 @@ export default function Intake() {
     guideContent: form.guideContent || ''
   }))
 
-  // Clear any previous payment and project data
   sessionStorage.removeItem('gradelyPaid')
   sessionStorage.removeItem('gradelyResult')
   sessionStorage.removeItem('gradelyProjectDbId')
-
-  if (!user) {
-    // Prompt to create account so project is saved
-    navigate('/auth', { state: { mode: 'register', redirect: '/generate', message: 'Create a free account to save your project and access it anytime.' } })
-    return
-  }
 
   navigate('/generate')
 }
