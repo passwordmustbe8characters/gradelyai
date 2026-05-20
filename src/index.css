@@ -10,6 +10,13 @@
 
 /* ─── MOBILE UTILITIES ─────────────────────────────────────────────── */
 
+@media (max-width: 600px) {
+  .pricing-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
 @media (max-width: 768px) {
   .hide-mobile { display: none !important; }
   .show-mobile { display: flex !important; }

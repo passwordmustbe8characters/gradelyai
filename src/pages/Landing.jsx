@@ -464,7 +464,7 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
       {/* Pricing */}
       <section id="pricing" style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, maxWidth: 700, margin: '0 auto' }}>
+          <div style={{ display: 'grid', className: "pricing-grid", gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, maxWidth: 700, margin: '0 auto' }}>
             <div style={{ textAlign: 'center', marginBottom: 48 }}>
   <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>Pricing</p>
   <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(28px, 3vw, 44px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 16, letterSpacing: '-0.02em' }}>

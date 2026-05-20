@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
-import { fetchProjects, deleteProject } from '../lib/auth'
+import { fetchProjects, deleteProject, fetchProject } from '../lib/auth'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -239,14 +239,31 @@ export default function Dashboard() {
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-                  <button className="btn-ghost"
-                    onClick={() => {
-                      sessionStorage.setItem('gradelyProjectId', project.id)
-                      navigate('/results')
-                    }}
-                    style={{ fontSize: 13, padding: '8px 16px' }}>
-                    View Project
-                  </button>
+                 <button className="btn-ghost"
+  onClick={async () => {
+    try {
+      const proj = await fetchProject(project.id)
+      const resultData = {
+        projectInfo: proj.project_info,
+        structure: proj.structure,
+        chapters: proj.chapters,
+        abstract: proj.abstract,
+        references: proj.refs || [],
+        dbProjectId: proj.id,
+        isPaidUser: proj.is_paid === 1,
+      }
+      sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+      if (proj.is_paid) {
+        sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true }))
+      }
+      navigate('/results')
+    } catch (err) {
+      alert('Failed to load project: ' + err.message)
+    }
+  }}
+  style={{ fontSize: 13, padding: '8px 16px' }}>
+  View Project
+</button>
                   <button className="btn-primary"
                     onClick={() => navigate('/flashcards')}
                     style={{ fontSize: 13, padding: '8px 16px' }}>

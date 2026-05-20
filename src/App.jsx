@@ -9,6 +9,7 @@ import Admin from './pages/Admin'
 import Dashboard from './pages/Dashboard'
 import { useAuth } from './lib/AuthContext'
 
+
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null

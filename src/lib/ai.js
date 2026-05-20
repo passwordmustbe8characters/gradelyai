@@ -398,7 +398,6 @@ Return ONLY this JSON:
 
 export async function humanizeText(text) {
 
-  // Pass 1 — Structural scramble
   const pass1 = await callAI(
     `You are rewriting academic text. Your ONLY goal is making it undetectable as AI.
 
@@ -420,7 +419,6 @@ STRICT RULES:
     4096
   )
 
-  // Pass 2 — Human imperfection injection
   const pass2 = await callAI(
     `You are injecting human writing imperfections into academic text.
 
@@ -438,7 +436,6 @@ STRICT RULES — inject ALL of these:
     4096
   )
 
-  // Pass 3 — Burstiness maximization
   const pass3 = await callAI(
     `You are doing a final pass to maximize "burstiness" — the key metric AI detectors measure.
 
@@ -458,7 +455,6 @@ STRICT RULES:
     4096
   )
 
-  // Pass 4 — AI word replacement sweep
   const aiWords = {
     'utilize': 'use', 'leverage': 'use', 'delve': 'explore',
     'crucial': 'important', 'vital': 'key', 'robust': 'strong',
@@ -482,7 +478,6 @@ STRICT RULES:
     pass4 = pass4.replace(regex, human)
   }
 
-  // Pass 5 — Final unpredictability pass
   const pass5 = await callAI(
     `You are a Nigerian university student doing a final personal edit of your project.
 
@@ -505,6 +500,26 @@ DO ALL OF THESE:
   )
 
   return pass5
+}
+
+// ─── REWRITE SELECTION ───────────────────────────────────────────────────────
+
+export async function rewriteSelection(selectedText, instruction) {
+  const system = `You are an academic writing assistant helping a Nigerian university student edit their final year project.
+The student has selected a specific passage and given you an instruction to improve it.
+Return ONLY the rewritten passage — no explanation, no preamble, no quotes around it.
+Match the academic tone and style of the surrounding text.
+Keep the same general meaning unless specifically told to change it.`
+
+  const user = `ORIGINAL TEXT:
+"${selectedText}"
+
+STUDENT INSTRUCTION:
+"${instruction}"
+
+Rewrite the original text following the student's instruction. Return only the rewritten text.`
+
+  return await callAI(system, user, 500)
 }
 
 // ─── STUDENT BREAKDOWN ───────────────────────────────────────────────────────

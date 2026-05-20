@@ -5,7 +5,8 @@ import {
   humanizeText,
   generateStudentBreakdown,
   generateFlashcards,
-  analyzeWeaknesses
+  analyzeWeaknesses,
+  rewriteSelection
 } from '../lib/ai'
 import { exportToWord } from '../lib/export'
 import { isPaid } from '../lib/payment'
@@ -95,31 +96,243 @@ function SpinningButton({ onClick, disabled, loading, children, style, className
       {loading && (
         <svg
           style={{
-            position: 'absolute',
-            inset: -2,
-            width: 'calc(100% + 4px)',
-            height: 'calc(100% + 4px)',
-            borderRadius: 'inherit',
-            pointerEvents: 'none',
+            position: 'absolute', inset: -2,
+            width: 'calc(100% + 4px)', height: 'calc(100% + 4px)',
+            borderRadius: 'inherit', pointerEvents: 'none',
           }}
           viewBox="0 0 100 40"
           preserveAspectRatio="none"
         >
-          <rect
-            x="1" y="1"
-            width="98" height="38"
-            rx="20" ry="20"
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth="2"
-            strokeDasharray="280"
-            strokeDashoffset="280"
+          <rect x="1" y="1" width="98" height="38" rx="20" ry="20"
+            fill="none" stroke="var(--accent)" strokeWidth="2"
+            strokeDasharray="280" strokeDashoffset="280"
             style={{ animation: 'strokeRun 1.2s linear infinite' }}
           />
         </svg>
       )}
       {children}
     </button>
+  )
+}
+
+// ─── TEXT EDITOR ──────────────────────────────────────────────────────────────
+
+function TextEditor({ onInstruct }) {
+  const [visible, setVisible] = useState(false)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [selectedText, setSelectedText] = useState('')
+  const [editText, setEditText] = useState('')
+  const [instruction, setInstruction] = useState('')
+  const [showAIInput, setShowAIInput] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const handleSelection = () => {
+      const selection = window.getSelection()
+      const text = selection?.toString().trim()
+
+      if (!text || text.length < 10) {
+        setVisible(false)
+        return
+      }
+
+      const range = selection.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+
+      setSelectedText(text)
+      setEditText(text)
+      setInstruction('')
+      setShowAIInput(false)
+      setPosition({
+        x: rect.left + window.scrollX,
+        y: rect.bottom + window.scrollY + 48
+      })
+      setVisible(true)
+    }
+
+    document.addEventListener('mouseup', handleSelection)
+    return () => document.removeEventListener('mouseup', handleSelection)
+  }, [])
+
+  const handleSave = () => {
+    onInstruct(selectedText, null, editText)
+    setVisible(false)
+  }
+
+  const handleAIRewrite = async () => {
+    if (!instruction.trim()) return
+    setLoading(true)
+    try {
+      await onInstruct(selectedText, instruction)
+      setVisible(false)
+      setShowAIInput(false)
+    } catch {
+      alert('Failed to apply. Try again.')
+    }
+    setLoading(false)
+  }
+
+  if (!visible) return null
+
+  // Clamp position so toolbar stays on screen
+  const toolbarWidth = Math.min(600, window.innerWidth - 32)
+  const left = Math.min(Math.max(position.x, 16), window.innerWidth - toolbarWidth - 16)
+
+  return (
+    <>
+      {/* Dismiss overlay */}
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+        onMouseDown={() => setVisible(false)}
+      />
+
+      {/* Toolbar */}
+      <div
+        style={{
+          position: 'absolute',
+          left,
+          top: position.y,
+          width: toolbarWidth,
+          zIndex: 1000,
+          background: '#1A1A24',
+          borderRadius: 14,
+          padding: '14px 16px',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          animation: 'fadeUp 0.15s ease'
+        }}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        {/* Edit textarea — pre-filled with selected text */}
+        <textarea
+          value={editText}
+          onChange={e => setEditText(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: 9,
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.07)',
+            color: 'white',
+            fontSize: 13,
+            fontFamily: 'Geist, sans-serif',
+            resize: 'vertical',
+            outline: 'none',
+            lineHeight: 1.6,
+            minHeight: 72,
+            marginBottom: 10,
+          }}
+        />
+
+        {/* AI instruction input — shown when AI Rewrite clicked */}
+        {showAIInput && (
+          <textarea
+            autoFocus
+            value={instruction}
+            onChange={e => setInstruction(e.target.value)}
+            placeholder="Tell the AI what to change — e.g. make this less vague, my supervisor said be more specific..."
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: 9,
+              border: '1px solid rgba(0,126,167,0.4)',
+              background: 'rgba(0,126,167,0.08)',
+              color: 'white',
+              fontSize: 13,
+              fontFamily: 'Geist, sans-serif',
+              resize: 'vertical',
+              outline: 'none',
+              lineHeight: 1.6,
+              minHeight: 60,
+              marginBottom: 10,
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && e.metaKey) handleAIRewrite()
+            }}
+          />
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Save manual edit */}
+          <button
+            onClick={handleSave}
+            disabled={editText === selectedText && !showAIInput}
+            style={{
+              padding: '8px 18px',
+              borderRadius: 8, border: 'none',
+              background: 'var(--success)',
+              color: 'white', cursor: 'pointer',
+              fontSize: 13, fontWeight: 600,
+              fontFamily: 'Geist, sans-serif',
+              opacity: editText === selectedText && !showAIInput ? 0.4 : 1,
+              transition: 'all 0.15s',
+              display: 'flex', alignItems: 'center', gap: 6
+            }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Save Edit
+          </button>
+
+          {/* AI Rewrite button */}
+          {!showAIInput ? (
+            <button
+              onClick={() => setShowAIInput(true)}
+              style={{
+                padding: '8px 18px',
+                borderRadius: 8, border: 'none',
+                background: 'var(--accent)',
+                color: 'white', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                fontFamily: 'Geist, sans-serif',
+                transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: 6
+              }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/>
+                <path d="m14 7 3 3"/>
+              </svg>
+              AI Rewrite
+            </button>
+          ) : (
+            <button
+              onClick={handleAIRewrite}
+              disabled={!instruction.trim() || loading}
+              style={{
+                padding: '8px 18px',
+                borderRadius: 8, border: 'none',
+                background: 'var(--accent)',
+                color: 'white', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600,
+                fontFamily: 'Geist, sans-serif',
+                opacity: !instruction.trim() || loading ? 0.5 : 1,
+                transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', gap: 6
+              }}>
+              {loading ? 'Rewriting...' : 'Apply AI Rewrite →'}
+            </button>
+          )}
+
+          {/* Cancel */}
+          <button
+            onClick={() => setVisible(false)}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'transparent', color: 'rgba(255,255,255,0.5)',
+              cursor: 'pointer', fontSize: 13,
+              fontFamily: 'Geist, sans-serif',
+              marginLeft: 'auto'
+            }}>
+            Cancel
+          </button>
+        </div>
+
+      </div>
+    </>
   )
 }
 
@@ -280,6 +493,32 @@ export default function Results() {
     navigate('/generate')
   }
 
+  const handleTextInstruct = async (selectedText, instruction, manualEdit) => {
+    if (manualEdit !== undefined) {
+      const updatedChapters = result.chapters.map((ch, i) => {
+        if (i === activeChapter) {
+          return { ...ch, content: ch.content.replace(selectedText, manualEdit) }
+        }
+        return ch
+      })
+      const updated = { ...result, chapters: updatedChapters }
+      setResult(updated)
+      sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+      return
+    }
+
+    const rewritten = await rewriteSelection(selectedText, instruction)
+    const updatedChapters = result.chapters.map((ch, i) => {
+      if (i === activeChapter) {
+        return { ...ch, content: ch.content.replace(selectedText, rewritten) }
+      }
+      return ch
+    })
+    const updated = { ...result, chapters: updatedChapters }
+    setResult(updated)
+    sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+  }
+
   const renderContentWithSources = (text) => {
     if (!text) return null
     const sourceRegex = /\[SOURCE:\s*([^\]]+)\]/g
@@ -358,7 +597,8 @@ export default function Results() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         gap: 12, flexWrap: 'wrap'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+          onClick={() => navigate('/')}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
           <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18 }}>GradelyAI</span>
         </div>
@@ -434,8 +674,8 @@ export default function Results() {
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                     opacity: !paid && ch.number > 1 ? 0.5 : 1
                   }}
-                  onMouseEnter={e => { if (activeTab !== 'project' || activeChapter !== i) e.currentTarget.style.background = 'var(--bg-elevated)' }}
-                  onMouseLeave={e => { if (activeTab !== 'project' || activeChapter !== i) e.currentTarget.style.background = 'transparent' }}>
+                  onMouseEnter={e => { if (!(activeTab === 'project' && activeChapter === i)) e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                  onMouseLeave={e => { if (!(activeTab === 'project' && activeChapter === i)) e.currentTarget.style.background = 'transparent' }}>
                   <span>Ch {ch.number}: {ch.title.length > 18 ? ch.title.substring(0, 18) + '...' : ch.title}</span>
                   {!paid && ch.number > 1 && (
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
@@ -463,7 +703,8 @@ export default function Results() {
                         if (t.key === 'weaknesses') handleWeaknesses()
                       }}
                       style={{
-                        padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left',
+                        padding: '8px 12px', borderRadius: 8, border: 'none',
+                        cursor: 'pointer', textAlign: 'left',
                         background: activeTab === t.key ? 'rgba(0,126,167,0.08)' : 'transparent',
                         color: activeTab === t.key ? 'var(--accent)' : 'var(--text-muted)',
                         fontSize: 13, fontFamily: 'Geist, sans-serif', transition: 'all 0.15s',
@@ -539,6 +780,7 @@ export default function Results() {
           {/* Project tab */}
           {activeTab === 'project' && result.chapters[activeChapter] && (
             <div>
+              {/* Sticky chapter bar */}
               <div style={{
                 position: 'sticky', top: 65, zIndex: 9,
                 background: 'rgba(247,245,240,0.95)', backdropFilter: 'blur(12px)',
@@ -573,8 +815,10 @@ export default function Results() {
                 </div>
               </div>
 
-              <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none' }}>
-                <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)' }}>
+              {/* Chapter content */}
+              <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none', position: 'relative' }}>
+                <TextEditor onInstruct={handleTextInstruct} />
+                <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)', userSelect: 'text' }}>
                   {renderContentWithSources(result.chapters[activeChapter].content)}
                 </div>
               </div>
@@ -695,7 +939,8 @@ export default function Results() {
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
                     The working copy includes inline source markers so you can see where each claim came from.
                   </p>
-                  <SpinningButton onClick={() => handleExport(false)} loading={exporting} style={{ fontSize: 13 }}>
+                  <SpinningButton onClick={() => handleExport(false)} loading={exporting}
+                    style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <DownloadIcon /> Download Working Copy
                   </SpinningButton>
                 </div>
