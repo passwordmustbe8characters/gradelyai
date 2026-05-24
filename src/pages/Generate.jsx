@@ -14,14 +14,14 @@ export default function Generate() {
   const navigate = useNavigate()
   const [structure, setStructure] = useState(null)
   const [chapters, setChapters] = useState([])
-  const [, setCurrentChapter] = useState(0)
+  const [currentChapter, setCurrentChapter] = useState(0)
   const [status, setStatus] = useState('init')
   const [error, setError] = useState('')
   const [log, setLog] = useState([])
   const hasStarted = useRef(false)
   const [isPaidUser, setIsPaidUser] = useState(false)
   const [, setDbProjectId] = useState(null)
-
+  
   const addLog = (msg) => setLog(l => [...l, msg])
   const logRef = useRef(null)
 
