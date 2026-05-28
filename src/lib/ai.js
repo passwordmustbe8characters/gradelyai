@@ -3,9 +3,15 @@
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
+  // Grab the secure login token from the browser
+  const token = localStorage.getItem('token'); 
+
   const res = await fetch(`${BASE_URL}/api/claude`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` // Inject the VIP pass
+    },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: maxTokens,

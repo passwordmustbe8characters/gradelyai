@@ -358,23 +358,22 @@ export default function Results() {
     }, 0)
   }, [])
 
- const handleHumanize = async () => {
-    if (!result) return
-    setHumanizing(true)
+const handleHumanize = async () => {
+    if (!result) return;
+    setHumanizing(true);
+    
     try {
-      const humanizedChapters = []
+      // Point explicitly to the Railway backend
+      const BASE_URL = import.meta.env.VITE_API_URL || '';
+      const humanizedChapters = [];
       
-      // Loop through all generated chapters and chunk them cleanly through the pipeline
       for (const chapter of result.chapters) {
-        console.log(`[Frontend] Sending Chapter ${chapter.number} to humanizer...`);
-        const response = await fetch('/api/humanize', {
+        const response = await fetch(`${BASE_URL}/api/humanize`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            text: chapter.content
-          })
+          body: JSON.stringify({ text: chapter.content })
         });
 
         const data = await response.json();
@@ -383,21 +382,21 @@ export default function Results() {
           throw new Error(data.error || "Humanization API failed");
         }
 
-        // Capture result.data from our bulletproof backend orchestrator output
-        humanizedChapters.push({ ...chapter, content: data.data })
+        humanizedChapters.push({ ...chapter, content: data.data });
       }
       
-      const updated = { ...result, chapters: humanizedChapters, humanized: true }
-      setResult(updated)
-      sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
-      setHumanized(true)
-      alert('🎉 Your entire project has been fully humanized successfully!')
+      const updated = { ...result, chapters: humanizedChapters, humanized: true };
+      setResult(updated);
+      sessionStorage.setItem('gradelyResult', JSON.stringify(updated));
+      setHumanized(true);
+      alert('🎉 Your entire project has been fully humanized successfully!');
       
     } catch (err) {
       console.error("Humanize Error:", err);
-      alert('Humanization failed. Please check your network connection and try again.')
+      alert('Humanization failed. Please check your console for details and try again.');
+    } finally {
+      setHumanizing(false);
     }
-    setHumanizing(false)
   }
 
  const loadUnifiedDefensePrepData = async () => {
