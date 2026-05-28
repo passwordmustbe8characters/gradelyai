@@ -2,7 +2,14 @@
 
 const TOKEN_KEY = 'gradelyToken'
 const USER_KEY = 'gradelyUser'
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+export async function loginUser(email, password) {
+  const response = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
 
 export function saveAuth(token, user) {
   localStorage.setItem(TOKEN_KEY, token)
