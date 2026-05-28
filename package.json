@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
     "@eslint/js": "^10.0.1",
     "@libsql/client": "^0.17.3",
     "@paystack/inline-js": "^2.22.8",
@@ -38,13 +39,16 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^1.14.0",
     "multer": "^2.1.1",
+    "natural": "^8.1.1",
     "node-fetch": "^3.3.2",
+    "openai": "^6.39.0",
     "pdf-parse-new": "^2.1.0",
     "postcss": "^8.5.13",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.14.2",
     "tailwindcss": "^3.4.19",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "wordnet-db": "^3.1.14"
   }
 }

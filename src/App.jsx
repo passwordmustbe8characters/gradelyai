@@ -8,7 +8,8 @@ import Flashcards from './pages/Flashcards'
 import Admin from './pages/Admin'
 import Dashboard from './pages/Dashboard'
 import { useAuth } from './lib/AuthContext'
-
+// 1. Import the test client interface here
+import HumanizerClient from './components/HumanizerClient'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -32,6 +33,9 @@ export default function App() {
           <Dashboard />
         </ProtectedRoute>
       } />
+      
+      {/* 2. Safe isolated test route for our math engine */}
+      <Route path="/humanizer-test" element={<HumanizerClient />} />
     </Routes>
   )
 }

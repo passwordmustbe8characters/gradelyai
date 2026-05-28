@@ -394,112 +394,41 @@ Return ONLY this JSON:
   return safeParseJSON(raw)
 }
 
-// ─── HUMANIZATION ────────────────────────────────────────────────────────────
+/// ─── HUMANIZATION ROUTE CONNECTORS ───────────────────────────────────────────
 
+/**
+ * Dispatches raw AI text down to your bulletproof local Express math orchestrator.
+ * Avoids redundant LLM wrapper loops and runs instantly.
+ * @param {string} text - The raw chapter content block.
+ * @returns {Promise<string>} - The high-perplexity, math-verified humanized copy.
+ */
 export async function humanizeText(text) {
-
-  const pass1 = await callAI(
-    `You are rewriting academic text. Your ONLY goal is making it undetectable as AI.
-
-STRICT RULES:
-- Every sentence must start differently from the previous one
-- Alternate between short sentences (under 10 words) and long ones (over 30 words)
-- Use contractions where formal English allows: "it's", "that's", "they're", "wasn't"
-- Replace every Latinate word with a simpler Anglo-Saxon alternative:
-  "utilize" → "use", "demonstrate" → "show", "facilitate" → "help",
-  "implementation" → "setup", "methodology" → "approach", "commence" → "start"
-- Add 2-3 rhetorical questions per page: "Why does this matter?", "What does this mean in practice?"
-- Start 3 sentences per paragraph with "This", "That", "These", "Those"
-- Never use: "Furthermore", "Moreover", "Additionally", "Subsequently", "Nevertheless",
-  "Consequently", "Notwithstanding", "It is worth noting", "It is important to note",
-  "In conclusion", "To summarize", "This study", "The research"
-- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers
-- DO NOT add new information`,
-    `RESTRUCTURE THIS — make it structurally unpredictable:\n\n${text}`,
-    4096
-  )
-
-  const pass2 = await callAI(
-    `You are injecting human writing imperfections into academic text.
-
-STRICT RULES — inject ALL of these:
-- Add 1-2 slightly redundant phrases per page that a human would write but an AI wouldn't:
-  "and this is key", "which is worth understanding", "put simply"
-- Occasionally repeat a key word within a sentence for emphasis: "The data shows — and the data is clear —"
-- Add 2-3 personal academic hedges: "it seems reasonable to conclude", "one might argue", "arguably"
-- Break 2-3 sentences mid-thought with an em dash — then complete the thought differently than expected
-- Make 1-2 minor logical leaps that feel human: jump from a point to a conclusion without spelling out every step
-- Vary paragraph length dramatically: one paragraph of 2 sentences, next of 6 sentences
-- Start one paragraph with a single punchy sentence. Just one.
-- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers`,
-    `INJECT HUMAN IMPERFECTIONS:\n\n${pass1}`,
-    4096
-  )
-
-  const pass3 = await callAI(
-    `You are doing a final pass to maximize "burstiness" — the key metric AI detectors measure.
-
-Burstiness = variation in sentence length and complexity within paragraphs.
-AI text has LOW burstiness — sentences are similar lengths.
-Human text has HIGH burstiness — wildly different sentence lengths.
-
-STRICT RULES:
-- Find every paragraph where sentences are similar length — fix it
-- After every long complex sentence, add a very short one. Like this.
-- Find the 5 most "AI-sounding" phrases and rewrite them completely
-- Add 1 specific concrete Nigerian example or reference where relevant
-- Make sure no two consecutive paragraphs start with the same word or type of phrase
-- Final check: read each paragraph aloud mentally — if it sounds like a robot, rewrite it
-- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers`,
-    `MAXIMIZE BURSTINESS:\n\n${pass2}`,
-    4096
-  )
-
-  const aiWords = {
-    'utilize': 'use', 'leverage': 'use', 'delve': 'explore',
-    'crucial': 'important', 'vital': 'key', 'robust': 'strong',
-    'comprehensive': 'thorough', 'innovative': 'new', 'seamlessly': 'smoothly',
-    'streamline': 'simplify', 'paradigm': 'model', 'holistic': 'complete',
-    'nuanced': 'detailed', 'multifaceted': 'complex', 'foster': 'encourage',
-    'underscore': 'highlight', 'pivotal': 'central', 'mitigate': 'reduce',
-    'endeavor': 'effort', 'aforementioned': 'mentioned earlier',
-    'facilitate': 'help', 'demonstrate': 'show', 'significant': 'major',
-    'substantial': 'large', 'commence': 'start', 'terminate': 'end',
-    'pertaining to': 'about', 'it is worth noting': 'notably',
-    'it is important to note': 'importantly', 'in order to': 'to',
-    'due to the fact that': 'because', 'at this point in time': 'now',
-    'in the event that': 'if', 'for the purpose of': 'for',
-    'with regard to': 'about', 'in light of': 'given',
+  if (!text || text.trim().length < 10) {
+    throw new Error("Invalid text payload for humanization.");
   }
 
-  let pass4 = pass3
-  for (const [aiWord, human] of Object.entries(aiWords)) {
-    const regex = new RegExp(`\\b${aiWord}\\b`, 'gi')
-    pass4 = pass4.replace(regex, human)
+  try {
+    const response = await fetch(`${BASE_URL}/api/humanize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "The local humanizer compilation matrix failed.");
+    }
+
+    // Return the mathematically validated text array directly to the UI editor state
+    return data.data;
+
+  } catch (error) {
+    console.error("Frontend humanizer proxy compilation fault:", error);
+    throw error;
   }
-
-  const pass5 = await callAI(
-    `You are a Nigerian university student doing a final personal edit of your project.
-
-YOUR GOAL: Make this text score below 50% on AI detectors by maximizing unpredictability.
-
-DO ALL OF THESE:
-- Find the 8 longest sentences and split each into 2 shorter ones
-- Find the 5 most formal phrases and replace with how a smart student would actually say it
-- Add 3 specific numbers or percentages with "approximately" or "roughly" before them to seem estimated
-- Insert 2 parenthetical asides (like this one) that add a real-world observation
-- Change 4 passive voice sentences to active voice
-- Add 1 brief hypothetical scenario: "Consider a situation where..."
-- Make sure every paragraph has at least one sentence under 8 words
-- Replace "The study found" with "Results showed" or "Data revealed" or "Findings suggest"
-- Replace "This research" with "This work" or "The investigation" or rewrite around it
-- DO NOT change facts, headings, section numbers, or [SOURCE: ...] markers
-- DO NOT add fake citations or made up statistics`,
-    `FINAL UNPREDICTABILITY PASS:\n\n${pass4}`,
-    4096
-  )
-
-  return pass5
 }
 
 // ─── REWRITE SELECTION ───────────────────────────────────────────────────────

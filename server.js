@@ -9,6 +9,10 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import db from './database.js'
 
+// ⬇️ IMPORT THE HUMANIZER ENGINE ⬇️
+import { processFullDocument } from './humanizer/pipelineOrchestrator.js'
+
+
 // ⬇️ THE BULLETPROOF FIX: Force Node to load the legacy package correctly ⬇️
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
@@ -19,6 +23,9 @@ dotenv.config()
 
 const app = express()
 const upload = multer({ dest: 'uploads/' })
+
+app.use(cors()); // 2. Enable CORS globally for all incoming frontend routes
+app.use(express.json());
 
 app.set('trust proxy', 1)
 
@@ -67,14 +74,151 @@ function requireAuth(req, res, next) {
   }
 }
 
+// ─── GRADELYAI: MASTER PIPELINE PRODUCTION ROUTES ─────────────────────────────
+
+/**
+ * 1. THE CHASSIS TEXT HUMANIZER & SUPERVISOR HIGHLIGHT REWRITER
+ * POST /api/humanize
+ */
+app.post('/api/humanize', async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ success: false, error: "Text field is strictly required." });
+    }
+
+    console.log(`[API] Processing humanizer run. Payload size: ${text.length} characters.`);
+
+    // Fire the strict paragraph-chunking loop chassis
+    const finalHumanizedText = await processFullDocument(text);
+    
+    return res.status(200).json({
+      success: true,
+      data: finalHumanizedText
+    });
+
+  } catch (error) {
+    console.error("Express API Error (Humanizer):", error);
+    return res.status(500).json({ success: false, error: "Internal humanizer processing failure." });
+  }
+});
+
+/**
+ * 2. THE SUPERVISOR CORRECTION PERSISTENCE TRACKER
+ * POST /api/projects/:id/persist-chapters
+ */
+app.post('/api/projects/:id/persist-chapters', requireAuth, async (req, res) => {
+  const { chapters } = req.body;
+  
+  if (!chapters || !Array.isArray(chapters)) {
+    return res.status(400).json({ success: false, error: "Valid chapters array required." });
+  }
+
+  try {
+    // Failsafe validation guard: Verify the project belongs to the requesting user
+    const existing = await db.execute({ 
+      sql: 'SELECT id, is_paid FROM projects WHERE id = ? AND user_id = ?', 
+      args: [req.params.id, req.user.id] 
+    });
+    
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Project record context not found.' });
+    }
+
+    const projectRecord = existing.rows[0];
+
+    // 3. THE CHAPTER 1 PAYWALL LOGIC GATE
+    // If the account has not paid ₦5,000, reject any attempt to save text past Chapter 1
+    if (!projectRecord.is_paid) {
+      const hasRestrictedContent = chapters.some(ch => ch.number > 1 && ch.content && ch.content.trim().length > 0);
+      if (hasRestrictedContent) {
+        return res.status(402).json({ 
+          success: false, 
+          error: "Payment Required. Please unlock the full project path to modify Chapters 2-5." 
+        });
+      }
+    }
+
+    // Persist changes cleanly back to SQLite database columns
+    await db.execute({
+      sql: 'UPDATE projects SET chapters = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      args: [JSON.stringify(chapters), req.params.id, req.user.id]
+    });
+
+    return res.status(200).json({ success: true, message: "Project changes synchronized successfully." });
+
+  } catch (error) {
+    console.error("[Database Persistence Fault]:", error);
+    return res.status(500).json({ success: false, error: "Failed to persist document modifications." });
+  }
+});
+
+/**
+ * 4. THE DEFENSE PREP PANELS & FLASHCARDS COMPILATION GATEWAY
+ * POST /api/projects/:id/defense-prep
+ */
+app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
+  try {
+    const existing = await db.execute({
+      sql: 'SELECT chapters, project_info, is_paid FROM projects WHERE id = ? AND user_id = ?',
+      args: [req.params.id, req.user.id]
+    });
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Project not found.' });
+    }
+
+    const project = existing.rows[0];
+
+    // Paywall Gate Verification Check
+    if (!project.is_paid) {
+      return res.status(402).json({ success: false, error: "Defense optimization features require premium access." });
+    }
+
+    const parsedChapters = JSON.parse(project.chapters || '[]');
+    const parsedInfo = JSON.parse(project.project_info || '{}');
+    
+    // Stitch text context together cleanly
+    const collectiveText = parsedChapters.map(c => c.content).join('\n\n');
+
+    // Import the high-value Claude diagnostic tools directly from your ai.js schema setup
+    const { generateStudentBreakdown, generateFlashcards, analyzeWeaknesses } = await import('./lib/ai.js');
+
+    console.log(`[Defense Engine] Synthesizing evaluation assets for project: ${req.params.id}`);
+
+    // Compute all three diagnostic layers simultaneously to minimize client processing requests
+    const [breakdown, flashcards, weaknesses] = await Promise.all([
+      generateStudentBreakdown(parsedInfo, collectiveText),
+      generateFlashcards(parsedInfo, collectiveText),
+      analyzeWeaknesses(parsedInfo, collectiveText)
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        breakdown,
+        flashcards,
+        weaknesses
+      }
+    });
+
+  } catch (error) {
+    console.error("[Defense Prep Route Error]:", error);
+    return res.status(500).json({ success: false, error: "Failed to compile defense training matrices." });
+  }
+});
+
 // ─── PROXY: Claude ────────────────────────────────────────────────────────────
 
 app.post('/api/claude', async (req, res) => {
   try {
+    console.log("THE SERVER SEES THIS KEY:", process.env.ANTHROPIC_API_KEY);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
@@ -268,8 +412,6 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
     if (req.file.mimetype === 'application/pdf') {
       const buffer = fs.readFileSync(req.file.path)
       
-      // THE FIX: The Ultimate Defensive Unwrapper
-      // This forces Node to find the function, no matter how deeply it nested it.
       let parseFunction = pdfParse
       if (typeof parseFunction !== 'function') parseFunction = pdfParse.default
       if (typeof parseFunction !== 'function') parseFunction = Object.values(pdfParse).find(val => typeof val === 'function')
@@ -553,6 +695,7 @@ app.get('/api/test-sessions/:project_id', requireAuth, async (req, res) => {
 // ─── START ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001
+
 app.listen(PORT, () => {
   console.log(`GradelyAI server running on port ${PORT}`)
 })

@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
-import {
-  humanizeText,
-  generateStudentBreakdown,
-  generateFlashcards,
-  analyzeWeaknesses,
-  rewriteSelection
-} from '../lib/ai'
 import { exportToWord } from '../lib/export'
 import { isPaid } from '../lib/payment'
 import { saveProject, updateProject } from '../lib/auth'
@@ -115,7 +108,7 @@ function SpinningButton({ onClick, disabled, loading, children, style, className
   )
 }
 
-// ─── TEXT EDITOR ──────────────────────────────────────────────────────────────
+// ─── STABLE TEXT EDITOR TOOLBAR ──────────────────────────────────────────────
 
 function TextEditor({ onInstruct }) {
   const [visible, setVisible] = useState(false)
@@ -127,11 +120,17 @@ function TextEditor({ onInstruct }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const handleSelection = () => {
+    const handleSelection = (e) => {
+      // SAFEGUARD 1: If the user is clicking inside our toolbar box to type, 
+      // do NOT refresh or close the position. Leave the menu completely alone.
+      if (e.target.closest('.gradely-editor-toolbar')) {
+        return;
+      }
+
       const selection = window.getSelection()
       const text = selection?.toString().trim()
 
-      if (!text || text.length < 10) {
+      if (!text || text.length < 5) {
         setVisible(false)
         return
       }
@@ -139,13 +138,19 @@ function TextEditor({ onInstruct }) {
       const range = selection.getRangeAt(0)
       const rect = range.getBoundingClientRect()
 
+      // FIXED CORRECTION TRACKING: Save raw data
       setSelectedText(text)
       setEditText(text)
       setInstruction('')
       setShowAIInput(false)
+
+      // FIXED POSITIONING MATH: Drop toolbar 12px directly BELOW the text highlight
+      // Keeps the workspace clean and anchors right under the student's cursor eye scope
+      const optimalY = rect.bottom + window.scrollY + 12;
+
       setPosition({
-        x: rect.left + window.scrollX,
-        y: rect.bottom + window.scrollY + 48
+        x: rect.left + window.scrollX, // Aligns perfectly with the starting left edge of the highlighted text
+        y: optimalY
       })
       setVisible(true)
     }
@@ -174,37 +179,43 @@ function TextEditor({ onInstruct }) {
 
   if (!visible) return null
 
-  // Clamp position so toolbar stays on screen
-  const toolbarWidth = Math.min(600, window.innerWidth - 32)
-  const left = Math.min(Math.max(position.x, 16), window.innerWidth - toolbarWidth - 16)
+  // Calculate clean clamping offsets so toolbar never runs off the screen borders
+  const toolbarWidth = 420
+  let leftOffset = position.x - (toolbarWidth / 2)
+  leftOffset = Math.min(Math.max(leftOffset, 16), window.innerWidth - toolbarWidth - 16)
 
   return (
     <>
-      {/* Dismiss overlay */}
+      {/* Dismiss overlay: Clicking outside the document text blocks cleans up the UI view */}
       <div
         style={{ position: 'fixed', inset: 0, zIndex: 998 }}
         onMouseDown={() => setVisible(false)}
       />
 
-      {/* Toolbar */}
+      {/* Toolbar Window Box Container */}
       <div
+        className="gradely-editor-toolbar" // Class trigger flag hooked up to our SAFEGUARD 1 check
         style={{
           position: 'absolute',
-          left,
+          left: leftOffset,
           top: position.y,
           width: toolbarWidth,
           zIndex: 1000,
           background: '#1A1A24',
           borderRadius: 14,
           padding: '14px 16px',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+          border: '1px solid rgba(255,255,255,0.12)',
           animation: 'fadeUp 0.15s ease'
         }}
         onClick={e => e.stopPropagation()}
         onMouseDown={e => e.stopPropagation()}
       >
-        {/* Edit textarea — pre-filled with selected text */}
+        {/* Paragraph Context Work Area Box */}
+        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, fontFamily: 'Geist, sans-serif' }}>
+          Highlight Edit Panel
+        </p>
+        
         <textarea
           value={editText}
           onChange={e => setEditText(e.target.value)}
@@ -220,18 +231,17 @@ function TextEditor({ onInstruct }) {
             resize: 'vertical',
             outline: 'none',
             lineHeight: 1.6,
-            minHeight: 72,
+            minHeight: 65,
             marginBottom: 10,
           }}
         />
 
-        {/* AI instruction input — shown when AI Rewrite clicked */}
         {showAIInput && (
           <textarea
             autoFocus
             value={instruction}
             onChange={e => setInstruction(e.target.value)}
-            placeholder="Tell the AI what to change — e.g. make this less vague, my supervisor said be more specific..."
+            placeholder="Tell the AI what to change about this sentence..."
             style={{
               width: '100%',
               padding: '10px 12px',
@@ -247,22 +257,17 @@ function TextEditor({ onInstruct }) {
               minHeight: 60,
               marginBottom: 10,
             }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && e.metaKey) handleAIRewrite()
-            }}
           />
         )}
 
-        {/* Action buttons */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Save manual edit */}
           <button
             onClick={handleSave}
             disabled={editText === selectedText && !showAIInput}
             style={{
-              padding: '8px 18px',
+              padding: '8px 14px',
               borderRadius: 8, border: 'none',
-              background: 'var(--success)',
+              background: '#2D9B6F',
               color: 'white', cursor: 'pointer',
               fontSize: 13, fontWeight: 600,
               fontFamily: 'Geist, sans-serif',
@@ -270,30 +275,22 @@ function TextEditor({ onInstruct }) {
               transition: 'all 0.15s',
               display: 'flex', alignItems: 'center', gap: 6
             }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
             Save Edit
           </button>
 
-          {/* AI Rewrite button */}
           {!showAIInput ? (
             <button
               onClick={() => setShowAIInput(true)}
               style={{
-                padding: '8px 18px',
+                padding: '8px 14px',
                 borderRadius: 8, border: 'none',
-                background: 'var(--accent)',
+                background: '#007EA7',
                 color: 'white', cursor: 'pointer',
                 fontSize: 13, fontWeight: 600,
                 fontFamily: 'Geist, sans-serif',
                 transition: 'all 0.15s',
                 display: 'flex', alignItems: 'center', gap: 6
               }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/>
-                <path d="m14 7 3 3"/>
-              </svg>
               AI Rewrite
             </button>
           ) : (
@@ -301,25 +298,23 @@ function TextEditor({ onInstruct }) {
               onClick={handleAIRewrite}
               disabled={!instruction.trim() || loading}
               style={{
-                padding: '8px 18px',
+                padding: '8px 14px',
                 borderRadius: 8, border: 'none',
-                background: 'var(--accent)',
+                background: '#007EA7',
                 color: 'white', cursor: 'pointer',
                 fontSize: 13, fontWeight: 600,
                 fontFamily: 'Geist, sans-serif',
                 opacity: !instruction.trim() || loading ? 0.5 : 1,
-                transition: 'all 0.15s',
-                display: 'flex', alignItems: 'center', gap: 6
+                transition: 'all 0.15s'
               }}>
-              {loading ? 'Rewriting...' : 'Apply AI Rewrite →'}
+              {loading ? 'Rewriting...' : 'Apply Rewrite →'}
             </button>
           )}
 
-          {/* Cancel */}
           <button
             onClick={() => setVisible(false)}
             style={{
-              padding: '8px 14px',
+              padding: '8px 12px',
               borderRadius: 8,
               border: '1px solid rgba(255,255,255,0.12)',
               background: 'transparent', color: 'rgba(255,255,255,0.5)',
@@ -327,10 +322,9 @@ function TextEditor({ onInstruct }) {
               fontFamily: 'Geist, sans-serif',
               marginLeft: 'auto'
             }}>
-            Cancel
+            Close
           </button>
         </div>
-
       </div>
     </>
   )
@@ -364,65 +358,111 @@ export default function Results() {
     }, 0)
   }, [])
 
-  const handleHumanize = async () => {
+ const handleHumanize = async () => {
     if (!result) return
     setHumanizing(true)
     try {
       const humanizedChapters = []
+      
+      // Loop through all generated chapters and chunk them cleanly through the pipeline
       for (const chapter of result.chapters) {
-        const content = await humanizeText(chapter.content)
-        humanizedChapters.push({ ...chapter, content })
+        console.log(`[Frontend] Sending Chapter ${chapter.number} to humanizer...`);
+        const response = await fetch('/api/humanize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: chapter.content
+          })
+        });
+
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || "Humanization API failed");
+        }
+
+        // Capture result.data from our bulletproof backend orchestrator output
+        humanizedChapters.push({ ...chapter, content: data.data })
       }
+      
       const updated = { ...result, chapters: humanizedChapters, humanized: true }
       setResult(updated)
       sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
       setHumanized(true)
-    } catch {
-      alert('Humanization failed. Please try again.')
+      alert('🎉 Your entire project has been fully humanized successfully!')
+      
+    } catch (err) {
+      console.error("Humanize Error:", err);
+      alert('Humanization failed. Please check your network connection and try again.')
     }
     setHumanizing(false)
   }
 
-  const handleBreakdown = async () => {
-    if (!result || breakdown) return
-    setLoadingBreakdown(true)
-    try {
-      const allText = result.chapters.map(c => c.content).join('\n\n')
-      const bd = await generateStudentBreakdown(result.projectInfo, allText)
-      setBreakdown(bd)
-    } catch {
-      alert('Failed to generate breakdown. Please try again.')
-    }
-    setLoadingBreakdown(false)
-  }
+ const loadUnifiedDefensePrepData = async () => {
+    // If analytical frameworks are already loaded in state, skip network calls
+    if (breakdown || weaknesses) return;
 
-  const handleWeaknesses = async () => {
-    if (!result || weaknesses) return
-    setLoadingWeaknesses(true)
+    setLoadingBreakdown(true);
+    setLoadingWeaknesses(true);
+
     try {
-      const allText = result.chapters.map(c => c.content).join('\n\n')
-      const w = await analyzeWeaknesses(result.projectInfo, allText)
-      setWeaknesses(w)
-    } catch {
-      alert('Failed to analyze weaknesses. Please try again.')
+      const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId');
+      const token = localStorage.getItem('token');
+      
+      if (!projectId) return;
+
+      const response = await fetch(`/api/projects/${projectId}/defense-prep`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const resData = await response.json();
+
+      if (resData.success) {
+        setBreakdown(resData.data.breakdown);
+        setWeaknesses(resData.data.weaknesses);
+        // Cache flashcard assets inside temporary session blocks for the flashcard matching view
+        sessionStorage.setItem('gradelyFlashcards', JSON.stringify(resData.data.flashcards));
+      } else {
+        throw new Error(resData.error);
+      }
+    } catch (err) {
+      console.error("Defense synchronization failure:", err);
+      alert("Could not load defense preparation data. Please verify your payment or account status.");
+    } finally {
+      setLoadingBreakdown(false);
+      setLoadingWeaknesses(false);
     }
-    setLoadingWeaknesses(false)
-  }
+  };
 
   const handleFlashcards = async () => {
-    if (loadingFlashcards) return
-    setLoadingFlashcards(true)
+    if (loadingFlashcards) return;
+    setLoadingFlashcards(true);
+    
     try {
-      const allText = result.chapters.map(c => c.content).join('\n\n')
-      const cards = await generateFlashcards(result.projectInfo, allText)
-      sessionStorage.setItem('gradelyFlashcards', JSON.stringify(cards))
-      navigate('/flashcards')
-    } catch {
-      alert('Failed to generate flashcards. Please try again.')
+      // Check if the flashcards were already generated and cached in the background
+      let cards = sessionStorage.getItem('gradelyFlashcards');
+      
+      // If they haven't been generated yet, fire our unified backend compiler!
+      if (!cards) {
+        await loadUnifiedDefensePrepData();
+      }
+      
+      // Once data is secured in session storage, instantly route the user to the study view
+      navigate('/flashcards');
+      
+    } catch (err) {
+      console.error(err);
+      alert('Failed to load flashcards. Please try again.');
+    } finally {
+      setLoadingFlashcards(false);
     }
-    setLoadingFlashcards(false)
   }
-
   const handleExport = async (isClean) => {
     if (!result || exporting) return
     setExporting(true)
@@ -494,30 +534,59 @@ export default function Results() {
   }
 
   const handleTextInstruct = async (selectedText, instruction, manualEdit) => {
+    let targetNewText = "";
+
     if (manualEdit !== undefined) {
-      const updatedChapters = result.chapters.map((ch, i) => {
-        if (i === activeChapter) {
-          return { ...ch, content: ch.content.replace(selectedText, manualEdit) }
-        }
-        return ch
-      })
-      const updated = { ...result, chapters: updatedChapters }
-      setResult(updated)
-      sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
-      return
+      targetNewText = manualEdit;
+    } else {
+      try {
+        const response = await fetch('/api/humanize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            text: `Supervisor Correction Request: Please alter this specific selection: "${selectedText}". Follow this user instruction: ${instruction}` 
+          })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        targetNewText = data.data;
+      } catch (err) {
+        console.error("Supervisor rewrite exception:", err);
+        alert("Failed to apply correction context safely.");
+        return;
+      }
     }
 
-    const rewritten = await rewriteSelection(selectedText, instruction)
+    // Apply text changes inside local state array
     const updatedChapters = result.chapters.map((ch, i) => {
       if (i === activeChapter) {
-        return { ...ch, content: ch.content.replace(selectedText, rewritten) }
+        return { ...ch, content: ch.content.replace(selectedText, targetNewText) }
       }
       return ch
-    })
-    const updated = { ...result, chapters: updatedChapters }
-    setResult(updated)
-    sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
-  }
+    });
+
+    const updatedResultPayload = { ...result, chapters: updatedChapters };
+    setResult(updatedResultPayload);
+    sessionStorage.setItem('gradelyResult', JSON.stringify(updatedResultPayload));
+
+    // BACKGROUND SYNC: Instantly persist modifications into SQLite storage rows
+    const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId');
+    if (projectId) {
+      try {
+        const token = localStorage.getItem('token'); // Retrieve user authorization token context
+        await fetch(`/api/projects/${projectId}/persist-chapters`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ chapters: updatedChapters })
+        });
+      } catch (saveErr) {
+        console.error("Failed to automatically synchronize edits to server database:", saveErr);
+      }
+    }
+  };
 
   const renderContentWithSources = (text) => {
     if (!text) return null
@@ -698,9 +767,8 @@ export default function Results() {
                   ].map(t => (
                     <button key={t.key}
                       onClick={() => {
-                        setActiveTab(t.key)
-                        if (t.key === 'breakdown') handleBreakdown()
-                        if (t.key === 'weaknesses') handleWeaknesses()
+  setActiveTab(t.key);
+  if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData();
                       }}
                       style={{
                         padding: '8px 12px', borderRadius: 8, border: 'none',
@@ -756,10 +824,9 @@ export default function Results() {
               ].map(t => (
                 <button key={t.key}
                   onClick={() => {
-                    setActiveTab(t.key)
-                    if (t.key === 'breakdown') handleBreakdown()
-                    if (t.key === 'weaknesses') handleWeaknesses()
-                  }}
+      setActiveTab(t.key)
+      if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData();
+    }}
                   style={{
                     padding: '8px 14px', borderRadius: 20, border: 'none',
                     background: activeTab === t.key ? 'var(--accent)' : 'var(--bg-elevated)',

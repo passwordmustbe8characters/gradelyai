@@ -1,0 +1,65 @@
+{
+  "academic": {
+    "profileName": "Academic Scholar",
+    "temperature": 0.3,
+    "minBurstiness": 6.5,
+    "blacklist": {
+      "Furthermore": "Additionally",
+      "Moreover": "Overall",
+      "In conclusion": "The findings of the research resulted in the following conclusions",
+      "Testament": "evidence",
+      "Crucial": "essential",
+      "Utilize": "use",
+      "Delve": "explore",
+      "Multifaceted": "comprehensive"
+    },
+    "fewShotExamples": [
+      {
+        "input": "Furthermore, the study utilized multifaceted simulations to delve into crucial physics concepts. In conclusion, the results stand as a testament to the effectiveness of AI-assisted instruction.",
+        "output": "Additionally, the study used interactive simulations to explore difficult physics concepts. The findings of the research resulted in the following conclusions: simulations improved students’ comprehension and performance, providing evidence for the effectiveness of technology-assisted instruction."
+      }
+    ]
+  },
+  "conversational": {
+    "profileName": "Everyday Conversationalist (ISWIS)",
+    "temperature": 0.85,
+    "minBurstiness": 12.5,
+    "blacklist": {
+      "Furthermore": "And so",
+      "Moreover": "Also",
+      "In conclusion": "Anyway",
+      "Testament": "proof",
+      "Crucial": "the thing is",
+      "Utilize": "use",
+      "Delve": "get into",
+      "Multifaceted": "a lot of"
+    },
+    "fewShotExamples": [
+      {
+        "input": "Furthermore, the speaker utilized a multifaceted approach to delve into crucial social dynamics. Moreover, the audience response was a testament to the effectiveness of the event. In conclusion, the experience was highly impactful.",
+        "output": "And so the speaker used a lot of different things to get into what was really going on with people. Also, the way everybody reacted was proof that the whole thing worked. Anyway, it was actually a really good time."
+      }
+    ]
+  },
+  "professional": {
+    "profileName": "Thought Leader & Business (DOAC)",
+    "temperature": 0.7,
+    "minBurstiness": 9.5,
+    "blacklist": {
+      "Furthermore": "and so",
+      "Moreover": "and also",
+      "In conclusion": "so then",
+      "Testament": "the example of truth",
+      "Crucial": "really important",
+      "Utilize": "use",
+      "Delve": "look closely at",
+      "Multifaceted": "a host of different"
+    },
+    "fewShotExamples": [
+      {
+        "input": "Furthermore, it is crucial to utilize a multifaceted approach and delve into the psychological patterns involved. In conclusion, this is a testament to human adaptability.",
+        "output": "And so if you look closely at the psychological patterns involved, you start to see there’s a host of different changes that take place. It’s really important that people use what they learn and repeat it over and over again. So then when someone actually changes, that’s the example of truth that makes other people believe possibility differently."
+      }
+    ]
+  }
+}
