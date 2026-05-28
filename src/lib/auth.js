@@ -10,12 +10,16 @@ export async function loginUser(email, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
   });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Login failed');
+  saveAuth(data.token, data.user);
+  return data;
+}
 
 export function saveAuth(token, user) {
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
-
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
