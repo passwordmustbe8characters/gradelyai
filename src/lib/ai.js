@@ -6,14 +6,14 @@ async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
   // Grab the secure login token from the browser
   const token = localStorage.getItem('token'); 
 
-  const res = await fetch(`${BASE_URL}/api/claude`, {
+  const res = await fetch(`${BASE_URL}/api/ai`, {
     method: 'POST',
     headers: { 
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}` // Inject the VIP pass
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'gpt-40-mini',
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]

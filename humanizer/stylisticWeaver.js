@@ -28,7 +28,7 @@ STYLE TRANSFORMATIONS TO COPY CLOSELY:
 ${formattingReference}`;
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6", 
+    model: "gpt-4o-mini", 
     max_tokens: 4096,
     // THE MATH HACKERS: Forcing unpredictable word choices
     temperature: 1.0, 

@@ -210,7 +210,7 @@ app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
 
 // ─── PROXY: Claude ────────────────────────────────────────────────────────────
 
-app.post('/api/claude', async (req, res) => {
+app.post('/api/ai', async (req, res) => {
   try {
     console.log("THE SERVER SEES THIS KEY:", process.env.ANTHROPIC_API_KEY);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -436,7 +436,7 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'gpt-40-mini',
         max_tokens: 2000,
         messages: [{
           role: 'user',
