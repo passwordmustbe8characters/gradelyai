@@ -28,7 +28,7 @@ async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
   }
 
   const data = await res.json()
-  return data.content[0].text
+  return data.choices[0].message.content
 }
 
 // ─── SAFE JSON PARSER ─────────────────────────────────────────────────────────
