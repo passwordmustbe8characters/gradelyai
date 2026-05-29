@@ -13,11 +13,13 @@ async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
       'Authorization': `Bearer ${token}` // Inject the VIP pass
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
-    })
+  model: 'gpt-4o-mini',
+  max_tokens: maxTokens,
+  messages: [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ]
+})
   })
 
   if (!res.ok) {
