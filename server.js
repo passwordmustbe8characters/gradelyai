@@ -41,7 +41,6 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }))
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'gradely2025'
-const OPENAI_KEY = process.env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY
 const JWT_SECRET = process.env.JWT_SECRET || 'gradelyai-jwt-secret-2025'
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
@@ -208,55 +207,23 @@ app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
   }
 });
 
-// ─── PROXY: Claude ────────────────────────────────────────────────────────────
-
-app.post('/api/ai', async (req, res) => {
-  try {
-    console.log("THE SERVER SEES THIS KEY:", process.env.ANTHROPIC_API_KEY);
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify(req.body)
-    })
-
-    const text = await response.text()
-    if (!text || text.trim() === '') {
-      return res.status(500).json({ error: { message: 'Empty response from Claude' } })
-    }
-
-    try {
-      const data = JSON.parse(text)
-      if (!response.ok) return res.status(response.status).json(data)
-      res.json(data)
-    } catch {
-      res.status(500).json({ error: { message: 'Invalid response from Claude' } })
-    }
-  } catch (err) {
-    res.status(500).json({ error: { message: err.message } })
-  }
-})
-
-// ─── PROXY: OpenAI (fallback) ─────────────────────────────────────────────────
-
+// ─── PROXY: OpenAI ─────────────────────────────────────────────────
 app.post('/api/ai', async (req, res) => {
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_KEY}`
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify(req.body)
     })
+
     const text = await response.text()
     if (!text || text.trim() === '') {
       return res.status(500).json({ error: { message: 'Empty response from OpenAI' } })
     }
+
     try {
       const data = JSON.parse(text)
       if (!response.ok) return res.status(response.status).json(data)
