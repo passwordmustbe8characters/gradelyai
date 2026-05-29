@@ -24,7 +24,7 @@ dotenv.config()
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 
-app.use(cors()); // 2. Enable CORS globally for all incoming frontend routes
+
 app.use(express.json());
 
 app.set('trust proxy', 1)
@@ -33,7 +33,6 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://gradelyai-chi.vercel.app',
-    'https://gradelyai-production.up.railway.app',
     /\.vercel\.app$/
   ],
   credentials: true,
