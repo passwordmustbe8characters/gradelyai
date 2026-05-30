@@ -358,31 +358,38 @@ export default function Results() {
     }, 0)
   }, [])
 
-const handleHumanize = async () => {
+  const handleHumanize = async () => {
     if (!result) return;
     setHumanizing(true);
     
+    // PASTE YOUR CURRENT NGROK URL HERE (It changes every time you restart Colab!)
+    const COLAB_API_URL = "https://vicinity-siding-email.ngrok-free.dev/";
+    
     try {
-      // Point explicitly to the Railway backend
-      const BASE_URL = import.meta.env.VITE_API_URL || '';
       const humanizedChapters = [];
       
       for (const chapter of result.chapters) {
-        const response = await fetch(`${BASE_URL}/api/humanize`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text: chapter.content })
-        });
+        // CRITICAL: Split the chapter into paragraphs so the T5 model doesn't time out
+        const paragraphs = chapter.content.split(/\n\s*\n/).filter(p => p.trim() !== "");
+        let humanizedContent = "";
 
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || "Humanization API failed");
+        for (const para of paragraphs) {
+          const response = await fetch(COLAB_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true' // Required to bypass Ngrok's browser warning
+            },
+            body: JSON.stringify({ text: para })
+          });
+
+          const data = await response.json();
+          
+          // T5 returns { humanized_text: "..." }
+          humanizedContent += (data.humanized_text || para) + "\n\n";
         }
-
-        humanizedChapters.push({ ...chapter, content: data.data });
+        
+        humanizedChapters.push({ ...chapter, content: humanizedContent.trim() });
       }
       
       const updated = { ...result, chapters: humanizedChapters, humanized: true };
@@ -393,7 +400,7 @@ const handleHumanize = async () => {
       
     } catch (err) {
       console.error("Humanize Error:", err);
-      alert('Humanization failed. Please check your console for details and try again.');
+      alert('Humanization failed. Make sure your Colab server is running and the Ngrok URL is correct!');
     } finally {
       setHumanizing(false);
     }
@@ -532,23 +539,29 @@ const handleHumanize = async () => {
     navigate('/generate')
   }
 
-  const handleTextInstruct = async (selectedText, instruction, manualEdit) => {
+    const handleTextInstruct = async (selectedText, instruction, manualEdit) => {
     let targetNewText = "";
+
+    // PASTE YOUR CURRENT NGROK URL HERE
+    const COLAB_API_URL = "https://vicinity-siding-email.ngrok-free.dev/";
 
     if (manualEdit !== undefined) {
       targetNewText = manualEdit;
     } else {
       try {
-        const response = await fetch('/api/humanize', {
+        const response = await fetch(COLAB_API_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true' 
+          },
           body: JSON.stringify({ 
-            text: `Supervisor Correction Request: Please alter this specific selection: "${selectedText}". Follow this user instruction: ${instruction}` 
+            text: instruction ? `Rewrite this text based on the instruction: ${instruction}. Text: ${selectedText}` : selectedText
           })
         });
+        
         const data = await response.json();
-        if (!data.success) throw new Error(data.error);
-        targetNewText = data.data;
+        targetNewText = data.humanized_text || selectedText;
       } catch (err) {
         console.error("Supervisor rewrite exception:", err);
         alert("Failed to apply correction context safely.");
@@ -568,11 +581,11 @@ const handleHumanize = async () => {
     setResult(updatedResultPayload);
     sessionStorage.setItem('gradelyResult', JSON.stringify(updatedResultPayload));
 
-    // BACKGROUND SYNC: Instantly persist modifications into SQLite storage rows
+    // BACKGROUND SYNC
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId');
     if (projectId) {
       try {
-        const token = localStorage.getItem('token'); // Retrieve user authorization token context
+        const token = localStorage.getItem('token');
         await fetch(`/api/projects/${projectId}/persist-chapters`, {
           method: 'POST',
           headers: { 
