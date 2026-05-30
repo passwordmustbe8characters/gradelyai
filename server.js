@@ -9,8 +9,6 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import db from './database.js'
 
-// ⬇️ IMPORT THE HUMANIZER ENGINE ⬇️
-import { processFullDocument } from './humanizer/pipelineOrchestrator.js'
 
 
 // ⬇️ THE BULLETPROOF FIX: Force Node to load the legacy package correctly ⬇️
@@ -76,7 +74,7 @@ function requireAuth(req, res, next) {
 
 /**
  * 1. THE CHASSIS TEXT HUMANIZER & SUPERVISOR HIGHLIGHT REWRITER
- * POST /api/humanize
+ * POST /api/humanize -> Proxies to Colab T5 Engine
  */
 app.post('/api/humanize', async (req, res) => {
   try {
@@ -86,18 +84,46 @@ app.post('/api/humanize', async (req, res) => {
       return res.status(400).json({ success: false, error: "Text field is strictly required." });
     }
 
-    console.log(`[API] Processing humanizer run. Payload size: ${text.length} characters.`);
+    // Get the Colab Ngrok URL from Render Environment Variables
+    const HUMANIZER_API_URL = process.env.HUMANIZER_API_URL;
 
-    // Fire the strict paragraph-chunking loop chassis
-    const finalHumanizedText = await processFullDocument(text);
+    if (!HUMANIZER_API_URL) {
+      console.error("Missing HUMANIZER_API_URL env var");
+      return res.status(500).json({ success: false, error: "Humanizer engine not configured on server." });
+    }
+
+    console.log(`[API] Proxying humanizer run. Payload size: ${text.length} characters.`);
+
+    // Forward the request to the Colab T5 Engine using node-fetch
+    const colabResponse = await fetch(HUMANIZER_API_URL, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true' // CRITICAL: Bypasses Ngrok's warning page from server-side
+      },
+      body: JSON.stringify({ text: text })
+    });
+
+    if (!colabResponse.ok) {
+      const errorText = await colabResponse.text();
+      console.error("Colab Engine Error:", errorText);
+      throw new Error("Failed to get valid response from humanizer engine.");
+    }
+
+    const colabData = await colabResponse.json();
     
+    // Colab returns { humanized_text: "..." }
+    // Your frontend originally expected { success: true, data: "..." }
+    // We map it here so the frontend doesn't need changing!
+    const finalHumanizedText = colabData.humanized_text || text; 
+
     return res.status(200).json({
       success: true,
       data: finalHumanizedText
     });
 
   } catch (error) {
-    console.error("Express API Error (Humanizer):", error);
+    console.error("Express API Error (Humanizer Proxy):", error);
     return res.status(500).json({ success: false, error: "Internal humanizer processing failure." });
   }
 });
