@@ -110,13 +110,13 @@ app.post('/api/humanize', async (req, res) => {
 
         if (!colabResponse.ok) {
           console.error("Colab Engine Error on paragraph, keeping original.");
-          finalHumanizedText += para + "\n"; // Fallback to original paragraph
+          finalHumanizedText += para + "\n\n"; // Fallback to original paragraph
           continue;
         }
 
         const colabData = await colabResponse.json();
         // Append the humanized paragraph and add a newline to separate them!
-        finalHumanizedText += (colabData.humanized_text || para) + "\n";
+        finalHumanizedText += (colabData.humanized_text || para) + "\n\n";
 
       } catch (err) {
         console.error("Error processing paragraph:", err);
