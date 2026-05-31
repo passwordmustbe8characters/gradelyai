@@ -74,7 +74,7 @@ function requireAuth(req, res, next) {
 
 /**
  * 1. THE CHASSIS TEXT HUMANIZER & SUPERVISOR HIGHLIGHT REWRITER
- * POST /api/humanize -> Proxies to Colab T5 Engine
+ * POST /api/humanize -> Proxies to Colab T5 Engine with Paragraph Chunking
  */
 app.post('/api/humanize', async (req, res) => {
   try {
@@ -84,42 +84,50 @@ app.post('/api/humanize', async (req, res) => {
       return res.status(400).json({ success: false, error: "Text field is strictly required." });
     }
 
-    // Get the Colab Ngrok URL from Render Environment Variables
     const HUMANIZER_API_URL = process.env.HUMANIZER_API_URL;
-
     if (!HUMANIZER_API_URL) {
       console.error("Missing HUMANIZER_API_URL env var");
-      return res.status(500).json({ success: false, error: "Humanizer engine not configured on server." });
+      return res.status(500).json({ success: false, error: "Humanizer engine not configured." });
     }
 
-    console.log(`[API] Proxying humanizer run. Payload size: ${text.length} characters.`);
+    console.log(`[API] Processing humanizer run. Payload size: ${text.length} characters.`);
 
-    // Forward the request to the Colab T5 Engine using node-fetch
-    const colabResponse = await fetch(HUMANIZER_API_URL, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true' // CRITICAL: Bypasses Ngrok's warning page from server-side
-      },
-      body: JSON.stringify({ text: text })
-    });
+    // 1. Split text into paragraphs to preserve formatting and prevent crumpling!
+    const paragraphs = text.split(/\n/).filter(p => p.trim() !== "");
+    let finalHumanizedText = "";
 
-    if (!colabResponse.ok) {
-      const errorText = await colabResponse.text();
-      console.error("Colab Engine Error:", errorText);
-      throw new Error("Failed to get valid response from humanizer engine.");
+    // 2. Process each paragraph individually
+    for (const para of paragraphs) {
+      try {
+        const colabResponse = await fetch(HUMANIZER_API_URL, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true' 
+          },
+          body: JSON.stringify({ text: para })
+        });
+
+        if (!colabResponse.ok) {
+          console.error("Colab Engine Error on paragraph, keeping original.");
+          finalHumanizedText += para + "\n"; // Fallback to original paragraph
+          continue;
+        }
+
+        const colabData = await colabResponse.json();
+        // Append the humanized paragraph and add a newline to separate them!
+        finalHumanizedText += (colabData.humanized_text || para) + "\n";
+
+      } catch (err) {
+        console.error("Error processing paragraph:", err);
+        finalHumanizedText += para + "\n"; // Fallback to original paragraph
+      }
     }
 
-    const colabData = await colabResponse.json();
-    
-    // Colab returns { humanized_text: "..." }
-    // Your frontend originally expected { success: true, data: "..." }
-    // We map it here so the frontend doesn't need changing!
-    const finalHumanizedText = colabData.humanized_text || text; 
-
+    // 3. Return the properly formatted text
     return res.status(200).json({
       success: true,
-      data: finalHumanizedText
+      data: finalHumanizedText.trim() // Trim the very last extra newline
     });
 
   } catch (error) {
