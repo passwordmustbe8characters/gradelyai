@@ -439,6 +439,43 @@ export async function humanizeText(text) {
   }
 }
 
+// ─── SOCRATIC CHAT ────────────────────────────────────────────────────────────
+
+export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage) {
+  const system = `You are a friendly but rigorous Nigerian university thesis co-writer. Your job is to build Chapter 1 section by section using the Socratic method.
+
+PROJECT TOPIC: "${projectInfo.topic}"
+CHAPTER 1 STRUCTURE: ${JSON.stringify(chapterStructure)}
+
+YOUR RULES:
+1. Look at the chat history. If you haven't asked about a section yet, ask a probing question to get the student's main point for that section. Tell them to answer in their own words.
+2. Once the student gives a substantial answer (10+ words), write a 4-sentence academic paragraph. 
+3. CRITICAL: The first sentence of your generated paragraph MUST be the student's exact core argument, polished slightly for grammar. The remaining 3 sentences must provide academic evidence to support their point.
+4. After generating the paragraph, say "Section is ready! Let's move to the next section." and ask about the next section in the structure.
+5. Do not write the paragraph until the student gives you their core thought. Do not write the whole chapter at once.`
+
+  const messages = [
+    { role: 'system', content: system },
+    ...chatHistory.map(msg => ({ role: msg.role, content: msg.content })),
+    { role: 'user', content: userMessage }
+  ]
+
+  // Call Groq (or OpenAI proxy) - Using the existing callAI structure
+  const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/ai`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile', // Use Groq's fast model
+      max_tokens: 800,
+      messages
+    })
+  })
+
+  if (!res.ok) throw new Error('Socratic chat failed')
+  const data = await res.json()
+  return data.choices[0].message.content
+}
+
 // ─── REWRITE SELECTION ───────────────────────────────────────────────────────
 
 export async function rewriteSelection(selectedText, instruction) {

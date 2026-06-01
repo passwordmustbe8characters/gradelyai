@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { socraticChat } from '../lib/ai' 
 
 export default function SocraticBuilder() {
   const navigate = useNavigate()
@@ -10,16 +11,15 @@ export default function SocraticBuilder() {
   const [isTyping, setIsTyping] = useState(false)
   const chatEndRef = useRef(null)
 
-  // Mock project data (Eventually this comes from sessionStorage)
+    // Grab real project data from session storage
+  const savedProject = JSON.parse(sessionStorage.getItem('gradelyProject') || '{}')
+  const savedStructure = JSON.parse(sessionStorage.getItem('gradelyStructure') || '{}')
+  
   const projectData = {
-    topic: "The Impact of Cybersecurity Laws on Nigerian Banks",
-    chapters: [
-      { id: 1, title: "Introduction", sections: ["1.1 Background", "1.2 Problem Statement", "1.3 Objectives"] },
-      { id: 2, title: "Literature Review", sections: ["2.1 Conceptual Framework", "2.2 Empirical Review"] },
-    ]
+    topic: savedProject.topic || "Unknown Topic",
+    chapters: savedStructure.chapters || []
   }
 
-  const [completedSections, setCompletedSections] = useState([])
   const MIN_WORDS = 10
 
   // Auto-scroll to bottom of chat
@@ -31,7 +31,7 @@ export default function SocraticBuilder() {
   const wordCount = input.trim() === '' ? 0 : input.trim().split(/\s+/).length
   const isThresholdMet = wordCount >= MIN_WORDS
 
-  const handleSend = async () => {
+   const handleSend = async () => {
     if (!isThresholdMet) return
 
     const userMessage = input
@@ -39,18 +39,21 @@ export default function SocraticBuilder() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setIsTyping(true)
 
-    // SIMULATED AI RESPONSE (We will hook this up to the backend next!)
-    setTimeout(() => {
-      const aiReply = `Great point! So you're saying the laws are outdated. What specific vulnerabilities does that create for the banks themselves?`
+    try {
+      // Call the real AI
+      const chapter1Structure = projectData.chapters.find(c => c.number === 1)
+      const aiReply = await socraticChat(
+        savedProject, 
+        chapter1Structure, 
+        messages, 
+        userMessage
+      )
       setMessages(prev => [...prev, { role: 'assistant', content: aiReply }])
-      
-      // Simulate completing a section after a few messages
-      if (messages.length > 4 && !completedSections.includes("1.1")) {
-        setCompletedSections(prev => [...prev, "1.1"])
-        setMessages(prev => [...prev, { role: 'assistant', content: `Awesome, I have enough to draft Section 1.1! Check the side panel to preview it, or let's move to 1.2 Problem Statement. What exact gap are you filling?` }])
-      }
-      setIsTyping(false)
-    }, 1500)
+    } catch (err) {
+      console.error(err)
+      setMessages(prev => [...prev, { role: 'assistant', content: "Oops, I lost my train of thought. Can you repeat that?" }])
+    }
+    setIsTyping(false)
   }
 
   return (
@@ -133,7 +136,7 @@ export default function SocraticBuilder() {
               Chapter {ch.id}: {ch.title}
             </h4>
             {ch.sections.map(sec => {
-              const isReady = completedSections.includes(sec.split(' ')[0]);
+                            const isReady = false; // Temporarily hardcoded so the UI doesn't break
               return (
                 <div key={sec} style={{
                   padding: '12px 14px', borderRadius: '10px', marginBottom: '8px',
