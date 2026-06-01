@@ -94,6 +94,7 @@ export default function Intake() {
 
   sessionStorage.setItem('gradelyProject', JSON.stringify({
     ...form,
+    supervisorName: form.supervisorName,
     topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
     projectType: form.selectedTopic?.type || form.projectType || 'research',
     styleSample,
@@ -354,6 +355,11 @@ export default function Intake() {
         {/* Step 10 — Final details */}
         {step === 10 && (
           <StepCard title="Almost there." subtitle="A few final details to make your project as accurate as possible">
+                        <label className="label">Supervisor's Full Name</label>
+            <input className="input"
+              placeholder="e.g. Dr. Chukwu Okafor"
+              value={form.supervisorName} onChange={e => update('supervisorName', e.target.value)}
+              style={{ marginBottom: 20 }} />
             <label className="label">Any instructions from your supervisor? (optional)</label>
             <textarea className="input" rows={3}
               placeholder="e.g. My supervisor wants the literature review to focus on Nigerian case studies..."

@@ -73,8 +73,8 @@ function requireAuth(req, res, next) {
 // ─── GRADELYAI: MASTER PIPELINE PRODUCTION ROUTES ─────────────────────────────
 
 /**
- * 1. THE CHASSIS TEXT HUMANIZER & SUPERVISOR HIGHLIGHT REWRITER
- * POST /api/humanize -> Proxies to Colab T5 Engine with Paragraph Chunking
+ * 1. THE MICRO-HUMANIZER (Replaces T5 Colab Engine)
+ * Uses programmatic post-processing instead of slow AI rewriting.
  */
 app.post('/api/humanize', async (req, res) => {
   try {
@@ -84,55 +84,92 @@ app.post('/api/humanize', async (req, res) => {
       return res.status(400).json({ success: false, error: "Text field is strictly required." });
     }
 
-    const HUMANIZER_API_URL = process.env.HUMANIZER_API_URL;
-    if (!HUMANIZER_API_URL) {
-      console.error("Missing HUMANIZER_API_URL env var");
-      return res.status(500).json({ success: false, error: "Humanizer engine not configured." });
+    console.log(`[Micro-Humanizer] Processing payload size: ${text.length} characters.`);
+
+    // 1. The AI Vocabulary Swapper
+    const vocabSwaps = {
+      "crucial": "key", "furthermore": "also", "moreover": "additionally",
+      "delve": "explore", "intricate": "complex", "vital": "important",
+      "underscore": "highlight", "utilize": "use", "pivotal": "major",
+      "significant": "major", "numerous": "many", "various": "different",
+      "facilitate": "help", "leverage": "use", "robust": "strong",
+      "comprehensive": "full", "essential": "needed", "paramount": "top",
+      "ensure": "make sure", "therefore": "so", "consequently": "as a result",
+      "additionally": "also", "notably": "especially", "subsequently": "later",
+      "fundamental": "basic", "intriguing": "interesting", "navigate": "handle",
+      "foster": "encourage", "enhance": "improve", "optimize": "improve",
+      "streamline": "simplify", "innovative": "new", "revolutionize": "change",
+      "transformative": "changing", "groundbreaking": "new", "holistic": "full",
+      "paradigm": "model", "synergy": "teamwork", "domain": "area",
+      "realm": "area", "endeavor": "effort", "cornerstone": "foundation",
+      "imperative": "must", "profound": "deep", "elucidate": "explain",
+      "delineate": "outline", "expound": "explain", "accentuate": "highlight",
+      "amalgamation": "mix", "synthesis": "mix", "convergence": "meeting",
+      "ecosystem": "system", "trajectory": "path", "catalyst": "spark",
+      "underpin": "support", "substantiate": "prove", "corroborate": "confirm",
+      "marginalized": "ignored", "prerequisite": "requirement",
+      "encompass": "include", "incorporate": "add", "proactive": "active",
+      "evaluate": "check", "assess": "check", "analyze": "study", "examine": "look at"
+    };
+
+    let humanizedText = text;
+    
+    // Apply vocabulary swaps (case-insensitive)
+    for (const [aiWord, humanWord] of Object.entries(vocabSwaps)) {
+      const regex = new RegExp(`\\b${aiWord}\\b`, 'gi');
+      humanizedText = humanizedText.replace(regex, (match) => {
+        return match[0].toUpperCase() === match[0] ? humanWord[0].toUpperCase() + humanWord.slice(1) : humanWord;
+      });
     }
 
-    console.log(`[API] Processing humanizer run. Payload size: ${text.length} characters.`);
+    // 2. The Burstiness Injector (Break up long AI sentences with em-dashes)
+    const sentences = humanizedText.split(/(?<=[.!?])\s+/);
+    const humanizedSentences = [];
 
-    // 1. Split text into paragraphs to preserve formatting and prevent crumpling!
-    const paragraphs = text.split(/\n/).filter(p => p.trim() !== "");
-    let finalHumanizedText = "";
+    for (let i = 0; i < sentences.length; i++) {
+      let sentence = sentences[i];
+      const wordCount = sentence.split(/\s+/).length;
 
-    // 2. Process each paragraph individually
-    for (const para of paragraphs) {
-      try {
-        const colabResponse = await fetch(HUMANIZER_API_URL, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true' 
-          },
-          body: JSON.stringify({ text: para })
-        });
-
-        if (!colabResponse.ok) {
-          console.error("Colab Engine Error on paragraph, keeping original.");
-          finalHumanizedText += para + "\n\n"; // Fallback to original paragraph
-          continue;
+      // If a sentence is over 18 words, split it with an em-dash
+      if (wordCount > 18) {
+        const words = sentence.split(/\s+/);
+        const midPoint = Math.floor(words.length / 2);
+        // Find the nearest preposition or conjunction to split at
+        let splitPoint = midPoint;
+        for (let j = midPoint - 2; j <= midPoint + 2; j++) {
+          if (j > 0 && j < words.length && /^(and|but|or|which|that|because|since|while)/i.test(words[j])) {
+            splitPoint = j;
+            break;
+          }
         }
-
-        const colabData = await colabResponse.json();
-        // Append the humanized paragraph and add a newline to separate them!
-        finalHumanizedText += (colabData.humanized_text || para) + "\n\n";
-
-      } catch (err) {
-        console.error("Error processing paragraph:", err);
-        finalHumanizedText += para + "\n"; // Fallback to original paragraph
+        words.splice(splitPoint, 0, '—');
+        sentence = words.join(' ');
       }
+
+      // 3. Conversational Pivot Injector (Every 4th sentence)
+      if (i > 0 && i % 4 === 3) {
+        const pivots = ["Look, ", "The reality is, ", "In practice, ", "Simply put, ", "Basically, "];
+        const randomPivot = pivots[Math.floor(Math.random() * pivots.length)];
+        sentence = randomPivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
+      }
+
+      humanizedSentences.push(sentence);
     }
 
-    // 3. Return the properly formatted text
+    humanizedText = humanizedSentences.join(' ');
+
+    // 4. Final Clean up (Fix spacing issues around dashes/periods)
+    humanizedText = humanizedText.replace(/\s+([,.])/g, '$1');
+    humanizedText = humanizedText.replace(/—\s+([a-z])/g, (match, letter) => `— ${letter.toUpperCase()}`);
+
     return res.status(200).json({
       success: true,
-      data: finalHumanizedText.trim() // Trim the very last extra newline
+      data: humanizedText
     });
 
   } catch (error) {
-    console.error("Express API Error (Humanizer Proxy):", error);
-    return res.status(500).json({ success: false, error: "Internal humanizer processing failure." });
+    console.error("Micro-Humanizer Error:", error);
+    return res.status(500).json({ success: false, error: "Humanizer processing failure." });
   }
 });
 
