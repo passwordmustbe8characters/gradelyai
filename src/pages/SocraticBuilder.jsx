@@ -4,20 +4,21 @@ import { socraticChat } from '../lib/ai'
 
 export default function SocraticBuilder() {
   const navigate = useNavigate()
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: `Hey! I've analyzed your project guide. Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
+    const [messages, setMessages] = useState([
+    { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
   ])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const chatEndRef = useRef(null)
 
-    // Grab real project data from session storage
-  const savedProject = JSON.parse(sessionStorage.getItem('gradelyProject') || '{}')
-  const savedStructure = JSON.parse(sessionStorage.getItem('gradelyStructure') || '{}')
-  
+      // Grab real project data from the keys used by the rest of the app
+  const savedResult = JSON.parse(sessionStorage.getItem('gradelyResult') || 'null')
+  const savedProjectInfo = JSON.parse(sessionStorage.getItem('gradelyProject') || 'null')
+
+  // Safely extract topic and chapters
   const projectData = {
-    topic: savedProject.topic || "Unknown Topic",
-    chapters: savedStructure.chapters || []
+    topic: savedResult?.projectInfo?.topic || savedProjectInfo?.topic || "Unknown Topic",
+    chapters: savedResult?.structure?.chapters || []
   }
 
   const MIN_WORDS = 10
@@ -43,8 +44,7 @@ export default function SocraticBuilder() {
       // Call the real AI
       const chapter1Structure = projectData.chapters.find(c => c.number === 1)
       const aiReply = await socraticChat(
-        savedProject, 
-        chapter1Structure, 
+     chapter1Structure, 
         messages, 
         userMessage
       )
@@ -137,6 +137,20 @@ export default function SocraticBuilder() {
             </h4>
             {ch.sections.map(sec => {
                             const isReady = false; // Temporarily hardcoded so the UI doesn't break
+
+                              // If no project data found, redirect to start
+  if (!savedResult && !savedProjectInfo) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 24, marginBottom: 12 }}>No Project Found</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>Please generate a project first.</p>
+          <button className="btn-primary" onClick={() => navigate('/start')}>Start New Project</button>
+        </div>
+      </div>
+    )
+  }
+  
               return (
                 <div key={sec} style={{
                   padding: '12px 14px', borderRadius: '10px', marginBottom: '8px',
