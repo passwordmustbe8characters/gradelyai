@@ -84,9 +84,7 @@ app.post('/api/humanize', async (req, res) => {
       return res.status(400).json({ success: false, error: "Text field is strictly required." });
     }
 
-    console.log(`[Micro-Humanizer] Processing payload size: ${text.length} characters.`);
-
-    // 1. The AI Vocabulary Swapper
+    // 1. The AI Vocabulary Swapper (Same as before)
     const vocabSwaps = {
       "crucial": "key", "furthermore": "also", "moreover": "additionally",
       "delve": "explore", "intricate": "complex", "vital": "important",
@@ -122,32 +120,15 @@ app.post('/api/humanize', async (req, res) => {
       });
     }
 
-    // 2. The Burstiness Injector (Break up long AI sentences with em-dashes)
+    // 2. Safe Conversational Pivot Injector (Every 5th sentence)
     const sentences = humanizedText.split(/(?<=[.!?])\s+/);
     const humanizedSentences = [];
 
     for (let i = 0; i < sentences.length; i++) {
       let sentence = sentences[i];
-      const wordCount = sentence.split(/\s+/).length;
 
-      // If a sentence is over 18 words, split it with an em-dash
-      if (wordCount > 18) {
-        const words = sentence.split(/\s+/);
-        const midPoint = Math.floor(words.length / 2);
-        // Find the nearest preposition or conjunction to split at
-        let splitPoint = midPoint;
-        for (let j = midPoint - 2; j <= midPoint + 2; j++) {
-          if (j > 0 && j < words.length && /^(and|but|or|which|that|because|since|while)/i.test(words[j])) {
-            splitPoint = j;
-            break;
-          }
-        }
-        words.splice(splitPoint, 0, '—');
-        sentence = words.join(' ');
-      }
-
-      // 3. Conversational Pivot Injector (Every 4th sentence)
-      if (i > 0 && i % 4 === 3) {
+      // Only inject a pivot every 5th sentence to avoid crumpling
+      if (i > 0 && i % 5 === 4) {
         const pivots = ["Look, ", "The reality is, ", "In practice, ", "Simply put, ", "Basically, "];
         const randomPivot = pivots[Math.floor(Math.random() * pivots.length)];
         sentence = randomPivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
@@ -158,9 +139,8 @@ app.post('/api/humanize', async (req, res) => {
 
     humanizedText = humanizedSentences.join(' ');
 
-    // 4. Final Clean up (Fix spacing issues around dashes/periods)
+    // 3. Final Clean up
     humanizedText = humanizedText.replace(/\s+([,.])/g, '$1');
-    humanizedText = humanizedText.replace(/—\s+([a-z])/g, (match, letter) => `— ${letter.toUpperCase()}`);
 
     return res.status(200).json({
       success: true,
