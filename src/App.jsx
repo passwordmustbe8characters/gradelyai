@@ -7,6 +7,7 @@ import Results from './pages/Results'
 import Flashcards from './pages/Flashcards'
 import Admin from './pages/Admin'
 import Dashboard from './pages/Dashboard'
+import SocraticBuilder from './pages/SocraticBuilder' // <-- ADD THIS
 import { useAuth } from './lib/AuthContext'
 
 function ProtectedRoute({ children }) {
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/start" element={<Intake />} />
       <Route path="/generate" element={<Generate />} />
+      <Route path="/build" element={<SocraticBuilder />} /> {/* <-- ADD THIS */}
       <Route path="/results" element={<Results />} />
       <Route path="/flashcards" element={<Flashcards />} />
       <Route path="/admin" element={<Admin />} />
