@@ -1,38 +1,38 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { socraticChat } from '../lib/ai' 
+import { useState, useRef } from 'react'
+import { socraticChat } from '../lib/ai'
 
 export default function SocraticBuilder() {
-  const navigate = useNavigate()
-    const [messages, setMessages] = useState([
-    { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
-  ])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const chatEndRef = useRef(null)
 
-      // Grab real project data from the keys used by the rest of the app
-  const savedResult = JSON.parse(sessionStorage.getItem('gradelyResult') || 'null')
-  const savedProjectInfo = JSON.parse(sessionStorage.getItem('gradelyProject') || 'null')
-
-  // Safely extract topic and chapters
-  const projectData = {
-    topic: savedResult?.projectInfo?.topic || savedProjectInfo?.topic || "Unknown Topic",
-    chapters: savedResult?.structure?.chapters || []
+  // 1. Safely grab data from sessionStorage
+  let savedResult = null;
+  let savedProjectInfo = null;
+  try {
+    const res = sessionStorage.getItem('gradelyResult');
+    if (res) savedResult = JSON.parse(res);
+    const proj = sessionStorage.getItem('gradelyProject');
+    if (proj) savedProjectInfo = JSON.parse(proj);
+  } catch (e) {
+    console.error("Failed to read session storage", e);
   }
 
+  // 2. Extract topic and chapters with safe fallbacks
+  const projectData = {
+    topic: savedResult?.projectInfo?.topic || savedProjectInfo?.topic || "Your Project Topic",
+    chapters: savedResult?.structure?.chapters || [] // Use structure.chapters for subsections
+  }
+
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
+  ])
+
   const MIN_WORDS = 10
-
-  // Auto-scroll to bottom of chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
-
-  
   const wordCount = input.trim() === '' ? 0 : input.trim().split(/\s+/).length
   const isThresholdMet = wordCount >= MIN_WORDS
 
-   const handleSend = async () => {
+  const handleSend = async () => {
     if (!isThresholdMet) return
 
     const userMessage = input
@@ -41,10 +41,10 @@ export default function SocraticBuilder() {
     setIsTyping(true)
 
     try {
-      // Call the real AI
-      const chapter1Structure = projectData.chapters.find(c => c.number === 1)
+      const chapter1Structure = projectData.chapters.find(c => c.number === 1) || { subsections: [] }
       const aiReply = await socraticChat(
-     chapter1Structure, 
+        savedProjectInfo || savedResult?.projectInfo || {}, 
+        chapter1Structure, 
         messages, 
         userMessage
       )
@@ -130,50 +130,30 @@ export default function SocraticBuilder() {
       <div style={{ width: '340px', background: 'var(--bg-elevated)', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' }}>
         <h3 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, marginBottom: '20px', color: 'var(--text)' }}>Project Progress</h3>
         
-        {projectData.chapters.map(ch => (
-          <div key={ch.id}>
-            <h4 style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: '10px', marginTop: ch.id > 1 ? '20px' : '0' }}>
-              Chapter {ch.id}: {ch.title}
-            </h4>
-            {ch.sections.map(sec => {
-                            const isReady = false; // Temporarily hardcoded so the UI doesn't break
-
-                              // If no project data found, redirect to start
-  if (!savedResult && !savedProjectInfo) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 24, marginBottom: 12 }}>No Project Found</h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>Please generate a project first.</p>
-          <button className="btn-primary" onClick={() => navigate('/start')}>Start New Project</button>
-        </div>
-      </div>
-    )
-  }
-  
-              return (
-                <div key={sec} style={{
-                  padding: '12px 14px', borderRadius: '10px', marginBottom: '8px',
-                  border: `1px solid ${isReady ? 'var(--success)' : 'var(--border)'}`,
-                  background: isReady ? 'rgba(45,155,111,0.05)' : 'var(--bg)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <span style={{ fontSize: '13px', color: isReady ? 'var(--success)' : 'var(--text)', fontWeight: 500 }}>{sec}</span>
-                  {isReady && (
-                    <button 
-                      onClick={() => navigate('/results')}
-                      style={{
-                        padding: '5px 10px', borderRadius: '6px', border: 'none',
-                        background: 'var(--success)', color: 'white', fontSize: '11px', fontWeight: 600, cursor: 'pointer'
-                      }}>
-                      View
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        ))}
+        {projectData.chapters.length > 0 ? (
+          projectData.chapters.map(ch => (
+            <div key={ch.number || ch.title}>
+              <h4 style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: '10px', marginTop: ch.number > 1 ? '20px' : '0' }}>
+                Chapter {ch.number}: {ch.title}
+              </h4>
+              {(ch.subsections || []).map(sec => {
+                const sectionTitle = typeof sec === 'string' ? sec : sec.title;
+                return (
+                  <div key={sectionTitle} style={{
+                    padding: '12px 14px', borderRadius: '10px', marginBottom: '8px',
+                    border: `1px solid var(--border)`,
+                    background: 'var(--bg)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>{sectionTitle}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ))
+        ) : (
+          <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No project structure found. Please generate a project first.</p>
+        )}
       </div>
     </div>
   )
