@@ -1,10 +1,14 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { socraticChat } from '../lib/ai'
 
 export default function SocraticBuilder() {
+  const navigate = useNavigate()
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const chatEndRef = useRef(null)
+  const [completedSections, setCompletedSections] = useState([])
+  const [currentChapterComplete, setCurrentChapterComplete] = useState(false)
 
   // 1. Safely grab data from sessionStorage
   let savedResult = null;
@@ -18,19 +22,26 @@ export default function SocraticBuilder() {
     console.error("Failed to read session storage", e);
   }
 
-  // 2. Extract topic and chapters with safe fallbacks
+  // 2. Extract data
   const projectData = {
     topic: savedResult?.projectInfo?.topic || savedProjectInfo?.topic || "Your Project Topic",
-    chapters: savedResult?.structure?.chapters || [] // Use structure.chapters for subsections
+    chapters: savedResult?.structure?.chapters || [],
+    references: savedResult?.references || []
   }
 
   const [messages, setMessages] = useState([
     { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
   ])
 
-  const MIN_WORDS = 10
+  // Dynamic Word Counter Logic
+  const MIN_WORDS = currentChapterComplete ? 1 : 10
   const wordCount = input.trim() === '' ? 0 : input.trim().split(/\s+/).length
   const isThresholdMet = wordCount >= MIN_WORDS
+
+  // Auto-scroll
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, isTyping])
 
   const handleSend = async () => {
     if (!isThresholdMet) return
@@ -40,14 +51,34 @@ export default function SocraticBuilder() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setIsTyping(true)
 
+    // Reset chapter complete flag if they type a new command
+    if (currentChapterComplete && (userMessage.toLowerCase().includes('next chapter') || userMessage.toLowerCase().includes('refine'))) {
+      setCurrentChapterComplete(false)
+    }
+
     try {
       const chapter1Structure = projectData.chapters.find(c => c.number === 1) || { subsections: [] }
       const aiReply = await socraticChat(
         savedProjectInfo || savedResult?.projectInfo || {}, 
         chapter1Structure, 
         messages, 
-        userMessage
+        userMessage,
+        projectData.references // Pass references!
       )
+      
+      // Parse the reply for Draft tags and Chapter completion
+      if (aiReply.includes('[SECTION_DRAFT]')) {
+        // Extract section number (e.g., 1.1)
+        const sectionMatch = aiReply.match(/Section (\d+\.\d+)/i)
+        if (sectionMatch) {
+          setCompletedSections(prev => prev.includes(sectionMatch[1]) ? prev : [...prev, sectionMatch[1]])
+        }
+      }
+      
+      if (aiReply.toLowerCase().includes('chapter') && aiReply.toLowerCase().includes('complete')) {
+        setCurrentChapterComplete(true)
+      }
+
       setMessages(prev => [...prev, { role: 'assistant', content: aiReply }])
     } catch (err) {
       console.error(err)
@@ -56,30 +87,57 @@ export default function SocraticBuilder() {
     setIsTyping(false)
   }
 
+  // Helper to format AI messages (Split Draft from Chat)
+  const formatMessage = (content) => {
+    if (!content.includes('[SECTION_DRAFT]')) return <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
+    
+    const parts = content.split('[SECTION_DRAFT]')
+    const intro = parts[0]
+    const draftAndOutro = parts[1].split('[/SECTION_DRAFT]')
+    const draft = draftAndOutro[0]
+    const outro = draftAndOutro[1] || ''
+
+    return (
+      <>
+        {intro && <p style={{ marginBottom: 12, whiteSpace: 'pre-wrap' }}>{intro}</p>}
+        <div style={{
+          background: 'rgba(0,126,167,0.03)', border: '1px solid rgba(0,126,167,0.15)',
+          padding: '16px', borderRadius: '10px', marginBottom: 12, whiteSpace: 'pre-wrap', lineHeight: 1.7
+        }}>
+          {draft}
+        </div>
+        {outro && <p style={{ marginTop: 8, color: 'var(--success)', fontWeight: 600, whiteSpace: 'pre-wrap' }}>{outro}</p>}
+      </>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', fontFamily: 'Geist, sans-serif' }}>
       
-      {/* LEFT SIDE: The Chat Interface */}
+      {/* LEFT SIDE: Chat */}
       <div style={{ flex: 2, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-          <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)' }}>Chapter 1: Introduction</h2>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Topic: {projectData.topic}</p>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>Socratic Builder</h2>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Topic: {projectData.topic}</p>
+          </div>
+          <button className="btn-ghost" onClick={() => navigate('/dashboard')} style={{ fontSize: 13 }}>Exit</button>
         </div>
         
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {messages.map((msg, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
               <div style={{
-                maxWidth: '75%',
+                maxWidth: '80%',
                 padding: '14px 18px',
                 borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                 background: msg.role === 'user' ? 'var(--accent)' : 'var(--bg-card)',
                 color: msg.role === 'user' ? 'white' : 'var(--text)',
-                fontSize: '15px',
+                fontSize: '14px',
                 lineHeight: 1.6,
                 boxShadow: 'var(--shadow)'
               }}>
-                {msg.content}
+                {msg.role === 'assistant' ? formatMessage(msg.content) : msg.content}
               </div>
             </div>
           ))}
@@ -89,26 +147,28 @@ export default function SocraticBuilder() {
           <div ref={chatEndRef} />
         </div>
 
-        {/* The Word Count Enforcer Input */}
+        {/* Input Box */}
         <div style={{ padding: '20px 24px', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Tell the AI your thoughts in your own words..."
+                placeholder={currentChapterComplete ? "Type 'next chapter' or ask to refine..." : "Tell the AI your thoughts in your own words..."}
                 style={{
                   width: '100%', padding: '14px 60px 14px 14px', borderRadius: '12px',
                   border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
                   fontSize: '14px', fontFamily: 'Geist, sans-serif', resize: 'none', outline: 'none', minHeight: '60px'
                 }}
               />
-              <div style={{
-                position: 'absolute', bottom: '10px', right: '14px', fontSize: '11px',
-                color: isThresholdMet ? 'var(--success)' : 'var(--text-dim)', transition: 'color 0.2s', fontWeight: 600
-              }}>
-                {wordCount}/{MIN_WORDS}
-              </div>
+              {!currentChapterComplete && (
+                <div style={{
+                  position: 'absolute', bottom: '10px', right: '14px', fontSize: '11px',
+                  color: isThresholdMet ? 'var(--success)' : 'var(--text-dim)', transition: 'color 0.2s', fontWeight: 600
+                }}>
+                  {wordCount}/{MIN_WORDS}
+                </div>
+              )}
             </div>
             <button 
               onClick={handleSend} 
@@ -126,7 +186,7 @@ export default function SocraticBuilder() {
         </div>
       </div>
 
-      {/* RIGHT SIDE: The Quest Log / Side Panel */}
+      {/* RIGHT SIDE: Quest Log */}
       <div style={{ width: '340px', background: 'var(--bg-elevated)', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' }}>
         <h3 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, marginBottom: '20px', color: 'var(--text)' }}>Project Progress</h3>
         
@@ -138,21 +198,24 @@ export default function SocraticBuilder() {
               </h4>
               {(ch.subsections || []).map(sec => {
                 const sectionTitle = typeof sec === 'string' ? sec : sec.title;
+                const secNum = sectionTitle.split(' ')[0]; // e.g. "1.1"
+                const isReady = completedSections.includes(secNum);
                 return (
                   <div key={sectionTitle} style={{
                     padding: '12px 14px', borderRadius: '10px', marginBottom: '8px',
-                    border: `1px solid var(--border)`,
-                    background: 'var(--bg)',
+                    border: `1px solid ${isReady ? 'var(--success)' : 'var(--border)'}`,
+                    background: isReady ? 'rgba(45,155,111,0.05)' : 'var(--bg)',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
-                    <span style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>{sectionTitle}</span>
+                    <span style={{ fontSize: '13px', color: isReady ? 'var(--success)' : 'var(--text)', fontWeight: 500 }}>{sectionTitle}</span>
+                    {isReady && <span style={{ fontSize: '12px', color: 'var(--success)' }}>✓</span>}
                   </div>
                 )
               })}
             </div>
           ))
         ) : (
-          <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No project structure found. Please generate a project first.</p>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No project structure found.</p>
         )}
       </div>
     </div>
