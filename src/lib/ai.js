@@ -465,7 +465,7 @@ YOUR RULES:
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile', // Use Groq's fast model
+      model: 'gpt-4o-mini', // Use Groq's fast model
       max_tokens: 800,
       messages
     })
