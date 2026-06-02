@@ -7,8 +7,7 @@ export default function SocraticBuilder() {
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const chatEndRef = useRef(null)
-  const [completedSections, setCompletedSections] = useState([])
-  const [currentChapterComplete, setCurrentChapterComplete] = useState(false)
+    const [completedSections, setCompletedSections] = useState([])
 
   // 1. Safely grab data from sessionStorage
   let savedResult = null;
@@ -33,8 +32,9 @@ export default function SocraticBuilder() {
     { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
   ])
 
-  // Dynamic Word Counter Logic
-  const MIN_WORDS = currentChapterComplete ? 1 : 10
+   // Dynamic Word Counter Logic: If the last message was a draft, drop the word count to 1 so they can just type "yes"
+  const lastMessageWasDraft = messages.length > 0 && messages[messages.length - 1].role === 'assistant' && messages[messages.length - 1].content.includes('[SECTION_DRAFT]')
+  const MIN_WORDS = lastMessageWasDraft ? 1 : 10
   const wordCount = input.trim() === '' ? 0 : input.trim().split(/\s+/).length
   const isThresholdMet = wordCount >= MIN_WORDS
 
@@ -51,10 +51,7 @@ export default function SocraticBuilder() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setIsTyping(true)
 
-    // Reset chapter complete flag if they type a new command
-    if (currentChapterComplete && (userMessage.toLowerCase().includes('next chapter') || userMessage.toLowerCase().includes('refine'))) {
-      setCurrentChapterComplete(false)
-    }
+    
 
     try {
       const chapter1Structure = projectData.chapters.find(c => c.number === 1) || { subsections: [] }
@@ -75,9 +72,7 @@ export default function SocraticBuilder() {
         }
       }
       
-      if (aiReply.toLowerCase().includes('chapter') && aiReply.toLowerCase().includes('complete')) {
-        setCurrentChapterComplete(true)
-      }
+      
 
       setMessages(prev => [...prev, { role: 'assistant', content: aiReply }])
     } catch (err) {
@@ -154,20 +149,20 @@ export default function SocraticBuilder() {
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={currentChapterComplete ? "Type 'next chapter' or ask to refine..." : "Tell the AI your thoughts in your own words..."}
+               placeholder={lastMessageWasDraft ? "Type 'yes' or 'next'..." : "Tell the AI your thoughts in your own words..."}
                 style={{
                   width: '100%', padding: '14px 60px 14px 14px', borderRadius: '12px',
                   border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)',
                   fontSize: '14px', fontFamily: 'Geist, sans-serif', resize: 'none', outline: 'none', minHeight: '60px'
                 }}
               />
-              {!currentChapterComplete && (
-                <div style={{
-                  position: 'absolute', bottom: '10px', right: '14px', fontSize: '11px',
-                  color: isThresholdMet ? 'var(--success)' : 'var(--text-dim)', transition: 'color 0.2s', fontWeight: 600
-                }}>
-                  {wordCount}/{MIN_WORDS}
-                </div>
+              {!lastMessageWasDraft && (
+                              <div style={{
+                position: 'absolute', bottom: '10px', right: '14px', fontSize: '11px',
+                color: isThresholdMet ? 'var(--success)' : 'var(--text-dim)', transition: 'color 0.2s', fontWeight: 600
+              }}>
+                {lastMessageWasDraft ? '✓' : `${wordCount}/${MIN_WORDS}`}
+              </div>
               )}
             </div>
             <button 
