@@ -105,7 +105,7 @@ export default function Intake() {
   sessionStorage.removeItem('gradelyResult')
   sessionStorage.removeItem('gradelyProjectDbId')
 
-  navigate('/generate')
+  navigate('/build')
 }
 
   return (

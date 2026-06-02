@@ -462,7 +462,7 @@ YOUR RULES:
 5. CITATIONS: You MUST cite the provided EXISTING REFERENCES using [SOURCE: Author, Year] format in the text. If no references are provided, write clean academic prose WITHOUT ANY CITATIONS. NEVER invent sources. NEVER use placeholders like (Author, Year).
 6. OUTPUT FORMAT: You MUST wrap the academic draft in [SECTION_DRAFT] and [/SECTION_DRAFT] tags.
 7. After the [/SECTION_DRAFT] tag, add a short conversational message like: ✅ Section 1.1 is ready! Shall we move to 1.2?
-8. When all sections of a chapter are drafted, ask: "Chapter X is complete! Do you want to refine anything, or shall we move to the next chapter?"`
+8. When ALL sections of Chapter 1 are drafted, you MUST output the tag [CHAPTER_1_COMPLETE]. Then say: "🎉 Chapter 1 is complete! Click 'Save & Review Ch 1' at the top to see your work. To build Chapters 2-5, you'll need to unlock the full project." STOP generating after this tag.`
 
   const messages = [
     { role: 'system', content: system },

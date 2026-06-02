@@ -677,6 +677,11 @@ const handleHumanize = async () => {
             <SaveIcon /> Save to Dashboard
           </button>
 
+                    <button className="btn-ghost" onClick={() => navigate('/build')} style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Back to Grad
+          </button>
+
           {paid && (
             <>
               <SpinningButton onClick={handleFlashcards} loading={loadingFlashcards}

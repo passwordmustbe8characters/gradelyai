@@ -1,14 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { socraticChat } from '../lib/ai'
+import { socraticChat, generateProjectStructure } from '../lib/ai'
+
+const STORAGE_KEY_CHAT = 'gradelyChatHistory';
+const STORAGE_KEY_SECTIONS = 'gradelyCompletedSections';
 
 export default function SocraticBuilder() {
   const navigate = useNavigate()
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [isLoadingStructure, setIsLoadingStructure] = useState(true) // New loading state
   const chatEndRef = useRef(null)
-  const [completedSections, setCompletedSections] = useState([])
-
+  
+  // Load Project Data safely first
   let savedResult = null;
   let savedProjectInfo = null;
   try {
@@ -24,12 +28,79 @@ export default function SocraticBuilder() {
     references: savedResult?.references || []
   }
 
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
-  ])
+  // 1. Load Chat History safely
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY_CHAT);
+      const parsed = saved ? JSON.parse(saved) : [];
+      if (parsed.length > 0) return parsed;
+    } catch (e) {
+      console.error('Failed to load chat history:', e);
+    }
+    return []; // Return empty, we will add greeting after structure is ready
+  });
+
+  const [completedSections, setCompletedSections] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY_SECTIONS);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { console.error(e); return []; }
+  });
+
+  // 2. Auto-Generate Structure on Mount if missing
+  useEffect(() => {
+    const initProject = async () => {
+      // Check if structure already exists in gradelyResult
+      if (savedResult?.structure?.chapters?.length > 0) {
+        setIsLoadingStructure(false);
+        // Add greeting if chat is empty
+        if (messages.length === 0) {
+          setMessages([
+            { role: 'assistant', content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?` }
+          ]);
+        }
+        return;
+      }
+
+      // If no structure, generate it!
+      setIsLoadingStructure(true);
+      try {
+        const projInfo = savedProjectInfo || {};
+        const structure = await generateProjectStructure(projInfo);
+        
+        const newResult = {
+          ...projInfo,
+          structure: structure,
+          chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
+          abstract: '',
+          references: [],
+          projectInfo: projInfo,
+          humanized: false
+        };
+        sessionStorage.setItem('gradelyResult', JSON.stringify(newResult));
+        
+        // Reload the page to initialize with new data safely
+        window.location.reload(); 
+
+      } catch (err) {
+        console.error("Failed to generate structure:", err);
+        alert("Failed to generate project structure. Please try again.");
+        navigate('/start');
+      } finally {
+        setIsLoadingStructure(false);
+      }
+    };
+
+    initProject();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save Chat History & Sections
+  useEffect(() => { sessionStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages)); }, [messages]);
+  useEffect(() => { sessionStorage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(completedSections)); }, [completedSections]);
 
   const lastMessageWasDraft = messages.length > 0 && messages[messages.length - 1].role === 'assistant' && messages[messages.length - 1].content.includes('[SECTION_DRAFT]')
-  const MIN_WORDS = lastMessageWasDraft ? 1 : 10
+  const isChapter1Complete = messages.some(m => m.content.includes('[CHAPTER_1_COMPLETE]'))
+  const MIN_WORDS = (lastMessageWasDraft || isChapter1Complete) ? 1 : 10
   const wordCount = input.trim() === '' ? 0 : input.trim().split(/\s+/).length
   const isThresholdMet = wordCount >= MIN_WORDS
 
@@ -43,16 +114,16 @@ export default function SocraticBuilder() {
     setIsTyping(true)
 
     try {
-      const chapter1Structure = projectData.chapters.find(c => c.number === 1) || { subsections: [] }
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
+      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
       const aiReply = await socraticChat(
-        savedProjectInfo || savedResult?.projectInfo || {}, 
+        savedProjectInfo || currentResult?.projectInfo || {}, 
         chapter1Structure, 
         messages, 
         userMessage,
-        projectData.references
+        currentResult?.references || []
       )
       
-      // Parse Draft & Auto-Save
       if (aiReply.includes('[SECTION_DRAFT]')) {
         const outroText = aiReply.split('[/SECTION_DRAFT]')[1] || '';
         const sectionMatch = outroText.match(/(\d+\.\d+)/);
@@ -60,15 +131,14 @@ export default function SocraticBuilder() {
           setCompletedSections(prev => prev.includes(sectionMatch[1]) ? prev : [...prev, sectionMatch[1]])
         }
 
-        // AUTO-SAVE: Append draft to sessionStorage immediately
         const parts = aiReply.split('[SECTION_DRAFT]');
         if (parts.length > 1) {
           const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim();
-          if (draftContent && savedResult) {
-            let currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
-            if (currentResult.chapters && currentResult.chapters[0]) {
-              currentResult.chapters[0].content = (currentResult.chapters[0].content || '') + '\n\n' + draftContent;
-              sessionStorage.setItem('gradelyResult', JSON.stringify(currentResult));
+          if (draftContent) {
+            let currentResultUpdate = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
+            if (currentResultUpdate.chapters && currentResultUpdate.chapters[0]) {
+              currentResultUpdate.chapters[0].content = (currentResultUpdate.chapters[0].content || '') + '\n\n' + draftContent;
+              sessionStorage.setItem('gradelyResult', JSON.stringify(currentResultUpdate));
             }
           }
         }
@@ -83,7 +153,10 @@ export default function SocraticBuilder() {
   }
 
   const formatMessage = (content) => {
-    if (!content.includes('[SECTION_DRAFT]')) return <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
+    if (!content.includes('[SECTION_DRAFT]')) {
+      const cleanContent = content.replace('[CHAPTER_1_COMPLETE]', '');
+      return <span style={{ whiteSpace: 'pre-wrap' }}>{cleanContent}</span>
+    }
     const parts = content.split('[SECTION_DRAFT]')
     const intro = parts[0]
     const draftAndOutro = parts[1].split('[/SECTION_DRAFT]')
@@ -98,9 +171,19 @@ export default function SocraticBuilder() {
     )
   }
 
-  const handleSaveAndExit = () => {
-    // Since we auto-saved, we can just navigate straight to results!
+  const handleSaveAndReview = () => {
     navigate('/results');
+  }
+
+  // Loading State UI
+  if (isLoadingStructure) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ width: 40, height: 40, border: '3px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: 20 }} />
+        <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 24, color: 'var(--text)' }}>Grad is reading your guide...</h2>
+        <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Generating your chapter structure.</p>
+      </div>
+    )
   }
 
   return (
@@ -108,13 +191,17 @@ export default function SocraticBuilder() {
       <div style={{ flex: 2, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--border)' }}>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>Socratic Builder</h2>
+            <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>Grad <span style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 400 }}>(Your Project Gee)</span></h2>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Topic: {projectData.topic}</p>
           </div>
-          {/* NEW BUTTON */}
-          <button className="btn-primary" onClick={handleSaveAndExit} style={{ fontSize: 13, padding: '8px 16px' }}>
-            💾 Save & View Project
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn-ghost" onClick={() => { sessionStorage.removeItem(STORAGE_KEY_CHAT); sessionStorage.removeItem(STORAGE_KEY_SECTIONS); navigate('/dashboard') }} style={{ fontSize: 13 }}>Exit</button>
+            {isChapter1Complete && (
+              <button className="btn-primary" onClick={handleSaveAndReview} style={{ fontSize: 13, padding: '8px 16px' }}>
+                💾 Save & Review Ch 1
+              </button>
+            )}
+          </div>
         </div>
         
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -125,16 +212,16 @@ export default function SocraticBuilder() {
               </div>
             </div>
           ))}
-          {isTyping && <div style={{ color: 'var(--text-dim)', fontSize: 14, fontStyle: 'italic' }}>GradelyAI is typing...</div>}
+          {isTyping && <div style={{ color: 'var(--text-dim)', fontSize: 14, fontStyle: 'italic' }}>Grad is typing...</div>}
           <div ref={chatEndRef} />
         </div>
 
         <div style={{ padding: '20px 24px', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
             <div style={{ flex: 1, position: 'relative' }}>
-              <textarea value={input} onChange={(e) => setInput(e.target.value)} placeholder={lastMessageWasDraft ? "Type 'yes' or 'next'..." : "Tell the AI your thoughts in your own words..."} style={{ width: '100%', padding: '14px 60px 14px 14px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '14px', fontFamily: 'Geist, sans-serif', resize: 'none', outline: 'none', minHeight: '60px' }} />
+              <textarea value={input} onChange={(e) => setInput(e.target.value)} placeholder={isChapter1Complete ? "Type 'pay' to unlock chapters 2-5..." : (lastMessageWasDraft ? "Type 'yes' or 'next'..." : "Tell Grad your thoughts in your own words...")} style={{ width: '100%', padding: '14px 60px 14px 14px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontSize: '14px', fontFamily: 'Geist, sans-serif', resize: 'none', outline: 'none', minHeight: '60px' }} />
               <div style={{ position: 'absolute', bottom: '10px', right: '14px', fontSize: '11px', color: isThresholdMet ? 'var(--success)' : 'var(--text-dim)', transition: 'color 0.2s', fontWeight: 600 }}>
-                {lastMessageWasDraft ? '✓' : `${wordCount}/${MIN_WORDS}`}
+                {(lastMessageWasDraft || isChapter1Complete) ? '✓' : `${wordCount}/${MIN_WORDS}`}
               </div>
             </div>
             <button onClick={handleSend} disabled={!isThresholdMet || isTyping} style={{ padding: '14px 20px', borderRadius: '12px', border: 'none', background: isThresholdMet ? 'var(--accent)' : 'var(--bg-card)', color: isThresholdMet ? 'white' : 'var(--text-dim)', cursor: isThresholdMet ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 600, fontFamily: 'Geist, sans-serif', transition: 'all 0.2s' }}>Send</button>
