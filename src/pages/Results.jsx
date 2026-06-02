@@ -529,7 +529,7 @@ const handleHumanize = async () => {
     sessionStorage.setItem('gradely_continue_from', '2')
     sessionStorage.setItem('gradely_existing_chapters', JSON.stringify(result.chapters))
 
-    navigate('/generate')
+    navigate('/build')
   }
 
   const handleTextInstruct = async (selectedText, instruction, manualEdit) => {
