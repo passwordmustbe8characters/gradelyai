@@ -5,13 +5,6 @@ import { useAuth } from '../lib/AuthContext'
 import { NIGERIAN_UNIVERSITIES, DEPARTMENTS_BY_FACULTY, getAreasForDepartment } from '../lib/universities'
 import SearchableSelect from '../components/SearchableSelect'
 
-const STYLE_QUESTIONS = [
-  { key: 'q1', question: "In your own words, what problem does your project solve? Explain it like you're telling a friend who knows nothing about it." },
-  { key: 'q2', question: "Why did you choose this topic? What made it interesting to you personally?" },
-  { key: 'q3', question: "If your project works perfectly, what changes in the real world?" },
-  { key: 'q4', question: "How would you explain your methodology or approach to your younger sibling?" },
-  { key: 'q5', question: "In one paragraph, summarize your project like you're presenting it to your panel right now." },
-]
 
 export default function Intake() {
   const navigate = useNavigate()
@@ -88,16 +81,12 @@ export default function Intake() {
     reader.readAsText(file)
   }
 
-  const handleContinue = () => {
-  const styleAnswers = form.styleAnswers || {}
-  const styleSample = Object.values(styleAnswers).filter(v => v.trim()).join('\n\n')
-
+    const handleContinue = () => {
   sessionStorage.setItem('gradelyProject', JSON.stringify({
     ...form,
     supervisorName: form.supervisorName,
     topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
     projectType: form.selectedTopic?.type || form.projectType || 'research',
-    styleSample,
     guideContent: form.guideContent || ''
   }))
 
@@ -289,71 +278,8 @@ export default function Intake() {
           </StepCard>
         )}
 
-        {/* Step 9 — Style capture */}
-        {/* Step 9 — Style capture */}
-{step === 9 && (
-  <StepCard
-    title="Write in your own voice"
-    subtitle="Answer these naturally — like you're talking to a friend. Don't overthink it.">
-
-    {form.guideFound && (
-      <div style={{ marginBottom: 20, padding: '12px 16px', borderRadius: 12, background: 'rgba(45,155,111,0.08)', border: '1px solid rgba(45,155,111,0.2)' }}>
-        <p style={{ fontSize: 13, color: 'var(--success)', fontWeight: 600 }}>
-          ✓ We found your department guide: {form.guideFound}
-        </p>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-          Your project will follow this structure exactly.
-        </p>
-      </div>
-    )}
-
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {STYLE_QUESTIONS.map((q, i) => (
-        <div key={q.key}>
-          <label className="label" style={{ textTransform: 'none', fontSize: 14, marginBottom: 8, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            {i + 1}. {q.question}
-          </label>
-          <textarea
-            className="input"
-            rows={3}
-            placeholder="Write naturally — there's no wrong answer..."
-            value={form.styleAnswers?.[q.key] || ''}
-            onChange={e => update('styleAnswers', { ...form.styleAnswers, [q.key]: e.target.value })}
-            style={{ resize: 'vertical' }}
-          />
-        </div>
-      ))}
-    </div>
-
-    <div style={{
-      marginTop: 20, padding: '12px 16px',
-      borderRadius: 'var(--radius-sm)',
-      background: 'rgba(0,126,167,0.06)',
-      border: '1px solid rgba(0,126,167,0.15)'
-    }}>
-      <p style={{ fontSize: 13, color: 'var(--accent)', lineHeight: 1.6 }}>
-        <strong>Why we ask this:</strong> Your answers help GradelyAI write your project in your natural voice — so it sounds like you wrote it.
-      </p>
-    </div>
-
-    <StepNav
-      onBack={() => setStep(form.hasGuide ? 8 : 7)}
-      onNext={() => {
-        const answers = form.styleAnswers || {}
-        const filled = Object.values(answers).filter(v => v.trim().length > 20)
-        if (filled.length < 3) {
-          alert('Please answer at least 3 questions to help us capture your voice.')
-          return
-        }
-        setStep(10)
-      }}
-      nextLabel="Continue →"
-    />
-  </StepCard>
-)}
-
-        {/* Step 10 — Final details */}
-        {step === 10 && (
+               {/* Step 9 — Final details */}
+        {step === 9 && (
           <StepCard title="Almost there." subtitle="A few final details to make your project as accurate as possible">
                         <label className="label">Supervisor's Full Name</label>
             <input className="input"
@@ -384,7 +310,7 @@ export default function Intake() {
               style={{ width: '100%', justifyContent: 'center', marginTop: 28, fontSize: 16, padding: '14px' }}>
               Generate My Project →
             </button>
-            <button className="btn-ghost" onClick={() => setStep(9)}
+            <button className="btn-ghost" onClick={() => setStep(8)}
               style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
               ← Back
             </button>
