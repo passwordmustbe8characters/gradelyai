@@ -63,10 +63,11 @@ export default function SocraticBuilder() {
         projectData.references // Pass references!
       )
       
-      // Parse the reply for Draft tags and Chapter completion
+            // Parse the reply for Draft tags and Chapter completion
       if (aiReply.includes('[SECTION_DRAFT]')) {
-        // Extract section number (e.g., 1.1)
-        const sectionMatch = aiReply.match(/Section (\d+\.\d+)/i)
+        // Extract section number (e.g., 1.1) from the chatty part after the draft
+        const outroText = aiReply.split('[/SECTION_DRAFT]')[1] || '';
+        const sectionMatch = outroText.match(/(\d+\.\d+)/); // Just look for the X.Y pattern
         if (sectionMatch) {
           setCompletedSections(prev => prev.includes(sectionMatch[1]) ? prev : [...prev, sectionMatch[1]])
         }
@@ -106,6 +107,43 @@ export default function SocraticBuilder() {
     )
   }
 
+  const handleSaveAndExit = () => {
+    if (!savedResult) {
+      alert("No original project data found to save to.");
+      navigate('/dashboard');
+      return;
+    }
+
+    // Extract all drafts from the chat history
+    const allDrafts = [];
+    messages.forEach(msg => {
+      if (msg.role === 'assistant' && msg.content.includes('[SECTION_DRAFT]')) {
+        const parts = msg.content.split('[SECTION_DRAFT]');
+        parts.slice(1).forEach(part => {
+          const draftContent = part.split('[/SECTION_DRAFT]')[0].trim();
+          if (draftContent) allDrafts.push(draftContent);
+        });
+      }
+    });
+
+    // Join the drafts into one massive chapter text (for now, assigning to Chapter 1)
+    const compiledChapterText = allDrafts.join('\n\n');
+
+    // Update the saved result with the generated content
+    const updatedChapters = savedResult.chapters.map(ch => {
+      if (ch.number === 1) {
+        return { ...ch, content: compiledChapterText }
+      }
+      return ch
+    });
+
+    const finalResult = { ...savedResult, chapters: updatedChapters, humanized: true };
+    sessionStorage.setItem('gradelyResult', JSON.stringify(finalResult));
+
+    // Navigate to the results page to view the final document
+    navigate('/results');
+  }
+
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)', fontFamily: 'Geist, sans-serif' }}>
       
@@ -116,7 +154,9 @@ export default function SocraticBuilder() {
             <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>Socratic Builder</h2>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Topic: {projectData.topic}</p>
           </div>
-          <button className="btn-ghost" onClick={() => navigate('/dashboard')} style={{ fontSize: 13 }}>Exit</button>
+                  <button className="btn-primary" onClick={handleSaveAndExit} style={{ fontSize: 13, padding: '8px 16px' }}>
+             Save & View Project
+          </button>
         </div>
         
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
