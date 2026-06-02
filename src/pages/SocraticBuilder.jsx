@@ -67,39 +67,142 @@ const styles = `
 
   /* ── HEADER ── */
   .sb-header {
-    padding: 18px 28px;
+    padding: 14px 24px;
     border-bottom: 1px solid var(--border-light);
-    background: rgba(247, 245, 240, 0.72);
+    background: rgba(247, 245, 240, 0.82);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 16px;
   }
+  .sb-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+  .sb-avatar {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent) 0%, rgba(0,157,201,0.7) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Melodrama', serif;
+    font-size: 17px;
+    color: white;
+    flex-shrink: 0;
+    box-shadow: 0 2px 10px rgba(0,126,167,0.22), inset 0 1px 0 rgba(255,255,255,0.2);
+    letter-spacing: -0.5px;
+  }
+  .sb-header-text { min-width: 0; }
   .sb-header-title {
     font-family: 'Melodrama', serif;
-    font-size: 22px;
+    font-size: 19px;
     color: var(--text);
     margin: 0;
     letter-spacing: -0.3px;
     line-height: 1.2;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .sb-header-subtitle {
-    font-size: 13px;
+    font-size: 12.5px;
     color: var(--text-muted);
     font-family: 'Geist', sans-serif;
     font-weight: 400;
-    margin-left: 8px;
+  }
+  .sb-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 5px;
+    flex-wrap: wrap;
   }
   .sb-header-topic {
     font-size: 12px;
     color: var(--text-dim);
-    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 320px;
+  }
+  .sb-progress-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(0,126,167,0.08);
+    color: var(--accent);
+    border: 1px solid rgba(0,126,167,0.14);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .sb-progress-pill.complete {
+    background: rgba(45,155,111,0.08);
+    color: var(--success);
+    border-color: rgba(45,155,111,0.18);
   }
   .sb-header-actions {
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-shrink: 0;
+  }
+
+  /* ── SIDEBAR COLLAPSE ── */
+  .sb-sidebar {
+    transition: width 0.3s ease, padding 0.3s ease, opacity 0.25s ease;
+    overflow: hidden;
+  }
+  .sb-sidebar.collapsed {
+    width: 0 !important;
+    padding: 0 !important;
+    opacity: 0;
+    border-left: none;
+  }
+  .sb-collapse-btn {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 22px;
+    height: 52px;
+    background: rgba(255,255,255,0.82);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: -2px 0 12px rgba(0,0,0,0.06);
+  }
+  .sb-collapse-btn:hover {
+    background: rgba(255,255,255,0.96);
+    box-shadow: -3px 0 16px rgba(0,0,0,0.10);
+  }
+  .sb-collapse-btn svg {
+    transition: transform 0.3s ease;
+    color: var(--text-muted);
+  }
+  .sb-collapse-btn.collapsed svg {
+    transform: rotate(180deg);
+  }
+  .sb-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 22px;
   }
 
   /* ── MESSAGES ── */
@@ -273,6 +376,7 @@ const styles = `
     border-left: 1px solid var(--border-light);
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
+    flex-shrink: 0;
   }
   .sb-sidebar::-webkit-scrollbar       { width: 3px; }
   .sb-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -281,7 +385,7 @@ const styles = `
     font-family: 'Melodrama', serif;
     font-size: 20px;
     color: var(--text);
-    margin: 0 0 22px 0;
+    margin: 0;
     letter-spacing: -0.2px;
   }
   .sb-chapter-label {
@@ -389,6 +493,7 @@ export default function SocraticBuilder() {
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isLoadingStructure, setIsLoadingStructure] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const chatEndRef = useRef(null)
 
   let savedResult = null;
@@ -411,7 +516,9 @@ export default function SocraticBuilder() {
       const saved = sessionStorage.getItem(STORAGE_KEY_CHAT);
       const parsed = saved ? JSON.parse(saved) : [];
       if (parsed.length > 0) return parsed;
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
     return [];
   });
 
@@ -419,7 +526,9 @@ export default function SocraticBuilder() {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY_SECTIONS);
       return saved ? JSON.parse(saved) : [];
-    } catch (e) { console.error(e); return []; }
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
@@ -557,12 +666,20 @@ export default function SocraticBuilder() {
 
         <div className="sb-chat-panel">
           <div className="sb-header">
-            <div>
-              <h2 className="sb-header-title">
-                Grad
-                <span className="sb-header-subtitle">(Your Project Gee)</span>
-              </h2>
-              <p className="sb-header-topic">Topic: {projectData.topic}</p>
+            <div className="sb-header-left">
+              <div className="sb-avatar">G</div>
+              <div className="sb-header-text">
+                <h2 className="sb-header-title">
+                  Grad
+                  <span className="sb-header-subtitle">(Your Project Gee)</span>
+                </h2>
+                <div className="sb-header-meta">
+                  <p className="sb-header-topic">📁 {projectData.topic}</p>
+                  <span className={`sb-progress-pill${isChapter1Complete ? ' complete' : ''}`}>
+                    {isChapter1Complete ? '✓ Ch 1 Complete' : `${completedSections.length} section${completedSections.length !== 1 ? 's' : ''} done`}
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="sb-header-actions">
               <button
@@ -641,8 +758,21 @@ export default function SocraticBuilder() {
           </div>
         </div>
 
-        <div className="sb-sidebar">
-          <h3 className="sb-sidebar-title">Project Progress</h3>
+        {/* Collapse toggle */}
+        <button
+          className={`sb-collapse-btn${sidebarOpen ? '' : ' collapsed'}`}
+          onClick={() => setSidebarOpen(p => !p)}
+          title={sidebarOpen ? 'Collapse panel' : 'Expand panel'}
+        >
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 1L2 7L7 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+
+        <div className={`sb-sidebar${sidebarOpen ? '' : ' collapsed'}`}>
+          <div className="sb-sidebar-header">
+            <h3 className="sb-sidebar-title">Project Progress</h3>
+          </div>
           {projectData.chapters.length > 0 ? (
             projectData.chapters.map(ch => (
               <div key={ch.number || ch.title}>
