@@ -8,6 +8,7 @@ import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import db from './database.js'
+import Groq from 'groq-sdk'
 
 
 
@@ -17,11 +18,16 @@ const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse-new')
 // ⬆️ END FIX ⬆️
 
+
 dotenv.config()
+
+// Initialize Groq client
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+})
 
 const app = express()
 const upload = multer({ dest: 'uploads/' })
-
 
 app.use(express.json());
 
@@ -69,6 +75,106 @@ function requireAuth(req, res, next) {
     res.status(401).json({ error: 'Invalid or expired token' })
   }
 }
+
+// ============================================
+// MICRO-HUMANIZER CLASS (Pure Node.js, no AI)
+// ============================================
+class MicroHumanizer {
+  constructor() {
+    this.wordSwaps = {
+      'crucial': 'key',
+      'furthermore': 'also',
+      'moreover': 'plus',
+      'nevertheless': 'but',
+      'consequently': 'so',
+      'accordingly': 'thus',
+      'delve': 'explore',
+      'robust': 'strong',
+      'leverage': 'use',
+      'facilitate': 'help',
+      'utilize': 'use',
+      'pivotal': 'major',
+      'underscore': 'show',
+      'notably': 'especially',
+      'tapestry': 'mix',
+      'paradigm': 'model',
+      'synergy': 'teamwork',
+      'in addition': 'also',
+      'on the other hand': 'but',
+      'as a result': 'so'
+    };
+    
+    this.pivots = [
+      'Look, ',
+      'The reality is, ',
+      'Basically, ',
+      'In practice, ',
+      'Here\'s the thing: ',
+      'Simply put, '
+    ];
+  }
+  
+  humanize(text, alterationPercentage = 0.15) {
+    if (!text || typeof text !== 'string') return text;
+    let result = text;
+    
+    // 1. Swap banned AI words
+    for (const [ai, human] of Object.entries(this.wordSwaps)) {
+      const regex = new RegExp(`\\b${ai}\\b`, 'gi');
+      result = result.replace(regex, (match) => {
+        return match[0].toUpperCase() === match[0] 
+          ? human[0].toUpperCase() + human.slice(1)
+          : human;
+      });
+    }
+    
+    // 2. Split long sentences with em-dash
+    const sentences = result.split(/(?<=[.!?])\s+/);
+    const processed = [];
+    
+    for (const sentence of sentences) {
+      const wordCount = sentence.split(/\s+/).length;
+      if (wordCount > 18 && Math.random() < alterationPercentage) {
+        const words = sentence.split(/\s+/);
+        const splitPoint = Math.floor(wordCount * 0.6);
+        const firstPart = words.slice(0, splitPoint).join(' ');
+        const secondPart = words.slice(splitPoint).join(' ');
+        processed.push(`${firstPart} — ${secondPart.toLowerCase()}`);
+      } else {
+        processed.push(sentence);
+      }
+    }
+    result = processed.join(' ');
+    
+    // 3. Inject conversational pivots (15% of sentences)
+    const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
+    const numToAlter = Math.floor(sentencesWithPivots.length * alterationPercentage);
+    const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
+    
+    for (const idx of indicesToAlter) {
+      const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
+      sentencesWithPivots[idx] = pivot + sentencesWithPivots[idx][0].toLowerCase() + sentencesWithPivots[idx].slice(1);
+    }
+    result = sentencesWithPivots.join(' ');
+    
+    // 4. Cleanup
+    result = result.replace(/\s+([,.!?])/g, '$1');
+    result = result.replace(/\s+—/g, ' —');
+    
+    return result;
+  }
+  
+  _getRandomIndices(max, count) {
+    const indices = [];
+    while (indices.length < count && indices.length < max) {
+      const idx = Math.floor(Math.random() * max);
+      if (!indices.includes(idx)) indices.push(idx);
+    }
+    return indices;
+  }
+}
+
+const humanizer = new MicroHumanizer();
 
 // ─── GRADELYAI: MASTER PIPELINE PRODUCTION ROUTES ─────────────────────────────
 
@@ -152,6 +258,69 @@ app.post('/api/humanize', async (req, res) => {
     return res.status(500).json({ success: false, error: "Humanizer processing failure." });
   }
 });
+
+// ============================================
+// GROQ + MICRO-HUMANIZER SOCRATIC ENDPOINT
+// ============================================
+app.post('/api/socratic-generate', requireAuth, async (req, res) => {
+  const { messages, projectInfo, chapterStructure } = req.body;
+  
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ success: false, error: 'Messages array is required' });
+  }
+  
+  try {
+    // Step 1: Call Groq for fast generation
+    const completion = await groq.chat.completions.create({
+      model: "llama3-70b-8192",
+      messages: [
+        {
+          role: "system",
+          content: `You are a Socratic academic writing assistant. Help the student build their project section by section.
+
+PROJECT TOPIC: "${projectInfo?.topic || 'Unknown'}"
+CHAPTER STRUCTURE: ${JSON.stringify(chapterStructure || {})}
+
+RULES:
+- Ask ONE question at a time
+- When the student gives their core thought, write a substantial draft (3-4 paragraphs)
+- The first sentence of your draft MUST be the student's exact core argument
+- Do NOT use these words: crucial, furthermore, moreover, delve, robust, leverage, utilize
+- After the draft, ask if they want to move to the next section
+- When all sections of Chapter 1 are done, output [CHAPTER_1_COMPLETE]`
+        },
+        ...messages
+      ],
+      temperature: 0.7,
+      max_tokens: 1500
+    });
+    
+    let aiReply = completion.choices[0].message.content;
+    
+    // Step 2: Apply Micro-Humanizer (only for drafts, not short questions)
+    const isDraft = aiReply.includes('[SECTION_DRAFT]') || 
+                    aiReply.includes('paragraph') || 
+                    aiReply.length > 300;
+    
+    if (isDraft) {
+      aiReply = humanizer.humanize(aiReply, 0.12);
+    }
+    
+    res.json({ 
+      success: true, 
+      message: aiReply,
+      usage: completion.usage
+    });
+    
+  } catch (error) {
+    console.error('Groq API error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 
 /**
  * 2. THE SUPERVISOR CORRECTION PERSISTENCE TRACKER

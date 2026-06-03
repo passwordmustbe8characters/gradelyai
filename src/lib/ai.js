@@ -441,48 +441,38 @@ export async function humanizeText(text) {
 
 // ─── SOCRATIC CHAT ────────────────────────────────────────────────────────────
 
-export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage, existingReferences = []) {
+
+export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage) {
+  const BASE_URL = import.meta.env.VITE_API_URL || '';
+  const token = localStorage.getItem('token');
   
-  // Format existing references for the prompt
-  const refString = existingReferences.length > 0 
-    ? existingReferences.map(r => `- ${r.citation}`).join('\n')
-    : "No references available.";
-
-   const system = `You are a friendly but rigorous Nigerian university thesis co-writer. Your job is to build the project section by section using the Socratic method.
-
-PROJECT TOPIC: "${projectInfo.topic}"
-CHAPTER STRUCTURE: ${JSON.stringify(chapterStructure)}
-EXISTING REFERENCES:\n${refString}
-
-YOUR RULES:
-1. THE DILEMMA FIX: If the student is stuck, OFFER 2-3 academic suggestions based on the topic, and ask them which direction they prefer.
-2. Once the student gives their core thought or picks a suggestion, write a SUBSTANTIAL draft for that section (3 to 4 rich paragraphs).
-3. CRITICAL: The first sentence of your draft MUST be the student's exact core argument. DO NOT upgrade their words to AI buzzwords. Keep their natural vocabulary and only fix glaring grammar errors.
-4. BANNED AI WORDS: Never use: crucial, furthermore, moreover, delve, intricate, tapestry, vital, underscore, utilize, pivotal, significant, ensure, fostering, catalyzing, harmonizing, leveraging, navigating, underscoring, facilitating. Use simple, direct verbs (e.g., helps, creates, uses, shows, starts).
-5. CITATIONS: You MUST cite the provided EXISTING REFERENCES using [SOURCE: Author, Year] format in the text. If no references are provided, write clean academic prose WITHOUT ANY CITATIONS. NEVER invent sources. NEVER use placeholders like (Author, Year).
-6. OUTPUT FORMAT: You MUST wrap the academic draft in [SECTION_DRAFT] and [/SECTION_DRAFT] tags.
-7. After the [/SECTION_DRAFT] tag, add a short conversational message like: ✅ Section 1.1 is ready! Shall we move to 1.2?
-8. When ALL sections of Chapter 1 are drafted, you MUST output the tag [CHAPTER_1_COMPLETE]. Then say: "🎉 Chapter 1 is complete! Click 'Save & Review Ch 1' at the top to see your work. To build Chapters 2-5, you'll need to unlock the full project." STOP generating after this tag.`
-
-  const messages = [
-    { role: 'system', content: system },
-    ...chatHistory.map(msg => ({ role: msg.role, content: msg.content })),
-    { role: 'user', content: userMessage }
-  ]
-
-  const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/ai`, {
+  // Format messages for the API
+  const messages = chatHistory.map(msg => ({
+    role: msg.role,
+    content: msg.content
+  }));
+  
+  const response = await fetch(`${BASE_URL}/api/socratic-generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
     body: JSON.stringify({
-      model: 'gpt-4o-mini', // or 'gpt-4o' / groq model
-      max_tokens: 2000, // Increased for longer drafts
-      messages
+      messages,
+      projectInfo,
+      chapterStructure,
+      userMessage
     })
-  })
-
-  if (!res.ok) throw new Error('Socratic chat failed')
-  const data = await res.json()
-  return data.choices[0].message.content
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Socratic chat failed');
+  }
+  
+  const data = await response.json();
+  return data.message;
 }
 
 // ─── REWRITE SELECTION ───────────────────────────────────────────────────────
