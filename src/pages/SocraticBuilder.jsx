@@ -5,6 +5,31 @@ import { socraticChat, generateProjectStructure } from '../lib/ai'
 const STORAGE_KEY_CHAT = 'gradelyChatHistory';
 const STORAGE_KEY_SECTIONS = 'gradelyCompletedSections';
 
+const ProgressList = ({ chapters, completedSections }) => (
+  <>
+    {chapters.length > 0 ? (
+      chapters.map(ch => (
+        <div key={ch.number || ch.title}>
+          <div className="sb-chapter-label">Chapter {ch.number}: {ch.title}</div>
+          {(ch.subsections || []).map(sec => {
+            const sectionTitle = typeof sec === 'string' ? sec : sec.title;
+            const secNum = sectionTitle.split(' ')[0];
+            const isReady = completedSections.includes(secNum);
+            return (
+              <div key={sectionTitle} className={`sb-section-item ${isReady ? 'done' : 'pending'}`}>
+                <span className={`sb-section-text ${isReady ? 'done' : 'pending'}`}>{sectionTitle}</span>
+                {isReady && <span className="sb-section-check">✓</span>}
+              </div>
+            )
+          })}
+        </div>
+      ))
+    ) : (
+      <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No project structure found.</p>
+    )}
+  </>
+)
+
 const styles = `
   @keyframes spin {
     to { transform: rotate(360deg); }
@@ -25,17 +50,21 @@ const styles = `
     0%,100% { box-shadow: 0 4px 18px rgba(0,126,167,0.28), 0 0 0 0   rgba(0,126,167,0.22); }
     50%      { box-shadow: 0 4px 18px rgba(0,126,167,0.28), 0 0 0 6px rgba(0,126,167,0);    }
   }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
 
+  /* ── ROOT ── */
   .sb-root {
     display: flex;
     height: 100vh;
+    height: 100dvh;
     background: var(--bg);
     font-family: 'Geist', sans-serif;
     position: relative;
     overflow: hidden;
   }
-
-  /* ambient blobs — light palette */
   .sb-root::before {
     content: '';
     position: fixed;
@@ -57,25 +86,26 @@ const styles = `
 
   /* ── CHAT PANEL ── */
   .sb-chat-panel {
-    flex: 2;
+    flex: 1;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--border);
     position: relative;
     z-index: 1;
+    min-width: 0;
   }
 
   /* ── HEADER ── */
   .sb-header {
     padding: 14px 24px;
     border-bottom: 1px solid var(--border-light);
-    background: rgba(247, 245, 240, 0.82);
+    background: rgba(247,245,240,0.82);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+    flex-shrink: 0;
   }
   .sb-header-left {
     display: flex;
@@ -127,7 +157,7 @@ const styles = `
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 320px;
+    max-width: 280px;
   }
   .sb-progress-pill {
     display: inline-flex;
@@ -142,6 +172,7 @@ const styles = `
     border: 1px solid rgba(0,126,167,0.14);
     white-space: nowrap;
     flex-shrink: 0;
+    cursor: default;
   }
   .sb-progress-pill.complete {
     background: rgba(45,155,111,0.08);
@@ -153,61 +184,6 @@ const styles = `
     gap: 10px;
     align-items: center;
     flex-shrink: 0;
-  }
-
-  /* ── SIDEBAR COLLAPSE ── */
-  .sb-sidebar {
-    transition: width 0.3s ease, padding 0.3s ease, opacity 0.25s ease;
-  }
-  .sb-sidebar.collapsed {
-    width: 0 !important;
-    padding: 0 !important;
-    opacity: 0;
-    border-left: none;
-    overflow: hidden;
-  }
-  .sb-sidebar-reopen {
-    position: absolute;
-    right: 0; top: 50%;
-    transform: translateY(-50%);
-    z-index: 5;
-    width: 20px; height: 48px;
-    background: rgba(255,255,255,0.75);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border);
-    border-right: none;
-    border-radius: 8px 0 0 8px;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--text-dim);
-    transition: all 0.2s ease;
-    box-shadow: -2px 0 8px rgba(0,0,0,0.05);
-  }
-  .sb-sidebar-reopen:hover {
-    background: var(--bg-card);
-    color: var(--text-muted);
-  }
-  .sb-collapse-btn {
-    width: 28px; height: 28px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.6);
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-    color: var(--text-muted);
-  }
-  .sb-collapse-btn:hover {
-    background: var(--bg-card);
-    border-color: var(--text-dim);
-    color: var(--text);
-  }
-  .sb-collapse-btn svg {
-    transition: transform 0.3s ease;
-  }
-  .sb-collapse-btn.open svg {
-    transform: rotate(180deg);
   }
 
   /* ── MESSAGES ── */
@@ -236,7 +212,7 @@ const styles = `
     line-height: 1.68;
   }
   .sb-bubble.user {
-    background: rgba(0, 126, 167, 0.88);
+    background: rgba(0,126,167,0.88);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid rgba(0,157,201,0.3);
@@ -275,20 +251,14 @@ const styles = `
   }
 
   .sb-typing {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-dim);
-    font-size: 13px;
-    font-style: italic;
+    display: flex; align-items: center; gap: 10px;
+    color: var(--text-dim); font-size: 13px; font-style: italic;
     padding-left: 4px;
   }
   .sb-typing-dots { display: flex; gap: 5px; }
   .sb-typing-dot {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
-    opacity: 0.55;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent); opacity: 0.55;
     animation: float 1.1s ease-in-out infinite;
   }
   .sb-typing-dot:nth-child(2) { animation-delay: 0.18s; }
@@ -301,10 +271,10 @@ const styles = `
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--border-light);
+    flex-shrink: 0;
   }
   .sb-input-row { display: flex; align-items: flex-end; gap: 12px; }
   .sb-textarea-wrap { flex: 1; position: relative; }
-
   .sb-textarea {
     width: 100%;
     padding: 14px 56px 14px 18px;
@@ -329,29 +299,22 @@ const styles = `
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(0,126,167,0.10), 0 2px 10px rgba(0,0,0,0.04);
   }
-
   .sb-word-count {
-    position: absolute;
-    bottom: 11px; right: 15px;
-    font-size: 11px; font-weight: 600;
-    transition: color 0.2s;
+    position: absolute; bottom: 11px; right: 15px;
+    font-size: 11px; font-weight: 600; transition: color 0.2s;
   }
   .sb-word-count.met   { color: var(--success); }
   .sb-word-count.unmet { color: var(--text-dim); }
 
   .sb-send-btn {
-    border-radius: 100px;
-    border: none;
+    border-radius: 100px; border: none;
     font-size: 14px; font-weight: 600;
     font-family: 'Geist', sans-serif;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-    padding: 14px 24px;
+    cursor: pointer; transition: all 0.2s ease;
+    white-space: nowrap; padding: 14px 24px;
   }
   .sb-send-btn.active {
-    background: var(--accent);
-    color: white;
+    background: var(--accent); color: white;
     animation: pulse-ring 3s infinite;
   }
   .sb-send-btn.active:hover {
@@ -360,15 +323,14 @@ const styles = `
     box-shadow: 0 6px 24px rgba(0,126,167,0.38);
   }
   .sb-send-btn.inactive {
-    background: var(--bg-elevated);
-    color: var(--text-dim);
-    cursor: not-allowed;
-    border: 1.5px solid var(--border);
+    background: var(--bg-elevated); color: var(--text-dim);
+    cursor: not-allowed; border: 1.5px solid var(--border);
   }
 
-  /* ── SIDEBAR ── */
+  /* ── DESKTOP SIDEBAR ── */
   .sb-sidebar {
     width: 300px;
+    flex-shrink: 0;
     background: rgba(240,237,232,0.65);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
@@ -381,40 +343,52 @@ const styles = `
     border-left: 1px solid var(--border-light);
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
-    flex-shrink: 0;
+    transition: width 0.3s ease, padding 0.3s ease, opacity 0.25s ease;
   }
   .sb-sidebar::-webkit-scrollbar       { width: 3px; }
   .sb-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .sb-sidebar.collapsed {
+    width: 0 !important;
+    padding: 0 !important;
+    opacity: 0;
+    border-left: none;
+    overflow: hidden;
+  }
 
+  .sb-sidebar-header {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    margin-bottom: 22px;
+  }
   .sb-sidebar-title {
     font-family: 'Melodrama', serif;
-    font-size: 20px;
-    color: var(--text);
-    margin: 0;
-    letter-spacing: -0.2px;
+    font-size: 20px; color: var(--text);
+    margin: 0; letter-spacing: -0.2px;
   }
-  .sb-chapter-label {
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 1.3px;
-    color: var(--text-dim);
-    font-weight: 600;
-    margin-top: 20px;
-    margin-bottom: 9px;
-    padding-left: 2px;
+  .sb-collapse-btn {
+    width: 32px; height: 32px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.5);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease; flex-shrink: 0; color: var(--text-muted);
   }
+  .sb-collapse-btn:hover {
+    background: var(--bg-card); border-color: var(--text-dim); color: var(--text);
+  }
+  .sb-collapse-btn.active { color: var(--accent); border-color: rgba(0,126,167,0.25); background: rgba(0,126,167,0.06); }
 
+  .sb-chapter-label {
+    font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 1.3px; color: var(--text-dim);
+    font-weight: 600; margin-top: 20px; margin-bottom: 9px; padding-left: 2px;
+  }
   .sb-section-item {
-    padding: 11px 14px;
-    border-radius: var(--radius-sm);
-    margin-bottom: 6px;
-    border: 1px solid;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    padding: 11px 14px; border-radius: var(--radius-sm);
+    margin-bottom: 6px; border: 1px solid;
+    display: flex; justify-content: space-between; align-items: center;
     transition: all 0.22s ease;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
   .sb-section-item.done {
     border-color: rgba(45,155,111,0.22);
@@ -437,29 +411,98 @@ const styles = `
   .sb-section-text.pending { color: var(--text-muted); }
   .sb-section-check { font-size: 12px; color: var(--success); }
 
+  /* ── MOBILE BOTTOM SHEET ── */
+  .sb-sheet-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 40;
+    background: rgba(13,13,12,0.35);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: fadeUp 0.2s ease forwards;
+  }
+  .sb-sheet-overlay.open { display: block; }
+
+  .sb-sheet {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 50;
+    max-height: 75vh;
+    background: rgba(247,245,240,0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border-top: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    display: flex; flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.32,0.72,0,1);
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.12);
+  }
+  .sb-sheet.open { transform: translateY(0); }
+
+  .sb-sheet-handle-row {
+    padding: 14px 20px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border-light);
+    flex-shrink: 0;
+  }
+  .sb-sheet-handle {
+    width: 36px; height: 4px; border-radius: 2px;
+    background: var(--border); margin: 0 auto 0;
+    position: absolute; left: 50%; transform: translateX(-50%); top: 10px;
+  }
+  .sb-sheet-title {
+    font-family: 'Melodrama', serif;
+    font-size: 18px; color: var(--text); margin: 0;
+  }
+  .sb-sheet-close {
+    width: 28px; height: 28px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.6);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); transition: all 0.2s;
+  }
+  .sb-sheet-close:hover { background: var(--bg-card); color: var(--text); }
+
+  .sb-sheet-body {
+    flex: 1; overflow-y: auto; padding: 16px 20px 32px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+
+  /* Progress button shown in header on mobile */
+  .sb-progress-btn {
+    display: none;
+    align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 20px;
+    border: 1px solid rgba(0,126,167,0.2);
+    background: rgba(0,126,167,0.07);
+    color: var(--accent); font-size: 12px; font-weight: 600;
+    font-family: 'Geist', sans-serif; cursor: pointer;
+    transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+  }
+  .sb-progress-btn.complete {
+    border-color: rgba(45,155,111,0.2);
+    background: rgba(45,155,111,0.07);
+    color: var(--success);
+  }
+  .sb-progress-btn:hover { opacity: 0.8; }
+
   /* ── LOADING ── */
   .sb-loading {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg);
-    position: relative;
-    overflow: hidden;
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: var(--bg); position: relative; overflow: hidden;
   }
   .sb-loading::before {
     content: '';
-    position: absolute;
-    top: 50%; left: 50%;
+    position: absolute; top: 50%; left: 50%;
     transform: translate(-50%,-50%);
     width: 480px; height: 480px;
     background: radial-gradient(circle, rgba(0,157,201,0.09) 0%, transparent 65%);
     pointer-events: none;
   }
   .sb-spinner {
-    width: 42px; height: 42px;
-    border-radius: 50%;
+    width: 42px; height: 42px; border-radius: 50%;
     border: 2px solid var(--border);
     border-top: 2px solid var(--accent);
     animation: spin 0.85s linear infinite;
@@ -467,31 +510,77 @@ const styles = `
     box-shadow: 0 0 18px rgba(0,126,167,0.18);
   }
   .sb-loading-title {
-    font-family: 'Melodrama', serif;
-    font-size: 26px;
-    color: var(--text);
-    margin: 0 0 8px 0;
-    letter-spacing: -0.3px;
+    font-family: 'Melodrama', serif; font-size: 26px;
+    color: var(--text); margin: 0 0 8px 0; letter-spacing: -0.3px;
+    text-align: center; padding: 0 24px;
   }
   .sb-loading-sub { color: var(--text-muted); font-size: 14px; margin: 0; }
   .sb-loading-bar {
-    margin-top: 32px;
-    width: 180px; height: 2px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-    position: relative;
+    margin-top: 32px; width: 180px; height: 2px;
+    background: var(--border); border-radius: 2px;
+    overflow: hidden; position: relative;
   }
   .sb-loading-bar::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0;
+    content: ''; position: absolute; top: 0; left: 0;
     height: 100%; width: 40%;
     background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    background-size: 200% 100%;
-    animation: shimmer 1.6s infinite;
+    background-size: 200% 100%; animation: shimmer 1.6s infinite;
+  }
+
+  /* ── MOBILE OVERRIDES ── */
+  @media (max-width: 768px) {
+    .sb-root { flex-direction: column; }
+
+    /* hide desktop sidebar entirely */
+    .sb-sidebar        { display: none !important; }
+    .sb-sidebar-reopen { display: none !important; }
+
+    /* show the progress button in header */
+    .sb-progress-btn { display: inline-flex; }
+
+    /* hide progress pill (replaced by button) */
+    .sb-progress-pill { display: none; }
+
+    /* tighter header */
+    .sb-header { padding: 12px 16px; gap: 10px; }
+    .sb-avatar  { width: 34px; height: 34px; font-size: 14px; border-radius: 10px; }
+    .sb-header-title    { font-size: 17px; }
+    .sb-header-subtitle { display: none; }
+    .sb-header-topic    { max-width: 160px; font-size: 11px; }
+    .sb-header-meta     { margin-top: 3px; gap: 6px; }
+
+    /* exit button text → icon on mobile */
+    .sb-exit-label { display: none; }
+    .sb-exit-icon  { display: inline !important; }
+
+    /* messages */
+    .sb-messages { padding: 16px 14px 12px; gap: 14px; }
+    .sb-bubble   { max-width: 88%; padding: 12px 15px; font-size: 14px; }
+
+    /* input */
+    .sb-input-area { padding: 12px 14px 16px; }
+    .sb-textarea   { font-size: 14px; padding: 12px 48px 12px 14px; min-height: 50px; }
+    .sb-send-btn   { padding: 12px 18px; font-size: 13px; }
+  }
+
+  @media (max-width: 380px) {
+    .sb-header-topic { display: none; }
+    .sb-send-btn { padding: 12px 14px; }
   }
 `;
+
+const ChevronDown = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M9 4.5L6 7.5L3 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+)
+
+const PanelIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.4"/>
+    <line x1="10.5" y1="1.5" x2="10.5" y2="14.5" stroke="currentColor" strokeWidth="1.4"/>
+  </svg>
+)
 
 export default function SocraticBuilder() {
   const navigate = useNavigate()
@@ -499,6 +588,7 @@ export default function SocraticBuilder() {
   const [isTyping, setIsTyping] = useState(false)
   const [isLoadingStructure, setIsLoadingStructure] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const chatEndRef = useRef(null)
 
   let savedResult = null;
@@ -521,8 +611,8 @@ export default function SocraticBuilder() {
       const saved = sessionStorage.getItem(STORAGE_KEY_CHAT);
       const parsed = saved ? JSON.parse(saved) : [];
       if (parsed.length > 0) return parsed;
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
     return [];
   });
@@ -551,13 +641,9 @@ export default function SocraticBuilder() {
         const projInfo = savedProjectInfo || {};
         const structure = await generateProjectStructure(projInfo);
         const newResult = {
-          ...projInfo,
-          structure,
+          ...projInfo, structure,
           chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
-          abstract: '',
-          references: [],
-          projectInfo: projInfo,
-          humanized: false
+          abstract: '', references: [], projectInfo: projInfo, humanized: false
         };
         sessionStorage.setItem('gradelyResult', JSON.stringify(newResult));
         window.location.reload();
@@ -574,6 +660,12 @@ export default function SocraticBuilder() {
 
   useEffect(() => { sessionStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages)); }, [messages]);
   useEffect(() => { sessionStorage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(completedSections)); }, [completedSections]);
+
+  // lock body scroll when sheet is open
+  useEffect(() => {
+    document.body.style.overflow = sheetOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; }
+  }, [sheetOpen]);
 
   const lastMessageWasDraft = messages.length > 0 &&
     messages[messages.length - 1].role === 'assistant' &&
@@ -596,10 +688,7 @@ export default function SocraticBuilder() {
       const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
       const aiReply = await socraticChat(
         savedProjectInfo || currentResult?.projectInfo || {},
-        chapter1Structure,
-        messages,
-        userMessage,
-        currentResult?.references || []
+        chapter1Structure, messages, userMessage, currentResult?.references || []
       )
       if (aiReply.includes('[SECTION_DRAFT]')) {
         const outroText = aiReply.split('[/SECTION_DRAFT]')[1] || '';
@@ -665,20 +754,29 @@ export default function SocraticBuilder() {
   return (
     <>
       <style>{styles}</style>
-      <div className="sb-root">
 
+      {/* ── MOBILE BOTTOM SHEET ── */}
+      <div
+        className={`sb-sheet-overlay${sheetOpen ? ' open' : ''}`}
+        onClick={() => setSheetOpen(false)}
+      />
+      <div className={`sb-sheet${sheetOpen ? ' open' : ''}`}>
+        <div className="sb-sheet-handle-row" style={{ position: 'relative' }}>
+          <div className="sb-sheet-handle" />
+          <h3 className="sb-sheet-title">Project Progress</h3>
+          <button className="sb-sheet-close" onClick={() => setSheetOpen(false)}>
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M1 1L10 10M10 1L1 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div className="sb-sheet-body"><ProgressList chapters={projectData.chapters} completedSections={completedSections} /></div>
+      </div>
+
+      <div className="sb-root">
         <div className="sb-chat-panel" style={{ position: 'relative' }}>
-          {!sidebarOpen && (
-            <button
-              className="sb-sidebar-reopen"
-              onClick={() => setSidebarOpen(true)}
-              title="Show progress"
-            >
-              <svg width="8" height="12" viewBox="0 0 8 12" fill="none">
-                <path d="M2 1L6 6L2 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          )}
+
+          {/* ── HEADER ── */}
           <div className="sb-header">
             <div className="sb-header-left">
               <div className="sb-avatar">G</div>
@@ -689,9 +787,18 @@ export default function SocraticBuilder() {
                 </h2>
                 <div className="sb-header-meta">
                   <p className="sb-header-topic">📁 {projectData.topic}</p>
+                  {/* desktop pill */}
                   <span className={`sb-progress-pill${isChapter1Complete ? ' complete' : ''}`}>
                     {isChapter1Complete ? '✓ Ch 1 Complete' : `${completedSections.length} section${completedSections.length !== 1 ? 's' : ''} done`}
                   </span>
+                  {/* mobile button — opens sheet */}
+                  <button
+                    className={`sb-progress-btn${isChapter1Complete ? ' complete' : ''}`}
+                    onClick={() => setSheetOpen(true)}
+                  >
+                    {isChapter1Complete ? '✓ Done' : `${completedSections.length}/${projectData.chapters.reduce((a,c) => a + (c.subsections?.length||0), 0)}`}
+                    <ChevronDown />
+                  </button>
                 </div>
               </div>
             </div>
@@ -705,20 +812,30 @@ export default function SocraticBuilder() {
                 }}
                 style={{ fontSize: 13 }}
               >
-                Exit
+                <span className="sb-exit-label">Exit</span>
+                <span className="sb-exit-icon" style={{ display: 'none' }}>✕</span>
               </button>
               {isChapter1Complete && (
                 <button
                   className="btn-accent"
                   onClick={() => navigate('/results')}
-                  style={{ fontSize: 13, padding: '8px 18px' }}
+                  style={{ fontSize: 13, padding: '8px 16px' }}
                 >
-                  Save &amp; Review Ch 1
+                  Save &amp; Review
                 </button>
               )}
+              {/* panel toggle — desktop only */}
+              <button
+                className={`sb-collapse-btn hide-mobile${sidebarOpen ? ' active' : ''}`}
+                onClick={() => setSidebarOpen(p => !p)}
+                title={sidebarOpen ? 'Hide panel' : 'Show panel'}
+              >
+                <PanelIcon />
+              </button>
             </div>
           </div>
 
+          {/* ── MESSAGES ── */}
           <div className="sb-messages">
             {messages.map((msg, i) => (
               <div key={i} className={`sb-msg-row ${msg.role}`}>
@@ -730,9 +847,7 @@ export default function SocraticBuilder() {
             {isTyping && (
               <div className="sb-typing">
                 <div className="sb-typing-dots">
-                  <div className="sb-typing-dot" />
-                  <div className="sb-typing-dot" />
-                  <div className="sb-typing-dot" />
+                  <div className="sb-typing-dot" /><div className="sb-typing-dot" /><div className="sb-typing-dot" />
                 </div>
                 Grad is thinking...
               </div>
@@ -740,6 +855,7 @@ export default function SocraticBuilder() {
             <div ref={chatEndRef} />
           </div>
 
+          {/* ── INPUT ── */}
           <div className="sb-input-area">
             <div className="sb-input-row">
               <div className="sb-textarea-wrap">
@@ -749,11 +865,9 @@ export default function SocraticBuilder() {
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
-                    isChapter1Complete
-                      ? "Type 'pay' to unlock chapters 2-5..."
-                      : lastMessageWasDraft
-                        ? "Type 'yes' or 'next'..."
-                        : "Tell Grad your thoughts in your own words..."
+                    isChapter1Complete ? "Type 'pay' to unlock chapters 2-5..."
+                    : lastMessageWasDraft ? "Type 'yes' or 'next'..."
+                    : "Tell Grad your thoughts in your own words..."
                   }
                   rows={2}
                 />
@@ -772,43 +886,12 @@ export default function SocraticBuilder() {
           </div>
         </div>
 
+        {/* ── DESKTOP SIDEBAR ── */}
         <div className={`sb-sidebar${sidebarOpen ? '' : ' collapsed'}`}>
           <div className="sb-sidebar-header">
             <h3 className="sb-sidebar-title">Project Progress</h3>
-            <button
-              className={`sb-collapse-btn${sidebarOpen ? ' open' : ''}`}
-              onClick={() => setSidebarOpen(p => !p)}
-              title={sidebarOpen ? 'Collapse' : 'Expand'}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 4.5L6 7.5L3 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
           </div>
-          {projectData.chapters.length > 0 ? (
-            projectData.chapters.map(ch => (
-              <div key={ch.number || ch.title}>
-                <div className="sb-chapter-label">
-                  Chapter {ch.number}: {ch.title}
-                </div>
-                {(ch.subsections || []).map(sec => {
-                  const sectionTitle = typeof sec === 'string' ? sec : sec.title;
-                  const secNum = sectionTitle.split(' ')[0];
-                  const isReady = completedSections.includes(secNum);
-                  return (
-                    <div key={sectionTitle} className={`sb-section-item ${isReady ? 'done' : 'pending'}`}>
-                      <span className={`sb-section-text ${isReady ? 'done' : 'pending'}`}>
-                        {sectionTitle}
-                      </span>
-                      {isReady && <span className="sb-section-check">✓</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            ))
-          ) : (
-            <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No project structure found.</p>
-          )}
+          <ProgressList chapters={projectData.chapters} completedSections={completedSections} />
         </div>
 
       </div>
