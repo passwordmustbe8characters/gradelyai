@@ -97,8 +97,8 @@ export default function Auth() {
       </div>
 
       {/* Card */}
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 440 }}>
-        <div className="card" style={{ padding: 'clamp(24px, 5vw, 40px) clamp(20px, 5vw, 36px)' }}>
+      <div className="container" style={{ maxWidth: 440 }}>
+  <div className="card">
 
           {/* Mode tabs */}
           <div style={{

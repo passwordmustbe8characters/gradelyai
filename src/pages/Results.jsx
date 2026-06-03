@@ -648,23 +648,23 @@ const handleHumanize = async () => {
   }
 
   if (!result) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+    <div className="container" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
       <p style={{ color: 'var(--text-muted)' }}>Loading your project...</p>
     </div>
   )
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }} className="sb-root">
 
       {/* Top bar */}
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 10,
-        background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border)',
-        padding: '12px 24px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 12, flexWrap: 'wrap'
-      }}>
+     <div style={{
+  position: 'sticky', top: 0, zIndex: 10,
+  background: 'rgba(247,245,240,0.92)', backdropFilter: 'blur(12px)',
+  borderBottom: '1px solid var(--border)',
+  padding: '12px 24px',
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  gap: 12, flexWrap: 'wrap'
+}}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
           onClick={() => navigate('/')}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
@@ -711,15 +711,18 @@ const handleHumanize = async () => {
       </div>
 
       {/* Main layout */}
-      <div style={{
-        display: 'flex', flex: 1,
-        maxWidth: 1200, margin: '0 auto', width: '100%',
-        padding: paid ? '32px 24px' : '32px 24px 100px 24px',
-        gap: 24, position: 'relative', zIndex: 1
-      }}>
+      <div className="container" style={{
+  display: 'flex',
+  flex: 1,
+  maxWidth: 1200,
+  padding: paid ? 'clamp(1rem, 3vw, 2rem)' : 'clamp(1rem, 3vw, 2rem) clamp(0.75rem, 2vw, 1.5rem) 100px clamp(0.75rem, 2vw, 1.5rem)',
+  gap: 'clamp(0.75rem, 2vw, 1.5rem)',
+  position: 'relative',
+  zIndex: 1
+}}>
 
         {/* Sidebar — desktop only */}
-        <div style={{ width: 240, flexShrink: 0 }} className="hide-mobile">
+        <div style={{ width: 'clamp(200px, 20vw, 240px)', flexShrink: 0 }} className="hide-mobile">
           <div className="card" style={{ position: 'sticky', top: 90 }}>
             <p style={{ fontFamily: 'Melodrama, serif', fontSize: 15, fontWeight: 700, marginBottom: 4, lineHeight: 1.4, color: 'var(--text)' }}>
               {result.projectInfo.topic}
@@ -795,12 +798,13 @@ const handleHumanize = async () => {
         </div>
 
         {/* Mobile tab bar */}
-        <div className="show-mobile" style={{
-          position: 'fixed', bottom: paid ? 0 : 80, left: 0, right: 0,
-          background: 'rgba(247,245,240,0.96)', backdropFilter: 'blur(12px)',
-          borderTop: '1px solid var(--border)', zIndex: 40,
-          display: 'flex', overflowX: 'auto', padding: '8px 16px', gap: 8
-        }}>
+       <div className="show-mobile" style={{
+  position: 'fixed', bottom: paid ? 0 : 80, left: 0, right: 0,
+  background: 'rgba(247,245,240,0.96)', backdropFilter: 'blur(12px)',
+  borderTop: '1px solid var(--border)', zIndex: 40,
+  display: 'flex', overflowX: 'auto', padding: 'clamp(0.5rem, 2vw, 0.75rem) clamp(0.75rem, 3vw, 1rem)', gap: 'clamp(0.5rem, 2vw, 0.75rem)',
+  WebkitOverflowScrolling: 'touch'
+}}>
           {result.chapters.map((ch, i) => (
             <button key={i}
               onClick={() => {
@@ -846,7 +850,7 @@ const handleHumanize = async () => {
         </div>
 
         {/* Main content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+       <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
 
           {/* Project tab */}
           {activeTab === 'project' && result.chapters[activeChapter] && (
@@ -887,7 +891,7 @@ const handleHumanize = async () => {
               </div>
 
               {/* Chapter content */}
-              <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none', position: 'relative' }}>
+              <div className="card" style={{ borderRadius: '0 0 16px 16px', borderTop: 'none', position: 'relative', overflowX: 'auto' }}>
                 <TextEditor onInstruct={handleTextInstruct} />
                 <div style={{ lineHeight: 1.9, fontSize: 15, color: 'var(--text)', userSelect: 'text' }}>
                   {renderContentWithSources(result.chapters[activeChapter].content)}

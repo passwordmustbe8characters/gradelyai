@@ -152,7 +152,7 @@ export default function Intake() {
         <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18, color: 'var(--text)' }}>GradelyAI</span>
       </div>
 
-      <div style={{ width: '100%', maxWidth: 560 }}>
+      <div className="container" style={{ maxWidth: 560 }}>
 
         {/* Step 1 — Name */}
         {step === 1 && (

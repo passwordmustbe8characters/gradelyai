@@ -105,7 +105,7 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '48px 24px' }}>
+      <div className="container" style={{ maxWidth: 1100 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 48, flexWrap: 'wrap', gap: 20 }}>
@@ -142,7 +142,7 @@ export default function Dashboard() {
 
         {/* Stats row */}
         {projects.length > 0 && (
-         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 40 }}>
+       <div className="grid-responsive" style={{ marginBottom: 'clamp(1.5rem, 5vw, 2.5rem)' }}>
             {[
               {
                 label: 'Total Projects',

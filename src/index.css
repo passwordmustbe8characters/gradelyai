@@ -8,34 +8,11 @@
   font-display: swap;
 }
 
-/* ─── MOBILE UTILITIES ─────────────────────────────────────────────── */
-
-@media (max-width: 600px) {
-  .pricing-grid {
-    grid-template-columns: 1fr !important;
-  }
-}
-
-
-@media (max-width: 768px) {
-  .hide-mobile { display: none !important; }
-  .show-mobile { display: flex !important; }
-}
-
-@media (min-width: 769px) {
-  .show-mobile { display: none !important; }
-}
-
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@keyframes strokeRun {
-  0% { stroke-dashoffset: 300; }
-  100% { stroke-dashoffset: 0; }
-}
-
+/* ─── CSS VARIABLES ─────────────────────────────────────────────────── */
 :root {
   --bg: #F7F5F0;
   --bg-card: #FFFFFF;
@@ -53,11 +30,18 @@
   --danger: #D94F4F;
   --radius: 20px;
   --radius-sm: 12px;
+  --radius-md: 16px;
   --shadow: 0 2px 12px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 24px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+/* ─── RESET & BASE ─────────────────────────────────────────────────── */
+* { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+}
 
 body {
   background: var(--bg);
@@ -67,21 +51,41 @@ body {
   line-height: 1.6;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-::-webkit-scrollbar { width: 6px; }
+/* ─── SCROLLBAR ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* ─── TYPOGRAPHY ───────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Melodrama', serif;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+p {
+  margin-bottom: 1rem;
+}
+
+/* ─── CARDS ────────────────────────────────────────────────────────── */
 .card {
   background: var(--bg-card);
   border-radius: var(--radius);
   padding: 24px;
   box-shadow: var(--shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
 
-
+/* ─── BUTTONS ──────────────────────────────────────────────────────── */
 .btn-primary {
   background: var(--text);
   color: white;
@@ -92,10 +96,12 @@ body {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .btn-primary:hover {
@@ -120,9 +126,10 @@ body {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
@@ -135,6 +142,7 @@ body {
 .btn-accent:hover {
   background: var(--accent-light);
   transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0,126,167,0.25);
 }
 
 .btn-ghost {
@@ -147,15 +155,21 @@ body {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .btn-ghost:hover {
   border-color: var(--text);
   color: var(--text);
+  background: rgba(0,0,0,0.02);
 }
 
-.input {
+/* ─── FORM ELEMENTS ────────────────────────────────────────────────── */
+.input, select, textarea {
   background: var(--bg-card);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
@@ -165,16 +179,18 @@ body {
   font-size: 15px;
   width: 100%;
   outline: none;
-  transition: border-color 0.2s;
+  transition: all 0.2s ease;
   box-shadow: var(--shadow);
 }
 
-.input:focus {
+.input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(0,126,167,0.1);
 }
 
-.input::placeholder { color: var(--text-dim); }
+.input::placeholder, textarea::placeholder {
+  color: var(--text-dim);
+}
 
 .label {
   display: block;
@@ -186,9 +202,51 @@ body {
   text-transform: uppercase;
 }
 
+/* ─── UTILITY CLASSES ──────────────────────────────────────────────── */
+.container {
+  width: 100%;
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── HIDE/SHOW UTILITIES ──────────────────────────────────────────── */
+.hide-mobile {
+  display: block;
+}
+
+.show-mobile {
+  display: none;
+}
+
+/* ─── ANIMATIONS ───────────────────────────────────────────────────── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes shimmer {
@@ -200,8 +258,31 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
 .animate-fade-up {
   animation: fadeUp 0.5s ease forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .shimmer {
@@ -210,6 +291,7 @@ body {
   animation: shimmer 1.5s linear infinite;
 }
 
+/* ─── CHAPTER PILLS ────────────────────────────────────────────────── */
 .chapter-pill {
   display: inline-flex;
   align-items: center;
@@ -233,4 +315,268 @@ body {
 .chapter-pill.pending {
   background: var(--bg-elevated);
   color: var(--text-dim);
+}
+
+/* ─── RESPONSIVE BREAKPOINTS ───────────────────────────────────────── */
+
+/* Tablet (768px - 1024px) */
+@media (max-width: 1024px) {
+  .container {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+  
+  .grid-responsive {
+    gap: 1.25rem;
+  }
+  
+  .card {
+    padding: 20px;
+  }
+  
+  .btn-primary, .btn-accent {
+    padding: 11px 24px;
+    font-size: 14px;
+  }
+  
+  .btn-ghost {
+    padding: 9px 18px;
+    font-size: 13px;
+  }
+}
+
+/* Mobile Large (640px - 768px) */
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+  
+  .show-mobile {
+    display: flex !important;
+  }
+  
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  .grid-responsive {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .card {
+    padding: 16px;
+    border-radius: var(--radius-md);
+  }
+  
+  h1 {
+    font-size: 1.75rem;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+  }
+  
+  .btn-primary, .btn-accent {
+    padding: 10px 20px;
+    font-size: 13px;
+    min-height: 44px;
+  }
+  
+  .btn-ghost {
+    padding: 8px 16px;
+    font-size: 12px;
+    min-height: 40px;
+  }
+  
+  .input, select, textarea {
+    padding: 10px 14px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  .label {
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  
+  .flex-between {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
+
+/* Mobile Small (480px - 640px) */
+@media (max-width: 640px) {
+  .container {
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+  }
+  
+  .card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+  
+  .btn-primary, .btn-accent {
+    width: 100%;
+    padding: 12px 16px;
+    white-space: normal;
+    min-height: 48px;
+  }
+  
+  .btn-ghost {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  /* Stack buttons on mobile */
+  .button-group {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .button-group button {
+    width: 100%;
+  }
+}
+
+/* Mobile Extra Small (under 480px) */
+@media (max-width: 480px) {
+  .container {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  
+  .card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+  }
+  
+  h2 {
+    font-size: 1.25rem;
+  }
+  
+  h3 {
+    font-size: 1.125rem;
+  }
+  
+  body {
+    font-size: 14px;
+  }
+  
+  .input, select, textarea {
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+  
+  .btn-primary, .btn-accent, .btn-ghost {
+    padding: 10px 14px;
+  }
+}
+
+/* ─── TABLES (Make scrollable on mobile) ───────────────────────────── */
+.table-responsive {
+  overflow-x: auto;
+  display: block;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive table {
+  min-width: 600px;
+}
+
+/* ─── MODAL / SHEET RESPONSIVE ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  .modal-content, .sheet-content {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 20px 20px 0 0;
+  }
+}
+
+/* ─── FIX iOS INPUT ZOOM ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* ─── TOUCH TARGETS ────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  button, 
+  .btn-primary, 
+  .btn-accent,
+  .btn-ghost,
+  a[role="button"],
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ─── GRADIENTS & VISUAL EFFECTS ───────────────────────────────────── */
+.bg-gradient {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+}
+
+.bg-gradient-gold {
+  background: linear-gradient(135deg, var(--gold) 0%, #F5B041 100%);
+}
+
+/* ─── PRINT STYLES ─────────────────────────────────────────────────── */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    background: white;
+    color: black;
+  }
+  
+  .card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+}
+
+/* ─── DARK MODE SUPPORT (Optional) ─────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  /* Add dark mode variables if needed */
+}
+
+/* ─── ACCESSIBILITY ────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── PRICING GRID (Keep your existing) ────────────────────────────── */
+@media (max-width: 600px) {
+  .pricing-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .show-mobile {
+    display: none !important;
+  }
 }

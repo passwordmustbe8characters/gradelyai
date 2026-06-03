@@ -218,7 +218,7 @@ setCurrentChapter(chapterIndex)
         <span style={{ fontFamily: 'Playfair Display, serif', fontSize: 18, fontWeight: 700 }}>GradelyAI</span>
       </div>
 
-      <div style={{ width: '100%', maxWidth: 600 }}>
+   <div className="container" style={{ maxWidth: 600 }}>
 
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 32, fontWeight: 700, marginBottom: 12 }}>
