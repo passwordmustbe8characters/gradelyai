@@ -29,6 +29,9 @@ await client.execute(`
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
+    onboarded INTEGER DEFAULT 0,
+    is_admin INTEGER DEFAULT 0,
+    active_project_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `)

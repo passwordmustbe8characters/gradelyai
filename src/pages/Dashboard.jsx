@@ -25,6 +25,13 @@ export default function Dashboard() {
     navigate('/auth')
     return
   }
+  
+  // If user exists but hasn't completed onboarding, send them to intake
+  if (user && user.onboarded === false) {
+    navigate('/start')
+    return
+  }
+  
   setTimeout(() => loadProjects(), 0)
 }, [user, navigate])
 
@@ -117,10 +124,20 @@ export default function Dashboard() {
                 : `You have ${projects.length} project${projects.length > 1 ? 's' : ''}.`}
             </p>
           </div>
-          <button className="btn-primary" onClick={() => navigate('/start')}
-            style={{ fontSize: 15, padding: '13px 28px', whiteSpace: 'nowrap' }}>
-            + New Project
-          </button>
+          <button className="btn-primary" onClick={() => {
+  // For YOUR email (change this to your actual email)
+  if (user?.email === 'josephdelight87@gmail.com') {
+    // Admin: clear session and start fresh
+    sessionStorage.removeItem('gradelyProject')
+    sessionStorage.removeItem('gradelyResult')
+    navigate('/start?mode=new_project')
+  } else {
+    // Normal users: start new project flow
+    navigate('/start?mode=new_project')
+  }
+}} style={{ fontSize: 15, padding: '13px 28px', whiteSpace: 'nowrap' }}>
+  + New Project
+</button>
         </div>
 
         {/* Stats row */}

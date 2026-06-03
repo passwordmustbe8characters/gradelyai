@@ -8,10 +8,14 @@ import SearchableSelect from '../components/SearchableSelect'
 
 export default function Intake() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, markOnboarded } = useAuth()
+  const params = new URLSearchParams(window.location.search)
+  const mode = params.get('mode')
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isNewProject, setIsNewProject] = useState(mode === 'new_project')
+  const [skipToTopic, setSkipToTopic] = useState(mode === 'new_project')
 
   const [form, setForm] = useState({
     name: '',
@@ -48,14 +52,46 @@ export default function Intake() {
   }
 }
 
-  useEffect(() => {
-    if (user) {
-      setTimeout(() => {
+ useEffect(() => {
+  // Use setTimeout to avoid setState warning
+  const timer = setTimeout(() => {
+    // Check if this is a "New Project" (skip uni/dept)
+    const params = new URLSearchParams(window.location.search)
+    const mode = params.get('mode')
+    
+    if (mode === 'new_project') {
+      setIsNewProject(true)
+      setSkipToTopic(true)
+      
+      if (user) {
         update('name', user.name?.split(' ')[0] || '')
-        setStep(2)
-      }, 0)
+        // Try to load existing project to copy uni/dept
+        const loadExisting = async () => {
+          try {
+            const { fetchProjects } = await import('../lib/auth')
+            const projects = await fetchProjects()
+            if (projects && projects.length > 0) {
+              const existing = projects[0]
+              update('university', existing.university)
+              update('department', existing.department)
+              setStep(4)
+            } else {
+              setStep(4)
+            }
+          } catch {
+            setStep(4)
+          }
+        }
+        loadExisting()
+      }
+    } else if (user) {
+      update('name', user.name?.split(' ')[0] || '')
+      setStep(2)
     }
-  }, [])
+  }, 0)
+  
+  return () => clearTimeout(timer)
+}, [user])
 
   const areas = getAreasForDepartment(form.department)
   const progress = (step / 10) * 100
@@ -81,7 +117,8 @@ export default function Intake() {
     reader.readAsText(file)
   }
 
-    const handleContinue = () => {
+ const handleContinue = async () => {
+  // Save project data to session storage
   sessionStorage.setItem('gradelyProject', JSON.stringify({
     ...form,
     supervisorName: form.supervisorName,
@@ -94,9 +131,13 @@ export default function Intake() {
   sessionStorage.removeItem('gradelyResult')
   sessionStorage.removeItem('gradelyProjectDbId')
 
+  // Mark user as onboarded (only if this is first-time onboarding, not "new project")
+  if (!isNewProject && user && user.onboarded === false) {
+    await markOnboarded()
+  }
+
   navigate('/build')
 }
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', background: 'var(--bg)' }}>
 
@@ -123,35 +164,35 @@ export default function Intake() {
           </StepCard>
         )}
 
-        {/* Step 2 — University */}
-        {step === 2 && (
-          <StepCard
-            title={user ? `Let's build your project, ${form.name}.` : `Good to meet you, ${form.name}.`}
-            subtitle="Which university are you in?">
-            <label className="label">University</label>
-            <SearchableSelect
-              options={NIGERIAN_UNIVERSITIES}
-              value={form.university}
-              onChange={v => update('university', v)}
-              placeholder="Search your university..."
-            />
-            <StepNav onBack={!user ? () => setStep(1) : undefined} onNext={() => form.university && setStep(3)} disabled={!form.university} />
-          </StepCard>
-        )}
+        {/* Step 2 — University - SKIP if new project */}
+{step === 2 && !skipToTopic && (
+  <StepCard
+    title={user ? `Let's build your project, ${form.name}.` : `Good to meet you, ${form.name}.`}
+    subtitle="Which university are you in?">
+    <label className="label">University</label>
+    <SearchableSelect
+      options={NIGERIAN_UNIVERSITIES}
+      value={form.university}
+      onChange={v => update('university', v)}
+      placeholder="Search your university..."
+    />
+    <StepNav onBack={!user ? () => setStep(1) : undefined} onNext={() => form.university && setStep(3)} disabled={!form.university} />
+  </StepCard>
+)}
 
-        {/* Step 3 — Department */}
-        {step === 3 && (
-          <StepCard title="What are you studying?" subtitle="Select your department">
-            <label className="label">Department</label>
-            <SearchableSelect
-              groups={DEPARTMENTS_BY_FACULTY}
-              value={form.department}
-              onChange={v => update('department', v)}
-              placeholder="Search your department..."
-            />
-            <StepNav onBack={() => setStep(2)} onNext={() => form.department && setStep(4)} disabled={!form.department} />
-          </StepCard>
-        )}
+        {/* Step 3 — Department - SKIP if new project */}
+{step === 3 && !skipToTopic && (
+  <StepCard title="What are you studying?" subtitle="Select your department">
+    <label className="label">Department</label>
+    <SearchableSelect
+      groups={DEPARTMENTS_BY_FACULTY}
+      value={form.department}
+      onChange={v => update('department', v)}
+      placeholder="Search your department..."
+    />
+    <StepNav onBack={() => setStep(2)} onNext={() => form.department && setStep(4)} disabled={!form.department} />
+  </StepCard>
+)}
 
         {/* Step 4 — Topic or no topic */}
         {step === 4 && (

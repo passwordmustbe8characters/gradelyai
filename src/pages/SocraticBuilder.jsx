@@ -816,13 +816,29 @@ export default function SocraticBuilder() {
                 <span className="sb-exit-icon" style={{ display: 'none' }}>✕</span>
               </button>
               {isChapter1Complete && (
-                <button
-                  className="btn-accent"
-                  onClick={() => navigate('/results')}
-                  style={{ fontSize: 13, padding: '8px 16px' }}
-                >
-                  Save &amp; Review
-                </button>
+               <div style={{ display: 'flex', gap: '8px' }}>
+  <button
+    className="btn-primary"
+    onClick={() => {
+      // Save current progress
+      const currentResult = sessionStorage.getItem('gradelyResult')
+      if (currentResult) {
+        // Here you would call an API to save to dashboard
+      }
+      navigate('/dashboard')
+    }}
+    style={{ fontSize: 13, padding: '8px 16px' }}
+  >
+    Save to Dashboard →
+  </button>
+  <button
+    className="btn-accent"
+    onClick={() => navigate('/results')}
+    style={{ fontSize: 13, padding: '8px 16px' }}
+  >
+    Review Project
+  </button>
+</div>
               )}
               {/* panel toggle — desktop only */}
               <button

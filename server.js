@@ -524,10 +524,10 @@ app.post('/api/auth/register', async (req, res) => {
     if (existing.rows.length > 0) return res.status(400).json({ error: 'An account with this email already exists' })
 
     const hashed = await bcrypt.hash(password, 10)
-    const result = await db.execute({
-      sql: 'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-      args: [name, email.toLowerCase().trim(), hashed]
-    })
+   const result = await db.execute({
+  sql: 'INSERT INTO users (name, email, password, onboarded, is_admin) VALUES (?, ?, ?, 0, 0)',
+  args: [name, email.toLowerCase().trim(), hashed]
+})
 
     const userResult = await db.execute({ sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?', args: [result.lastInsertRowid] })
     const user = userResult.rows[0]
@@ -554,8 +554,12 @@ app.post('/api/auth/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Incorrect password' })
 
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
-    const safeUser = { ...user }
-    delete safeUser.password
+   const safeUser = { 
+  ...user, 
+  onboarded: user.onboarded === 1,
+  is_admin: user.is_admin === 1
+}
+delete safeUser.password
 
     res.json({ user: safeUser, token })
   } catch (err) {
@@ -567,13 +571,36 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
-    const result = await db.execute({ sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?', args: [req.user.id] })
+   const result = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded, is_admin FROM users WHERE id = ?', args: [req.user.id] })
     if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' })
-    res.json({ user: result.rows[0] })
+  res.json({ user: { ...result.rows[0], onboarded: result.rows[0].onboarded === 1 } })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
+
+// ─── ONBOARDING: Mark complete ────────────────────────────────────────────────
+app.post('/api/auth/onboarded', requireAuth, async (req, res) => {
+  try {
+    await db.execute({
+      sql: 'UPDATE users SET onboarded = 1 WHERE id = ?',
+      args: [req.user.id]
+    })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── NEW PROJECT: Reset session but keep user onboarded ───────────────────────
+app.post('/api/auth/new-project', requireAuth, async (req, res) => {
+  try {
+    res.json({ success: true, message: 'Start new project flow' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 
 // ─── PROJECTS: Save ───────────────────────────────────────────────────────────
 

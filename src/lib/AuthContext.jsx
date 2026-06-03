@@ -11,23 +11,21 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const token = getToken()
     if (!token) {
+      // schedule state update to avoid synchronous setState inside effect
       setTimeout(() => setLoading(false), 0)
       return
     }
 
     fetchMe()
       .then(u => {
-        setTimeout(() => {
-          setUser(u)
-          setLoading(false)
-        }, 0)
+        setUser(u)
+        localStorage.setItem('user', JSON.stringify(u))
+        setLoading(false)
       })
       .catch(() => {
         logoutFn()
-        setTimeout(() => {
-          setUser(null)
-          setLoading(false)
-        }, 0)
+        setUser(null)
+        setLoading(false)
       })
   }, [])
 
@@ -40,13 +38,33 @@ export function AuthProvider({ children }) {
     try {
       const u = await fetchMe()
       setUser(u)
+      localStorage.setItem('user', JSON.stringify(u))
     } catch {
       logout()
     }
   }
 
+  const markOnboarded = async () => {
+    const token = getToken()
+    if (!token) return false
+    
+    try {
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${BASE_URL}/api/auth/onboarded`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        await refreshUser()
+        return true
+      }
+    } catch {
+      return false
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, setUser, loading, logout, refreshUser, markOnboarded }}>
       {children}
     </AuthContext.Provider>
   )

@@ -75,11 +75,15 @@ export async function login(email, password) {
 }
 
 export async function fetchMe() {
+  const token = getToken()
+  if (!token) throw new Error('No token')
+  
+  const BASE_URL = import.meta.env.VITE_API_URL || ''
   const res = await fetch(`${BASE_URL}/api/auth/me`, {
-    headers: { 'Content-Type': 'application/json', ...authHeaders() }
+    headers: { 'Authorization': `Bearer ${token}` }
   })
+  if (!res.ok) throw new Error('Failed to fetch user')
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Failed to fetch user')
   return data.user
 }
 
