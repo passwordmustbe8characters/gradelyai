@@ -158,51 +158,56 @@ const styles = `
   /* ── SIDEBAR COLLAPSE ── */
   .sb-sidebar {
     transition: width 0.3s ease, padding 0.3s ease, opacity 0.25s ease;
-    overflow: hidden;
   }
   .sb-sidebar.collapsed {
     width: 0 !important;
     padding: 0 !important;
     opacity: 0;
     border-left: none;
+    overflow: hidden;
   }
-  .sb-collapse-btn {
-    position: fixed;
-    top: 50%;
-    right: 0;
+  .sb-sidebar-reopen {
+    position: absolute;
+    right: 0; top: 50%;
     transform: translateY(-50%);
-    z-index: 10;
-    width: 22px;
-    height: 52px;
-    background: rgba(255,255,255,0.82);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    z-index: 5;
+    width: 20px; height: 48px;
+    background: rgba(255,255,255,0.75);
+    backdrop-filter: blur(10px);
     border: 1px solid var(--border);
     border-right: none;
     border-radius: 8px 0 0 8px;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim);
     transition: all 0.2s ease;
-    box-shadow: -2px 0 12px rgba(0,0,0,0.06);
+    box-shadow: -2px 0 8px rgba(0,0,0,0.05);
+  }
+  .sb-sidebar-reopen:hover {
+    background: var(--bg-card);
+    color: var(--text-muted);
+  }
+  .sb-collapse-btn {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.6);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    color: var(--text-muted);
   }
   .sb-collapse-btn:hover {
-    background: rgba(255,255,255,0.96);
-    box-shadow: -3px 0 16px rgba(0,0,0,0.10);
+    background: var(--bg-card);
+    border-color: var(--text-dim);
+    color: var(--text);
   }
   .sb-collapse-btn svg {
     transition: transform 0.3s ease;
-    color: var(--text-muted);
   }
-  .sb-collapse-btn.collapsed svg {
+  .sb-collapse-btn.open svg {
     transform: rotate(180deg);
-  }
-  .sb-sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 22px;
   }
 
   /* ── MESSAGES ── */
@@ -526,9 +531,7 @@ export default function SocraticBuilder() {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY_SECTIONS);
       return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   });
 
   useEffect(() => {
@@ -664,7 +667,18 @@ export default function SocraticBuilder() {
       <style>{styles}</style>
       <div className="sb-root">
 
-        <div className="sb-chat-panel">
+        <div className="sb-chat-panel" style={{ position: 'relative' }}>
+          {!sidebarOpen && (
+            <button
+              className="sb-sidebar-reopen"
+              onClick={() => setSidebarOpen(true)}
+              title="Show progress"
+            >
+              <svg width="8" height="12" viewBox="0 0 8 12" fill="none">
+                <path d="M2 1L6 6L2 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
           <div className="sb-header">
             <div className="sb-header-left">
               <div className="sb-avatar">G</div>
@@ -758,20 +772,18 @@ export default function SocraticBuilder() {
           </div>
         </div>
 
-        {/* Collapse toggle */}
-        <button
-          className={`sb-collapse-btn${sidebarOpen ? '' : ' collapsed'}`}
-          onClick={() => setSidebarOpen(p => !p)}
-          title={sidebarOpen ? 'Collapse panel' : 'Expand panel'}
-        >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M7 1L2 7L7 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-
         <div className={`sb-sidebar${sidebarOpen ? '' : ' collapsed'}`}>
           <div className="sb-sidebar-header">
             <h3 className="sb-sidebar-title">Project Progress</h3>
+            <button
+              className={`sb-collapse-btn${sidebarOpen ? ' open' : ''}`}
+              onClick={() => setSidebarOpen(p => !p)}
+              title={sidebarOpen ? 'Collapse' : 'Expand'}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 4.5L6 7.5L3 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
           </div>
           {projectData.chapters.length > 0 ? (
             projectData.chapters.map(ch => (
