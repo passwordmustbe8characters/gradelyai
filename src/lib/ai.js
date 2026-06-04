@@ -1,3 +1,5 @@
+import { getToken } from './auth';
+
 // GradelyAI — Core AI Engine (Claude)
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -442,15 +444,28 @@ export async function humanizeText(text) {
 // ─── SOCRATIC CHAT ────────────────────────────────────────────────────────────
 
 
-export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage) {
+export async function socraticChat(projectInfo, chapterStructure, chatHistory = [], userMessage = '') {
   const BASE_URL = import.meta.env.VITE_API_URL || '';
-  const token = localStorage.getItem('token');
   
-  // Format messages for the API
+  // FIX: Use the getToken function from auth.js (not direct localStorage)
+  const token = getToken();
+  
+  console.log('Token found?', !!token); // Debug: should show true if logged in
+  
+  if (!token) {
+    console.error('No token found - redirecting to login');
+    window.location.href = '/auth';
+    throw new Error('Please log in again');
+  }
+  
   const messages = chatHistory.map(msg => ({
     role: msg.role,
     content: msg.content
   }));
+
+  if (userMessage && userMessage.trim()) {
+    messages.push({ role: 'user', content: userMessage });
+  }
   
   const response = await fetch(`${BASE_URL}/api/socratic-generate`, {
     method: 'POST',
@@ -461,14 +476,22 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory, u
     body: JSON.stringify({
       messages,
       projectInfo,
-      chapterStructure,
-      userMessage
+      chapterStructure
     })
   });
   
+  // Handle 401 specifically
+  if (response.status === 401) {
+    console.error('Token invalid/expired - logging out');
+    localStorage.removeItem('gradelyToken');
+    localStorage.removeItem('gradelyUser');
+    window.location.href = '/auth';
+    throw new Error('Session expired. Please log in again.');
+  }
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Socratic chat failed');
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Socratic chat failed');
   }
   
   const data = await response.json();
