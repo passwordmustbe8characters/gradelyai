@@ -88,80 +88,105 @@ function requireAuth(req, res, next) {
  * 1. THE MICRO-HUMANIZER (Replaces T5 Colab Engine)
  * Uses programmatic post-processing instead of slow AI rewriting.
  */
-app.post('/api/humanize', async (req, res) => {
+// ============================================
+// HUMANIZER V3 - Rich Paragraphs + Grammar Fix
+// ============================================
+
+app.post('/api/humanize-v2', requireAuth, async (req, res) => {
+  const { text, context } = req.body;
+  
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ success: false, error: 'Text is required' });
+  }
+  
   try {
-    const { text } = req.body;
-    
-    if (!text || typeof text !== 'string') {
-      return res.status(400).json({ success: false, error: "Text field is strictly required." });
-    }
+    // Call Groq with detailed expansion instructions
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: `You are an academic writing assistant. You help students turn their rough ideas into well-written academic paragraphs.
 
-    // 1. The AI Vocabulary Swapper (Same as before)
-    const vocabSwaps = {
-      "crucial": "key", "furthermore": "also", "moreover": "additionally",
-      "delve": "explore", "intricate": "complex", "vital": "important",
-      "underscore": "highlight", "utilize": "use", "pivotal": "major",
-      "significant": "major", "numerous": "many", "various": "different",
-      "facilitate": "help", "leverage": "use", "robust": "strong",
-      "comprehensive": "full", "essential": "needed", "paramount": "top",
-      "ensure": "make sure", "therefore": "so", "consequently": "as a result",
-      "additionally": "also", "notably": "especially", "subsequently": "later",
-      "fundamental": "basic", "intriguing": "interesting", "navigate": "handle",
-      "foster": "encourage", "enhance": "improve", "optimize": "improve",
-      "streamline": "simplify", "innovative": "new", "revolutionize": "change",
-      "transformative": "changing", "groundbreaking": "new", "holistic": "full",
-      "paradigm": "model", "synergy": "teamwork", "domain": "area",
-      "realm": "area", "endeavor": "effort", "cornerstone": "foundation",
-      "imperative": "must", "profound": "deep", "elucidate": "explain",
-      "delineate": "outline", "expound": "explain", "accentuate": "highlight",
-      "amalgamation": "mix", "synthesis": "mix", "convergence": "meeting",
-      "ecosystem": "system", "trajectory": "path", "catalyst": "spark",
-      "underpin": "support", "substantiate": "prove", "corroborate": "confirm",
-      "marginalized": "ignored", "prerequisite": "requirement",
-      "encompass": "include", "incorporate": "add", "proactive": "active",
-      "evaluate": "check", "assess": "check", "analyze": "study", "examine": "look at"
-    };
+CRITICAL RULES:
+1. PRESERVE the student's core argument and meaning
+2. FIX grammar issues naturally (don't change their voice)
+3. START with their main point (rewritten properly if needed)
+4. Write at least 3 FULL PARAGRAPHS (not just sentences)
+5. Each paragraph should be 3-5 sentences
+6. NEVER use these words: crucial, furthermore, moreover, delve, robust, leverage, utilize, pivotal, notably, consequently, accordingly, nevertheless
+7. Use simple transitions: "also", "so", "but", "because", "this means", "for example"
 
-    let humanizedText = text;
-    
-    // Apply vocabulary swaps (case-insensitive)
-    for (const [aiWord, humanWord] of Object.entries(vocabSwaps)) {
-      const regex = new RegExp(`\\b${aiWord}\\b`, 'gi');
-      humanizedText = humanizedText.replace(regex, (match) => {
-        return match[0].toUpperCase() === match[0] ? humanWord[0].toUpperCase() + humanWord.slice(1) : humanWord;
-      });
-    }
+FORBIDDEN PHRASES: "in addition", "on the other hand", "as a result", "however", "therefore"
 
-    // 2. Safe Conversational Pivot Injector (Every 5th sentence)
-    const sentences = humanizedText.split(/(?<=[.!?])\s+/);
-    const humanizedSentences = [];
+GOOD PHRASES: "look at it this way", "the key point is", "this matters because", "here's an example", "what this means is"
 
-    for (let i = 0; i < sentences.length; i++) {
-      let sentence = sentences[i];
+OUTPUT FORMAT:
+- Paragraph 1: Restate and expand the student's main argument
+- Paragraph 2: Add evidence, examples, or explanation
+- Paragraph 3: Connect to broader context or implications
 
-      // Only inject a pivot every 5th sentence to avoid crumpling
-      if (i > 0 && i % 5 === 4) {
-        const pivots = ["Look, ", "The reality is, ", "In practice, ", "Simply put, ", "Basically, "];
-        const randomPivot = pivots[Math.floor(Math.random() * pivots.length)];
-        sentence = randomPivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
-      }
+Be substantive. No fluff. Every sentence should add value.`
+        },
+        {
+          role: "user",
+          content: `Student's rough idea: "${text}"
 
-      humanizedSentences.push(sentence);
-    }
+${context ? `Project context: ${context}` : ''}
 
-    humanizedText = humanizedSentences.join(' ');
-
-    // 3. Final Clean up
-    humanizedText = humanizedText.replace(/\s+([,.])/g, '$1');
-
-    return res.status(200).json({
-      success: true,
-      data: humanizedText
+Write at least 3 rich, academic paragraphs that preserve the student's core argument but fix any grammar issues. Start with their main point (rewritten properly).`
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 1500
     });
-
+    
+    let result = completion.choices[0].message.content;
+    
+    // Step 2: Clean up any AI nonsense patterns
+    result = result.replace(/\b(crucial|furthermore|moreover|delve|robust|leverage|utilize|pivotal|notably|consequently|accordingly|nevertheless)\b/gi, 
+      (match) => {
+        const swaps = {
+          'crucial': 'key',
+          'furthermore': 'also',
+          'moreover': 'plus',
+          'delve': 'explore',
+          'robust': 'solid',
+          'leverage': 'use',
+          'utilize': 'use',
+          'pivotal': 'major',
+          'notably': 'especially',
+          'consequently': 'so',
+          'accordingly': 'thus',
+          'nevertheless': 'but'
+        };
+        return swaps[match.toLowerCase()] || match;
+      });
+    
+    // Step 3: Remove "in addition", "on the other hand", etc.
+    result = result.replace(/\b(in addition|on the other hand|as a result|however|therefore)\b/gi, '');
+    
+    // Step 4: Fix double spaces and punctuation
+    result = result.replace(/\s+/g, ' ').trim();
+    result = result.replace(/\s+([.!?])/g, '$1');
+    
+    // Step 5: Ensure at least 3 paragraphs exist
+    const paragraphs = result.split(/\n\s*\n/);
+    if (paragraphs.length < 3) {
+      // If AI didn't write enough, add a note
+      result = result + "\n\n" + paragraphs[paragraphs.length - 1] + " This is a key consideration for understanding the full scope of the issue.";
+    }
+    
+    res.json({ 
+      success: true, 
+      text: result,
+      originalLength: text.length,
+      newLength: result.length
+    });
+    
   } catch (error) {
-    console.error("Micro-Humanizer Error:", error);
-    return res.status(500).json({ success: false, error: "Humanizer processing failure." });
+    console.error('Humanizer error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -171,53 +196,79 @@ app.post('/api/humanize', async (req, res) => {
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const { messages, projectInfo } = req.body;
   
-  // Get the student's last message
+  // Get student's last message
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-  const studentTopicSentence = lastUserMessage?.content || '';
+  let studentText = lastUserMessage?.content || '';
   
   // Count words
-  const wordCount = studentTopicSentence.trim().split(/\s+/).length;
+  const wordCount = studentText.trim().split(/\s+/).length;
   
-  // If message is too short, ask for more
-  if (wordCount < 10) {
+  // If too short, ask for more
+  if (wordCount < 8) {
     return res.json({
       success: true,
-      message: `Please write a bit more (at least 10 words). Tell me specifically: what is the main point you want to make about ${projectInfo?.topic || 'this topic'}?`
+      message: `Can you tell me a bit more? Write 8-10 words explaining your main point about ${projectInfo?.topic || 'this topic'}.`
     });
   }
   
   try {
-    // Call Groq with simple, forceful prompt
+    // Call Groq to expand student's idea into rich paragraphs
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: `You add 3-5 sentences after the user's sentence. You never change their words. You never add before. First character of your response is the first character of their sentence.`
+          content: `You help students write academic paragraphs. Follow these rules:
+
+1. Fix the student's grammar but keep their meaning
+2. Write 2-3 rich paragraphs (not just sentences)
+3. Each paragraph should be 3-5 sentences
+4. Start with the student's main point (rewritten properly)
+5. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize
+6. Use simple words: key, also, so, but, because, helps, shows
+
+Example of what NOT to write: "Furthermore, this is crucial for..."
+Example of what TO write: "This is important because..."`
         },
         {
-          role: "user", 
-          content: `My sentence: "${studentTopicSentence}"\n\nAdd 3-5 supporting sentences after it. Start with my exact sentence.`
+          role: "user",
+          content: `Student's idea: "${studentText}"
+
+Project topic: ${projectInfo?.topic || 'Unknown'}
+
+Write 2-3 academic paragraphs that expand this idea. Start with the student's main point (fix grammar if needed). Make it rich and substantive.`
         }
       ],
-      temperature: 0.5,
-      max_tokens: 600
+      temperature: 0.7,
+      max_tokens: 1000
     });
     
     let aiResponse = completion.choices[0].message.content;
     
-    // FORCE compliance: if AI didn't start with student's words, add them
-    if (!aiResponse.startsWith(studentTopicSentence)) {
-      aiResponse = studentTopicSentence + " " + aiResponse.replace(/^[^a-zA-Z0-9]+/, '');
+    // Remove any banned words just in case
+    const bannedWords = ['crucial', 'furthermore', 'moreover', 'delve', 'robust', 'leverage', 'utilize', 'pivotal'];
+    for (const word of bannedWords) {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      aiResponse = aiResponse.replace(regex, match => {
+        const swaps = {
+          'crucial': 'key', 'furthermore': 'also', 'moreover': 'plus',
+          'delve': 'explore', 'robust': 'strong', 'leverage': 'use',
+          'utilize': 'use', 'pivotal': 'major'
+        };
+        return swaps[match.toLowerCase()] || match;
+      });
     }
+    
+    // Clean up spacing
+    aiResponse = aiResponse.replace(/\s+/g, ' ').trim();
     
     res.json({
       success: true,
-      message: aiResponse + "\n\n✅ Section ready! Type 'next' to continue or keep writing."
+      message: aiResponse + "\n\n✅ Ready for the next section? Type 'next' to continue."
     });
     
   } catch (error) {
-    console.error('Groq error:', error);
+    console.error('Error:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 

@@ -441,7 +441,7 @@ export async function humanizeText(text) {
 }
 
 // ─── SOCRATIC CHAT ────────────────────────────────────────────────────────────
-export async function socraticChat(projectInfo, chapterStructure, chatHistory = [], userMessage) {
+export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage, existingReferences = []) {
   const BASE_URL = import.meta.env.VITE_API_URL || '';
   const token = localStorage.getItem('gradelyToken');
   
@@ -454,13 +454,6 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory = 
     role: msg.role,
     content: msg.content
   }));
-
-  if (userMessage) {
-    messages.push({
-      role: 'user',
-      content: userMessage
-    });
-  }
   
   const response = await fetch(`${BASE_URL}/api/socratic-generate`, {
     method: 'POST',
@@ -471,7 +464,8 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory = 
     body: JSON.stringify({
       messages,
       projectInfo,
-      chapterStructure
+      chapterStructure,
+      existingReferences
     })
   });
   
