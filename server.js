@@ -119,96 +119,57 @@ class MicroHumanizer {
     ];
   }
   
-  humanize(text, alterationPercentage = 0.25) {  // Increased from 0.15 to 0.25
-  if (!text || typeof text !== 'string') return text;
-  let result = text;
-  
-  // 1. Swap banned AI words (expanded list)
-  const allSwaps = {
-    ...this.wordSwaps,
-    // Add more aggressive swaps
-    'important': 'key',
-    'significant': 'major', 
-    'therefore': 'so',
-    'thus': 'so',
-    'hence': 'so',
-    'indeed': 'yes',
-    'typically': 'often',
-    'specifically': 'like',
-    'generally': 'mostly',
-    'similarly': 'like',
-    'likewise': 'also',
-    'subsequently': 'then'
-  };
-  
-  for (const [ai, human] of Object.entries(allSwaps)) {
-    const regex = new RegExp(`\\b${ai}\\b`, 'gi');
-    result = result.replace(regex, (match) => {
-      const isCapitalized = match[0] === match[0].toUpperCase();
-      return isCapitalized ? human[0].toUpperCase() + human.slice(1) : human;
-    });
-  }
-  
-  // 2. Break up long sentences more aggressively
-  const sentences = result.split(/(?<=[.!?])\s+/);
-  const processed = [];
-  
-  for (const sentence of sentences) {
-    let wordCount = sentence.split(/\s+/).length;
+  humanize(text, alterationPercentage = 0.15) {
+    if (!text || typeof text !== 'string') return text;
+    let result = text;
     
-    // Split sentences over 15 words (was 18)
-    if (wordCount > 15 && Math.random() < alterationPercentage) {
-      const words = sentence.split(/\s+/);
-      const splitPoint = Math.floor(wordCount * 0.5); // Split at 50% not 60%
-      const firstPart = words.slice(0, splitPoint).join(' ');
-      const secondPart = words.slice(splitPoint).join(' ');
-      processed.push(`${firstPart}. ${secondPart.toLowerCase()}`);
-    } 
-    // Add random sentence fragments (very human)
-    else if (Math.random() < 0.1 && wordCount > 8) {
-      const words = sentence.split(/\s+/);
-      const fragmentEnd = Math.floor(wordCount * 0.4);
-      const fragment = words.slice(0, fragmentEnd).join(' ');
-      const remainder = words.slice(fragmentEnd).join(' ');
-      processed.push(`${fragment} — ${remainder.toLowerCase()}`);
+    // 1. Swap banned AI words
+    for (const [ai, human] of Object.entries(this.wordSwaps)) {
+      const regex = new RegExp(`\\b${ai}\\b`, 'gi');
+      result = result.replace(regex, (match) => {
+        const isCapitalized = match[0] === match[0].toUpperCase();
+        return isCapitalized ? human[0].toUpperCase() + human.slice(1) : human;
+      });
     }
-    else {
-      processed.push(sentence);
+    
+    // 2. Split long sentences with em-dash (only 15% of sentences)
+    const sentences = result.split(/(?<=[.!?])\s+/);
+    const processed = [];
+    
+    for (const sentence of sentences) {
+      const wordCount = sentence.split(/\s+/).length;
+      if (wordCount > 18 && Math.random() < alterationPercentage) {
+        const words = sentence.split(/\s+/);
+        const splitPoint = Math.floor(wordCount * 0.6);
+        const firstPart = words.slice(0, splitPoint).join(' ');
+        const secondPart = words.slice(splitPoint).join(' ');
+        processed.push(`${firstPart} — ${secondPart.toLowerCase()}`);
+      } else {
+        processed.push(sentence);
+      }
     }
-  }
-  result = processed.join(' ');
-  
-  // 3. Add conversational pivots to 25% of sentences (was 15%)
-  const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
-  const numToAlter = Math.floor(sentencesWithPivots.length * 0.25);
-  const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
-  
-  for (const idx of indicesToAlter) {
-    const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
-    const sentence = sentencesWithPivots[idx];
-    sentencesWithPivots[idx] = pivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
-  }
-  result = sentencesWithPivots.join(' ');
-  
-  // 4. Randomly start 20% of sentences with conjunctions (very human)
-  const finalSentences = result.split(/(?<=[.!?])\s+/);
-  for (let i = 0; i < finalSentences.length; i++) {
-    if (Math.random() < 0.2 && finalSentences[i].length > 15) {
-      const conjunctions = ['And ', 'But ', 'So ', 'Yet ', 'Or ', 'Nor '];
-      const conj = conjunctions[Math.floor(Math.random() * conjunctions.length)];
-      finalSentences[i] = conj + finalSentences[i][0].toLowerCase() + finalSentences[i].slice(1);
+    result = processed.join(' ');
+    
+    // 3. Inject conversational pivots (15% of sentences)
+    const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
+    const numToAlter = Math.floor(sentencesWithPivots.length * alterationPercentage);
+    const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
+    
+    for (const idx of indicesToAlter) {
+      const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
+      const sentence = sentencesWithPivots[idx];
+      sentencesWithPivots[idx] = pivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
     }
+    result = sentencesWithPivots.join(' ');
+    
+    // 4. Clean up spacing and punctuation
+    result = result.replace(/\s+/g, ' ');
+    result = result.replace(/\s+([,.!?])/g, '$1');
+    result = result.replace(/\s+—/g, ' —');
+    result = result.trim();
+    
+    return result;
   }
-  result = finalSentences.join(' ');
-  
-  // 5. Clean up
-  result = result.replace(/\s+/g, ' ');
-  result = result.replace(/\s+([,.!?])/g, '$1');
-  result = result.replace(/\s+—/g, ' —');
-  result = result.trim();
-  
-  return result;
-}
   
   _getRandomIndices(max, count) {
     const indices = [];
@@ -223,6 +184,74 @@ class MicroHumanizer {
 // Initialize the humanizer
 const humanizer = new MicroHumanizer();
 
+// ============================================
+// HUMANIZATION PIPELINE HELPERS
+// ============================================
+
+// Simulated translation roundabout (breaks AI patterns without external API)
+function translationRoundabout(text) {
+  let result = text;
+  const patterns = [
+    [/\b(in order to)\b/gi, 'to'],
+    [/\b(due to the fact that)\b/gi, 'because'],
+    [/\b(with the exception of)\b/gi, 'except'],
+    [/\b(for the purpose of)\b/gi, 'to'],
+    [/\b(it is important to note that)\b/gi, 'note that'],
+    [/\bat this point in time\b/gi, 'now'],
+    [/\bin the event that\b/gi, 'if'],
+    [/\b(as a matter of fact)\b/gi, 'in fact'],
+    [/\bas a result of\b/gi, 'because of']
+  ];
+  for (const [pattern, replacement] of patterns) {
+    result = result.replace(pattern, replacement);
+  }
+  // Optional: invert a small number of sentences (adds natural variation)
+  const sentences = result.split(/(?<=[.!?])\s+/);
+  const processed = sentences.map(sent => {
+    if (Math.random() < 0.1 && sent.includes(' is ') && sent.includes(' because ')) {
+      return sent.replace(/(\w+) is (\w+) because/, 'Because $2, $1 is');
+    }
+    return sent;
+  });
+  return processed.join(' ');
+}
+
+// Burstiness enhancer – randomly break/merge sentences
+function enhanceBurstiness(text) {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const processed = [];
+  for (let i = 0; i < sentences.length; i++) {
+    let sent = sentences[i];
+    const wordCount = sent.split(/\s+/).length;
+    if (wordCount > 18 && Math.random() < 0.3) {
+      const words = sent.split(/\s+/);
+      const split = Math.floor(wordCount * 0.6);
+      const first = words.slice(0, split).join(' ');
+      const second = words.slice(split).join(' ');
+      processed.push(`${first}. ${second.charAt(0).toLowerCase() + second.slice(1)}`);
+    } else if (wordCount < 5 && processed.length > 0 && Math.random() < 0.4) {
+      processed[processed.length - 1] += ` ${sent.toLowerCase()}`;
+    } else {
+      processed.push(sent);
+    }
+  }
+  return processed.join(' ');
+}
+
+// Full pipeline that runs on any AI-generated supporting text
+async function runHumanizationPipeline(text) {
+  let result = text;
+  // 1. Word swaps & pivot injection (existing MicroHumanizer)
+  result = humanizer.humanize(result, 0.25);
+  // 2. Translation roundabout
+  result = translationRoundabout(result);
+  // 3. Burstiness enhancement
+  result = enhanceBurstiness(result);
+  // 4. Final cleanup
+  result = result.replace(/\s+/g, ' ').trim();
+  result = result.replace(/\s+([,.!?])/g, '$1');
+  return result;
+}
 
 // ─── GRADELYAI: MASTER PIPELINE PRODUCTION ROUTES ─────────────────────────────
 
@@ -333,7 +362,7 @@ Write at least 3 rich, academic paragraphs that preserve the student's core argu
 });
 
 // ============================================
-// GROQ + TOPIC SENTENCE DICTATOR (UPDATED)
+// GROQ + TOPIC SENTENCE DICTATOR (WITH FULL PIPELINE)
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const { messages, projectInfo, chapterStructure } = req.body;
@@ -364,21 +393,21 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   }
   
   try {
-    // Step 1: Generate supporting paragraphs with Groq (NOT including the topic sentence)
+    // Step 1: Generate supporting text with Groq (without the topic sentence)
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: `You write supporting paragraphs for a student's topic sentence.
+          content: `You write 2-3 supporting paragraphs for a student's topic sentence.
 
 CRITICAL RULES:
-1. The student's topic sentence will be given to you. Do NOT repeat it. Just write the supporting paragraphs.
-2. Write 2-3 paragraphs (3-5 sentences each)
-3. Put a blank line BETWEEN each paragraph
-4. Vary sentence length (some short, some long)
-5. Use simple transitions: "this means", "for example", "the key point is"
-6. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize
+1. Do NOT repeat the student's topic sentence.
+2. Write 2-3 paragraphs (3-5 sentences each).
+3. Put a blank line BETWEEN each paragraph.
+4. Vary sentence length (some short, some long).
+5. Use simple transitions like "this means", "for example", "the key point is".
+6. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize.
 
 Just write the supporting content. No introductory phrases. No fluff.`
         },
@@ -396,18 +425,18 @@ Write 2-3 supporting paragraphs (3-5 sentences each). Add blank lines between pa
       max_tokens: 1000
     });
     
-    let supportingText = completion.choices[0].message.content;
+    let rawSupportingText = completion.choices[0].message.content;
     
-    // Step 2: Apply Micro-Humanizer to supporting text ONLY
-    supportingText = humanizer.humanize(supportingText, 0.15);
+    // Step 2: Run the full humanization pipeline on the supporting text
+    const humanizedSupportingText = await runHumanizationPipeline(rawSupportingText);
     
-    // Step 3: Combine student's topic sentence + humanized supporting text
-    const finalResponse = `${studentTopicSentence}\n\n${supportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
+    // Step 3: Combine with student's topic sentence
+    const finalResponse = `${studentTopicSentence}\n\n${humanizedSupportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
     
     res.json({ success: true, message: finalResponse });
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error in socratic-generate:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
