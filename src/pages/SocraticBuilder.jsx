@@ -624,6 +624,9 @@ export default function SocraticBuilder() {
     } catch { return []; }
   });
 
+  const [coachingFeedback, setCoachingFeedback] = useState(null);
+  const [canSend, setCanSend] = useState(true);
+
   useEffect(() => {
     const initProject = async () => {
       if (savedResult?.structure?.chapters?.length > 0) {
@@ -677,44 +680,229 @@ export default function SocraticBuilder() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isTyping])
 
-  const handleSend = async () => {
-    if (!isThresholdMet) return
-    const userMessage = input
-    setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
-    setIsTyping(true)
-    try {
-      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
-      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
-      const aiReply = await socraticChat(
-        savedProjectInfo || currentResult?.projectInfo || {},
-        chapter1Structure, messages, userMessage, currentResult?.references || []
-      )
-      if (aiReply.includes('[SECTION_DRAFT]')) {
-        const outroText = aiReply.split('[/SECTION_DRAFT]')[1] || '';
-        const sectionMatch = outroText.match(/(\d+\.\d+)/);
-        if (sectionMatch) {
-          setCompletedSections(prev => prev.includes(sectionMatch[1]) ? prev : [...prev, sectionMatch[1]])
-        }
-        const parts = aiReply.split('[SECTION_DRAFT]');
-        if (parts.length > 1) {
-          const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim();
-          if (draftContent) {
-            let cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
-            if (cur.chapters && cur.chapters[0]) {
-              cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + draftContent;
-              sessionStorage.setItem('gradelyResult', JSON.stringify(cur));
-            }
+// ============================================
+// TOPIC SENTENCE COACHING SYSTEM
+// ============================================
+
+// Function to analyze topic sentence quality
+const analyzeTopicSentence = (sentence) => {
+  const wordCount = sentence.trim().split(/\s+/).filter(w => w.length > 0).length;
+  
+  const checks = {
+    length: { 
+      passed: wordCount >= 15, 
+      message: `${wordCount}/15 words`, 
+      tip: "Add more detail to reach 15 words" 
+    },
+    claim: { 
+      passed: false, 
+      message: "Missing a clear claim", 
+      tip: "Start with what you're arguing (e.g., 'Cybersecurity is weak because...')" 
+    },
+    evidence: { 
+      passed: false, 
+      message: "Missing specific evidence", 
+      tip: "Add numbers, dates, or specific examples (e.g., '₦500 billion lost')" 
+    },
+    consequence: { 
+      passed: false, 
+      message: "Missing the consequence", 
+      tip: "Explain what happens as a result (e.g., 'which leads to hackers getting away')" 
+    }
+  };
+  
+  // Check for claim indicators
+  const claimWords = ['is', 'are', 'has', 'have', 'causes', 'leads to', 'results in', 'creates', 'because', 'due to'];
+  checks.claim.passed = claimWords.some(word => sentence.toLowerCase().includes(word));
+  if (checks.claim.passed) {
+    checks.claim.message = "✓ Has a clear claim";
+  }
+  
+  // Check for evidence (numbers, specific nouns, data)
+  const hasNumber = /\d+/.test(sentence);
+  const hasSpecificNouns = /(percent|%|million|billion|naira|₦|bank|hacker|attack|breach|law|policy|data|user|system|network|security|threat|vulnerability)/i.test(sentence);
+  checks.evidence.passed = hasNumber || hasSpecificNouns;
+  if (checks.evidence.passed) {
+    checks.evidence.message = "✓ Includes specific evidence";
+  }
+  
+  // Check for consequence indicators
+  const consequenceWords = ['because', 'so', 'therefore', 'leads to', 'results in', 'causes', 'means that', 'which means', 'as a result'];
+  checks.consequence.passed = consequenceWords.some(word => sentence.toLowerCase().includes(word));
+  if (checks.consequence.passed) {
+    checks.consequence.message = "✓ Shows the consequence/result";
+  }
+  
+  const allPassed = checks.length.passed && checks.claim.passed && checks.evidence.passed && checks.consequence.passed;
+  const score = Math.round((Object.values(checks).filter(c => c.passed).length / 4) * 100);
+  
+  return { allPassed, checks, wordCount, score };
+};
+
+// Function to get coaching tip based on analysis
+const getCoachingTip = (analysis) => {
+  if (analysis.allPassed) {
+    return { type: 'success', message: '✅ Excellent topic sentence! Ready to generate your paragraph.' };
+  }
+  
+  if (analysis.wordCount < 10) {
+    return { type: 'warning', message: `📝 Write at least 15 words (${analysis.wordCount}/15). Be specific about your main point.` };
+  }
+  
+  const failedChecks = Object.values(analysis.checks).filter(c => !c.passed);
+  if (failedChecks.length > 0) {
+    const firstFailed = failedChecks[0];
+    return { type: 'info', message: `💡 ${firstFailed.tip}` };
+  }
+  
+  return { type: 'info', message: 'Keep going! Add more specific details to strengthen your topic sentence.' };
+};
+
+// Check if AI is asking for a topic sentence (student needs to write one)
+const isAskingForTopic = () => {
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || lastMessage.role !== 'assistant') return false;
+  
+  const askingPhrases = [
+    'tell me in your own words',
+    'what is the main point',
+    'why is this topic important',
+    'what is the specific problem',
+    'write at least',
+    'explain your main point'
+  ];
+  
+  return askingPhrases.some(phrase => lastMessage.content.toLowerCase().includes(phrase));
+};
+
+// Handle input changes with real-time coaching
+const handleInputWithCoaching = (value) => {
+  setInput(value);
+  if (isAskingForTopic()) {
+    const analysis = analyzeTopicSentence(value);
+    setCoachingFeedback(analysis);
+    setCanSend(analysis.allPassed);
+  } else {
+    setCanSend(true);
+  }
+};
+
+// Render coaching UI (shows only when AI is asking for topic sentence)
+const renderCoachingUI = () => {
+  if (!isAskingForTopic()) return null;
+  
+  const analysis = coachingFeedback || analyzeTopicSentence(input);
+  const coachingTip = getCoachingTip(analysis);
+  
+  return (
+    <div className="coaching-panel" style={{
+      marginTop: '12px',
+      padding: '12px 16px',
+      borderRadius: '12px',
+      background: coachingTip.type === 'success' ? 'rgba(45, 155, 111, 0.1)' : 'rgba(0, 126, 167, 0.08)',
+      border: `1px solid ${coachingTip.type === 'success' ? 'rgba(45, 155, 111, 0.3)' : 'rgba(0, 126, 167, 0.2)'}`,
+      fontSize: '13px'
+    }}>
+      <div style={{ marginBottom: '8px', fontWeight: 600, color: coachingTip.type === 'success' ? 'var(--success)' : 'var(--accent)' }}>
+        {coachingTip.message}
+      </div>
+      
+      {!analysis.allPassed && analysis.wordCount > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+          <span style={{ 
+            padding: '2px 10px', 
+            borderRadius: '20px', 
+            fontSize: '11px',
+            background: analysis.checks.claim.passed ? 'rgba(45, 155, 111, 0.15)' : 'rgba(217, 79, 79, 0.1)',
+            color: analysis.checks.claim.passed ? 'var(--success)' : 'var(--danger)'
+          }}>
+            {analysis.checks.claim.message}
+          </span>
+          <span style={{ 
+            padding: '2px 10px', 
+            borderRadius: '20px', 
+            fontSize: '11px',
+            background: analysis.checks.evidence.passed ? 'rgba(45, 155, 111, 0.15)' : 'rgba(217, 79, 79, 0.1)',
+            color: analysis.checks.evidence.passed ? 'var(--success)' : 'var(--danger)'
+          }}>
+            {analysis.checks.evidence.message}
+          </span>
+          <span style={{ 
+            padding: '2px 10px', 
+            borderRadius: '20px', 
+            fontSize: '11px',
+            background: analysis.checks.consequence.passed ? 'rgba(45, 155, 111, 0.15)' : 'rgba(217, 79, 79, 0.1)',
+            color: analysis.checks.consequence.passed ? 'var(--success)' : 'var(--danger)'
+          }}>
+            {analysis.checks.consequence.message}
+          </span>
+        </div>
+      )}
+      
+      {/* Example of a good topic sentence - only show when struggling */}
+      {analysis.wordCount > 0 && analysis.wordCount < 15 && (
+        <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '8px' }}>
+          📖 <strong>Example:</strong> "Nigeria's cybersecurity is weak because the government doesn't fund NITDA properly, and hackers are stealing from banks without being caught."
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+ const handleSend = async () => {
+  // If AI is asking for a topic sentence, check coaching rules
+  if (isAskingForTopic()) {
+    const analysis = analyzeTopicSentence(input);
+    if (!analysis.allPassed) {
+      // Don't send, show error instead
+      setCoachingFeedback(analysis);
+      return;
+    }
+  }
+  
+  if (!isThresholdMet) return;
+  
+  const userMessage = input;
+  setInput('');
+  setCoachingFeedback(null);
+  setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+  setIsTyping(true);
+  
+  try {
+    const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
+    const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] };
+    const aiReply = await socraticChat(
+      savedProjectInfo || currentResult?.projectInfo || {},
+      chapter1Structure, messages, userMessage, currentResult?.references || []
+    );
+    
+    if (aiReply.includes('[SECTION_DRAFT]')) {
+      const outroText = aiReply.split('[/SECTION_DRAFT]')[1] || '';
+      const sectionMatch = outroText.match(/(\d+\.\d+)/);
+      if (sectionMatch) {
+        setCompletedSections(prev => prev.includes(sectionMatch[1]) ? prev : [...prev, sectionMatch[1]]);
+      }
+      const parts = aiReply.split('[SECTION_DRAFT]');
+      if (parts.length > 1) {
+        const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim();
+        if (draftContent) {
+          let cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
+          if (cur.chapters && cur.chapters[0]) {
+            cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + draftContent;
+            sessionStorage.setItem('gradelyResult', JSON.stringify(cur));
           }
         }
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: aiReply }])
-    } catch (err) {
-      console.error(err)
-      setMessages(prev => [...prev, { role: 'assistant', content: "Oops, I lost my train of thought. Can you repeat that?" }])
     }
-    setIsTyping(false)
+    setMessages(prev => [...prev, { role: 'assistant', content: aiReply }]);
+  } catch (err) {
+    console.error(err);
+    setMessages(prev => [...prev, { role: 'assistant', content: "I had trouble generating that. Could you rephrase your main point and try again?" }]);
   }
+  setIsTyping(false);
+};
+
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -871,34 +1059,45 @@ export default function SocraticBuilder() {
             <div ref={chatEndRef} />
           </div>
 
-          {/* ── INPUT ── */}
+                    {/* ── INPUT ── */}
           <div className="sb-input-area">
             <div className="sb-input-row">
               <div className="sb-textarea-wrap">
                 <textarea
                   className="sb-textarea"
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={e => handleInputWithCoaching(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={
                     isChapter1Complete ? "Type 'pay' to unlock chapters 2-5..."
+                    : isAskingForTopic() ? "Write your main point here (at least 15 words). Be specific: What's your claim? Why does it matter? What happens as a result?"
                     : lastMessageWasDraft ? "Type 'yes' or 'next'..."
                     : "Tell Grad your thoughts in your own words..."
                   }
-                  rows={2}
+                  rows={3}
                 />
                 <div className={`sb-word-count ${isThresholdMet ? 'met' : 'unmet'}`}>
-                  {(lastMessageWasDraft || isChapter1Complete) ? '✓' : `${wordCount}/${MIN_WORDS}`}
+                  {isAskingForTopic() ? (
+                    <span style={{ color: (coachingFeedback?.wordCount || 0) >= 15 ? 'var(--success)' : 'var(--text-dim)' }}>
+                      {(coachingFeedback?.wordCount || 0)}/15 words
+                    </span>
+                  ) : (
+                    (lastMessageWasDraft || isChapter1Complete) ? '✓' : `${wordCount}/${MIN_WORDS}`
+                  )}
                 </div>
               </div>
               <button
-                className={`sb-send-btn ${isThresholdMet && !isTyping ? 'active' : 'inactive'}`}
+                className={`sb-send-btn ${isThresholdMet && !isTyping && (isAskingForTopic() ? canSend : true) ? 'active' : 'inactive'}`}
                 onClick={handleSend}
-                disabled={!isThresholdMet || isTyping}
+                disabled={!isThresholdMet || isTyping || (isAskingForTopic() && !canSend)}
               >
                 Send
               </button>
             </div>
+            
+            {/* COACHING PANEL - appears only when AI is asking for topic sentence */}
+            {renderCoachingUI()}
+            
           </div>
         </div>
 

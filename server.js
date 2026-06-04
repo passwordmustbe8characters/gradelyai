@@ -79,7 +79,110 @@ function requireAuth(req, res, next) {
 // ============================================
 // MICRO-HUMANIZER CLASS (Pure Node.js, no AI)
 // ============================================
+class MicroHumanizer {
+  constructor() {
+    // Word swaps for AI trigger words
+    this.wordSwaps = {
+      'crucial': 'key',
+      'furthermore': 'also',
+      'moreover': 'plus',
+      'nevertheless': 'but',
+      'consequently': 'so',
+      'accordingly': 'thus',
+      'delve': 'explore',
+      'robust': 'solid',
+      'leverage': 'use',
+      'facilitate': 'help',
+      'utilize': 'use',
+      'pivotal': 'major',
+      'underscore': 'show',
+      'notably': 'especially',
+      'tapestry': 'mix',
+      'paradigm': 'model',
+      'synergy': 'teamwork',
+      'in addition': 'also',
+      'on the other hand': 'but',
+      'as a result': 'so',
+      'however': 'but',
+      'therefore': 'so'
+    };
+    
+    // Conversational pivots for natural flow
+    this.pivots = [
+      'Look, ',
+      'The reality is, ',
+      'Basically, ',
+      'In practice, ',
+      'Here\'s the thing: ',
+      'Simply put, ',
+      'What this means is '
+    ];
+  }
+  
+  humanize(text, alterationPercentage = 0.15) {
+    if (!text || typeof text !== 'string') return text;
+    let result = text;
+    
+    // 1. Swap banned AI words
+    for (const [ai, human] of Object.entries(this.wordSwaps)) {
+      const regex = new RegExp(`\\b${ai}\\b`, 'gi');
+      result = result.replace(regex, (match) => {
+        const isCapitalized = match[0] === match[0].toUpperCase();
+        return isCapitalized ? human[0].toUpperCase() + human.slice(1) : human;
+      });
+    }
+    
+    // 2. Split long sentences with em-dash (only 15% of sentences)
+    const sentences = result.split(/(?<=[.!?])\s+/);
+    const processed = [];
+    
+    for (const sentence of sentences) {
+      const wordCount = sentence.split(/\s+/).length;
+      if (wordCount > 18 && Math.random() < alterationPercentage) {
+        const words = sentence.split(/\s+/);
+        const splitPoint = Math.floor(wordCount * 0.6);
+        const firstPart = words.slice(0, splitPoint).join(' ');
+        const secondPart = words.slice(splitPoint).join(' ');
+        processed.push(`${firstPart} — ${secondPart.toLowerCase()}`);
+      } else {
+        processed.push(sentence);
+      }
+    }
+    result = processed.join(' ');
+    
+    // 3. Inject conversational pivots (15% of sentences)
+    const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
+    const numToAlter = Math.floor(sentencesWithPivots.length * alterationPercentage);
+    const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
+    
+    for (const idx of indicesToAlter) {
+      const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
+      const sentence = sentencesWithPivots[idx];
+      sentencesWithPivots[idx] = pivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
+    }
+    result = sentencesWithPivots.join(' ');
+    
+    // 4. Clean up spacing and punctuation
+    result = result.replace(/\s+/g, ' ');
+    result = result.replace(/\s+([,.!?])/g, '$1');
+    result = result.replace(/\s+—/g, ' —');
+    result = result.trim();
+    
+    return result;
+  }
+  
+  _getRandomIndices(max, count) {
+    const indices = [];
+    while (indices.length < count && indices.length < max) {
+      const idx = Math.floor(Math.random() * max);
+      if (!indices.includes(idx)) indices.push(idx);
+    }
+    return indices;
+  }
+}
 
+// Initialize the humanizer
+const humanizer = new MicroHumanizer();
 
 
 // ─── GRADELYAI: MASTER PIPELINE PRODUCTION ROUTES ─────────────────────────────
@@ -191,81 +294,78 @@ Write at least 3 rich, academic paragraphs that preserve the student's core argu
 });
 
 // ============================================
-// GROQ + TOPIC SENTENCE DICTATOR
+// GROQ + TOPIC SENTENCE DICTATOR (UPDATED)
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
-  const { messages, projectInfo } = req.body;
+  const { messages, projectInfo, chapterStructure } = req.body;
   
   // Get student's last message
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-  let studentText = lastUserMessage?.content || '';
+  let studentTopicSentence = lastUserMessage?.content || '';
   
-  // Count words
-  const wordCount = studentText.trim().split(/\s+/).length;
+  // Check for confirmation responses
+  const isConfirmation = ['yes', 'no', 'next', 'looks good', 'good', 'continue', 'proceed', 'looks good'].includes(
+    studentTopicSentence.toLowerCase().trim()
+  );
   
-  // If too short, ask for more
-  if (wordCount < 8) {
+  if (isConfirmation) {
     return res.json({
       success: true,
-      message: `Can you tell me a bit more? Write 8-10 words explaining your main point about ${projectInfo?.topic || 'this topic'}.`
+      message: "Great! Moving to the next section. Type your main point for the next section."
+    });
+  }
+  
+  // Enforce minimum length for topic sentences
+  const wordCount = studentTopicSentence.trim().split(/\s+/).length;
+  if (wordCount < 15) {
+    return res.json({
+      success: true,
+      message: `⚠️ Please write at least 15 words explaining your main point. (You wrote ${wordCount} words)\n\n💡 Tip: Include WHAT you're claiming, WHY it matters, and WHAT happens as a result.\n\nExample: "Nigeria's cybersecurity is weak because the government doesn't fund NITDA properly, and hackers are stealing from banks without being caught."`
     });
   }
   
   try {
-    // Call Groq to expand student's idea into rich paragraphs
+    // Step 1: Generate supporting paragraphs with Groq (NOT including the topic sentence)
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: `You help students write academic paragraphs. Follow these rules:
+          content: `You write supporting paragraphs for a student's topic sentence.
 
-1. Fix the student's grammar but keep their meaning
-2. Write 2-3 rich paragraphs (not just sentences)
-3. Each paragraph should be 3-5 sentences
-4. Start with the student's main point (rewritten properly)
-5. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize
-6. Use simple words: key, also, so, but, because, helps, shows
+CRITICAL RULES:
+1. The student's topic sentence will be given to you. Do NOT repeat it. Just write the supporting paragraphs.
+2. Write 2-3 paragraphs (3-5 sentences each)
+3. Put a blank line BETWEEN each paragraph
+4. Vary sentence length (some short, some long)
+5. Use simple transitions: "this means", "for example", "the key point is"
+6. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize
 
-Example of what NOT to write: "Furthermore, this is crucial for..."
-Example of what TO write: "This is important because..."`
+Just write the supporting content. No introductory phrases. No fluff.`
         },
         {
           role: "user",
-          content: `Student's idea: "${studentText}"
+          content: `Student's topic sentence: "${studentTopicSentence}"
 
+Section: ${chapterStructure?.currentSection?.title || 'Current section'}
 Project topic: ${projectInfo?.topic || 'Unknown'}
 
-Write 2-3 academic paragraphs that expand this idea. Start with the student's main point (fix grammar if needed). Make it rich and substantive.`
+Write 2-3 supporting paragraphs (3-5 sentences each). Add blank lines between paragraphs.`
         }
       ],
       temperature: 0.7,
       max_tokens: 1000
     });
     
-    let aiResponse = completion.choices[0].message.content;
+    let supportingText = completion.choices[0].message.content;
     
-    // Remove any banned words just in case
-    const bannedWords = ['crucial', 'furthermore', 'moreover', 'delve', 'robust', 'leverage', 'utilize', 'pivotal'];
-    for (const word of bannedWords) {
-      const regex = new RegExp(`\\b${word}\\b`, 'gi');
-      aiResponse = aiResponse.replace(regex, match => {
-        const swaps = {
-          'crucial': 'key', 'furthermore': 'also', 'moreover': 'plus',
-          'delve': 'explore', 'robust': 'strong', 'leverage': 'use',
-          'utilize': 'use', 'pivotal': 'major'
-        };
-        return swaps[match.toLowerCase()] || match;
-      });
-    }
+    // Step 2: Apply Micro-Humanizer to supporting text ONLY
+    supportingText = humanizer.humanize(supportingText, 0.15);
     
-    // Clean up spacing
-    aiResponse = aiResponse.replace(/\s+/g, ' ').trim();
+    // Step 3: Combine student's topic sentence + humanized supporting text
+    const finalResponse = `${studentTopicSentence}\n\n${supportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
     
-    res.json({
-      success: true,
-      message: aiResponse + "\n\n✅ Ready for the next section? Type 'next' to continue."
-    });
+    res.json({ success: true, message: finalResponse });
     
   } catch (error) {
     console.error('Error:', error);
