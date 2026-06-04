@@ -169,145 +169,61 @@ app.post('/api/humanize', async (req, res) => {
 // GROQ + TOPIC SENTENCE DICTATOR
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
-  const { messages, projectInfo, chapterStructure } = req.body;
+  const { messages, projectInfo } = req.body;
   
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ success: false, error: 'Messages array is required' });
+  // Get the student's last message
+  const lastUserMessage = messages.filter(m => m.role === 'user').pop();
+  const studentTopicSentence = lastUserMessage?.content || '';
+  
+  // Count words
+  const wordCount = studentTopicSentence.trim().split(/\s+/).length;
+  
+  // If message is too short, ask for more
+  if (wordCount < 10) {
+    return res.json({
+      success: true,
+      message: `Please write a bit more (at least 10 words). Tell me specifically: what is the main point you want to make about ${projectInfo?.topic || 'this topic'}?`
+    });
   }
   
   try {
-    // STEP 1: Extract the student's last message (their topic sentence)
-    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-    const studentTopicSentence = lastUserMessage?.content || '';
-    
-    // STEP 2: Check if student actually provided enough content
-    const wordCount = studentTopicSentence.trim().split(/\s+/).length;
-    const isSubstantial = wordCount >= 12;  // Minimum 12 words
-    
-    // STEP 3: If message is too short, ask for more detail (not a draft)
-    if (!isSubstantial && !studentTopicSentence.toLowerCase().includes('yes') && !studentTopicSentence.toLowerCase().includes('no')) {
-      return res.json({
-        success: true,
-        message: `Can you give me a bit more detail? Write at least 12-15 words explaining your main point about ${projectInfo?.topic || 'this topic'}. For example: "The main problem with ${projectInfo?.topic || 'this topic'} is that..."`,
-        isShortResponse: true
-      });
-    }
-    
-    // STEP 4: Check if this is a conversational response (yes/no/ok)
-    const isConversational = ['yes', 'no', 'ok', 'okay', 'sure', 'got it', 'thanks', 'next', 'continue'].some(word => 
-      studentTopicSentence.toLowerCase().trim() === word || studentTopicSentence.toLowerCase().trim() === `${word}.`
-    );
-    
-    if (isConversational) {
-      // Just acknowledge and ask next question
-      return res.json({
-        success: true,
-        message: "Great! Let's move to the next section. " + getNextQuestionPrompt(chapterStructure, messages),
-        isConversational: true
-      });
-    }
-    
-    // STEP 5: Generate supporting text using Groq
-    // The system prompt forces the AI to use the student's exact words as the FIRST sentence
+    // Call Groq with simple, forceful prompt
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: `You are an academic writing assistant that helps students build their projects.
-
-CRITICAL RULE - YOU MUST FOLLOW THIS EXACTLY:
-The student has provided their core argument. You MUST start your response with THEIR EXACT WORDS as the first sentence.
-
-Student's exact words: "${studentTopicSentence}"
-
-YOUR RESPONSE MUST:
-1. Begin with: "${studentTopicSentence}" (copy it exactly, word for word)
-2. Then write 3-5 supporting sentences that provide evidence, examples, or explanation
-3. Do NOT change the student's wording in the first sentence
-4. Do NOT add your own topic sentence
-5. Keep supporting sentences clear and academic but not robotic
-
-FORBIDDEN WORDS (never use these): crucial, furthermore, moreover, delve, robust, leverage, utilize, pivotal, underscore, notably, consequently, accordingly, nevertheless
-
-EXAMPLE OF CORRECT RESPONSE:
-[Student's exact words]. Supporting sentence one. Supporting sentence two. Supporting sentence three.
-
-Now write your response starting with the student's exact words.`
+          content: `You add 3-5 sentences after the user's sentence. You never change their words. You never add before. First character of your response is the first character of their sentence.`
         },
         {
-          role: "user",
-          content: `My main point is: ${studentTopicSentence}\n\nPlease write 3-5 supporting sentences for my section: ${chapterStructure?.currentSection?.title || 'current section'}`
+          role: "user", 
+          content: `My sentence: "${studentTopicSentence}"\n\nAdd 3-5 supporting sentences after it. Start with my exact sentence.`
         }
       ],
-      temperature: 0.7,
-      max_tokens: 800
+      temperature: 0.5,
+      max_tokens: 600
     });
     
     let aiResponse = completion.choices[0].message.content;
     
-    // STEP 6: Verify the response starts with the student's exact words
-    // If not, force it
-    if (!aiResponse.toLowerCase().startsWith(studentTopicSentence.toLowerCase().substring(0, 50))) {
-      aiResponse = `${studentTopicSentence} ${aiResponse}`;
-    }
-    
-    // STEP 7: Light cleanup (remove double spaces, fix punctuation)
-    aiResponse = aiResponse.replace(/\s+/g, ' ').trim();
-    aiResponse = aiResponse.replace(/\s+([.!?])/g, '$1');
-    
-    // STEP 8: Check if this completes the chapter
-    const allSectionsComplete = checkAllSectionsComplete(chapterStructure, messages);
-    
-    let followUp = "";
-    if (allSectionsComplete) {
-      followUp = "\n\n[CHAPTER_1_COMPLETE] 🎉 Chapter 1 is complete! Click 'Save & Review' to see your work. To continue with Chapters 2-5, you'll need to unlock the full project.";
-    } else {
-      followUp = `\n\n✅ Section ${chapterStructure?.currentSection?.title || 'this section'} is ready! Shall we move to the next section?`;
+    // FORCE compliance: if AI didn't start with student's words, add them
+    if (!aiResponse.startsWith(studentTopicSentence)) {
+      aiResponse = studentTopicSentence + " " + aiResponse.replace(/^[^a-zA-Z0-9]+/, '');
     }
     
     res.json({
       success: true,
-      message: aiResponse + followUp,
-      studentTopicSentence: studentTopicSentence,
-      wordCount: wordCount,
-      isSubstantial: isSubstantial
+      message: aiResponse + "\n\n✅ Section ready! Type 'next' to continue or keep writing."
     });
     
   } catch (error) {
-    console.error('Groq API error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      fallback: "I had trouble generating that section. Could you rephrase your main point and try again?"
+    console.error('Groq error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
     });
   }
 });
-
-// Helper function: Get next question prompt
-function getNextQuestionPrompt(chapterStructure, messages) {
-  const sections = chapterStructure?.sections || [];
-  const completedCount = messages.filter(m => m.role === 'assistant' && m.content.includes('section is ready')).length;
-  
-  if (completedCount < sections.length) {
-    const nextSection = sections[completedCount];
-    return `Tell me in your own words: what is the main point you want to make in ${nextSection?.title || 'the next section'}?`;
-  }
-  
-  return "Would you like to review what we've written so far?";
-}
-
-// Helper function: Check if all sections are complete
-function checkAllSectionsComplete(chapterStructure, messages) {
-  const totalSections = chapterStructure?.sections?.length || 5;
-  const completedIndicators = messages.filter(m => 
-    m.role === 'assistant' && 
-    (m.content.includes('section is ready') || m.content.includes('Section complete'))
-  ).length;
-  
-  return completedIndicators >= totalSections;
-}
-
 
 /**
  * 2. THE SUPERVISOR CORRECTION PERSISTENCE TRACKER

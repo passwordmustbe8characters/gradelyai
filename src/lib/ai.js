@@ -1,4 +1,3 @@
-import { getToken } from './auth';
 
 // GradelyAI — Core AI Engine (Claude)
 
@@ -442,20 +441,13 @@ export async function humanizeText(text) {
 }
 
 // ─── SOCRATIC CHAT ────────────────────────────────────────────────────────────
-
-
-export async function socraticChat(projectInfo, chapterStructure, chatHistory = [], userMessage = '') {
+export async function socraticChat(projectInfo, chapterStructure, chatHistory = [], userMessage) {
   const BASE_URL = import.meta.env.VITE_API_URL || '';
-  
-  // FIX: Use the getToken function from auth.js (not direct localStorage)
-  const token = getToken();
-  
-  console.log('Token found?', !!token); // Debug: should show true if logged in
+  const token = localStorage.getItem('gradelyToken');
   
   if (!token) {
-    console.error('No token found - redirecting to login');
     window.location.href = '/auth';
-    throw new Error('Please log in again');
+    throw new Error('Please log in');
   }
   
   const messages = chatHistory.map(msg => ({
@@ -463,8 +455,11 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory = 
     content: msg.content
   }));
 
-  if (userMessage && userMessage.trim()) {
-    messages.push({ role: 'user', content: userMessage });
+  if (userMessage) {
+    messages.push({
+      role: 'user',
+      content: userMessage
+    });
   }
   
   const response = await fetch(`${BASE_URL}/api/socratic-generate`, {
@@ -480,18 +475,9 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory = 
     })
   });
   
-  // Handle 401 specifically
-  if (response.status === 401) {
-    console.error('Token invalid/expired - logging out');
-    localStorage.removeItem('gradelyToken');
-    localStorage.removeItem('gradelyUser');
-    window.location.href = '/auth';
-    throw new Error('Session expired. Please log in again.');
-  }
-  
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Socratic chat failed');
+    const error = await response.json();
+    throw new Error(error.error || 'Chat failed');
   }
   
   const data = await response.json();
