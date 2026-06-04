@@ -119,57 +119,96 @@ class MicroHumanizer {
     ];
   }
   
-  humanize(text, alterationPercentage = 0.15) {
-    if (!text || typeof text !== 'string') return text;
-    let result = text;
-    
-    // 1. Swap banned AI words
-    for (const [ai, human] of Object.entries(this.wordSwaps)) {
-      const regex = new RegExp(`\\b${ai}\\b`, 'gi');
-      result = result.replace(regex, (match) => {
-        const isCapitalized = match[0] === match[0].toUpperCase();
-        return isCapitalized ? human[0].toUpperCase() + human.slice(1) : human;
-      });
-    }
-    
-    // 2. Split long sentences with em-dash (only 15% of sentences)
-    const sentences = result.split(/(?<=[.!?])\s+/);
-    const processed = [];
-    
-    for (const sentence of sentences) {
-      const wordCount = sentence.split(/\s+/).length;
-      if (wordCount > 18 && Math.random() < alterationPercentage) {
-        const words = sentence.split(/\s+/);
-        const splitPoint = Math.floor(wordCount * 0.6);
-        const firstPart = words.slice(0, splitPoint).join(' ');
-        const secondPart = words.slice(splitPoint).join(' ');
-        processed.push(`${firstPart} — ${secondPart.toLowerCase()}`);
-      } else {
-        processed.push(sentence);
-      }
-    }
-    result = processed.join(' ');
-    
-    // 3. Inject conversational pivots (15% of sentences)
-    const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
-    const numToAlter = Math.floor(sentencesWithPivots.length * alterationPercentage);
-    const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
-    
-    for (const idx of indicesToAlter) {
-      const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
-      const sentence = sentencesWithPivots[idx];
-      sentencesWithPivots[idx] = pivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
-    }
-    result = sentencesWithPivots.join(' ');
-    
-    // 4. Clean up spacing and punctuation
-    result = result.replace(/\s+/g, ' ');
-    result = result.replace(/\s+([,.!?])/g, '$1');
-    result = result.replace(/\s+—/g, ' —');
-    result = result.trim();
-    
-    return result;
+  humanize(text, alterationPercentage = 0.25) {  // Increased from 0.15 to 0.25
+  if (!text || typeof text !== 'string') return text;
+  let result = text;
+  
+  // 1. Swap banned AI words (expanded list)
+  const allSwaps = {
+    ...this.wordSwaps,
+    // Add more aggressive swaps
+    'important': 'key',
+    'significant': 'major', 
+    'therefore': 'so',
+    'thus': 'so',
+    'hence': 'so',
+    'indeed': 'yes',
+    'typically': 'often',
+    'specifically': 'like',
+    'generally': 'mostly',
+    'similarly': 'like',
+    'likewise': 'also',
+    'subsequently': 'then'
+  };
+  
+  for (const [ai, human] of Object.entries(allSwaps)) {
+    const regex = new RegExp(`\\b${ai}\\b`, 'gi');
+    result = result.replace(regex, (match) => {
+      const isCapitalized = match[0] === match[0].toUpperCase();
+      return isCapitalized ? human[0].toUpperCase() + human.slice(1) : human;
+    });
   }
+  
+  // 2. Break up long sentences more aggressively
+  const sentences = result.split(/(?<=[.!?])\s+/);
+  const processed = [];
+  
+  for (const sentence of sentences) {
+    let wordCount = sentence.split(/\s+/).length;
+    
+    // Split sentences over 15 words (was 18)
+    if (wordCount > 15 && Math.random() < alterationPercentage) {
+      const words = sentence.split(/\s+/);
+      const splitPoint = Math.floor(wordCount * 0.5); // Split at 50% not 60%
+      const firstPart = words.slice(0, splitPoint).join(' ');
+      const secondPart = words.slice(splitPoint).join(' ');
+      processed.push(`${firstPart}. ${secondPart.toLowerCase()}`);
+    } 
+    // Add random sentence fragments (very human)
+    else if (Math.random() < 0.1 && wordCount > 8) {
+      const words = sentence.split(/\s+/);
+      const fragmentEnd = Math.floor(wordCount * 0.4);
+      const fragment = words.slice(0, fragmentEnd).join(' ');
+      const remainder = words.slice(fragmentEnd).join(' ');
+      processed.push(`${fragment} — ${remainder.toLowerCase()}`);
+    }
+    else {
+      processed.push(sentence);
+    }
+  }
+  result = processed.join(' ');
+  
+  // 3. Add conversational pivots to 25% of sentences (was 15%)
+  const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
+  const numToAlter = Math.floor(sentencesWithPivots.length * 0.25);
+  const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
+  
+  for (const idx of indicesToAlter) {
+    const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
+    const sentence = sentencesWithPivots[idx];
+    sentencesWithPivots[idx] = pivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
+  }
+  result = sentencesWithPivots.join(' ');
+  
+  // 4. Randomly start 20% of sentences with conjunctions (very human)
+  const finalSentences = result.split(/(?<=[.!?])\s+/);
+  for (let i = 0; i < finalSentences.length; i++) {
+    if (Math.random() < 0.2 && finalSentences[i].length > 15) {
+      const conjunctions = ['And ', 'But ', 'So ', 'Yet ', 'Or ', 'Nor '];
+      const conj = conjunctions[Math.floor(Math.random() * conjunctions.length)];
+      finalSentences[i] = conj + finalSentences[i][0].toLowerCase() + finalSentences[i].slice(1);
+    }
+  }
+  result = finalSentences.join(' ');
+  
+  // 5. Clean up
+  result = result.replace(/\s+/g, ' ');
+  result = result.replace(/\s+([,.!?])/g, '$1');
+  result = result.replace(/\s+—/g, ' —');
+  result = result.trim();
+  
+  return result;
+}
   
   _getRandomIndices(max, count) {
     const indices = [];
