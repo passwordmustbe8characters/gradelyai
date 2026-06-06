@@ -361,12 +361,38 @@ Write at least 3 rich, academic paragraphs that preserve the student's core argu
   }
 });
 
+
+
+app.post('/api/bert-humanize', requireAuth, async (req, res) => {
+  const { text } = req.body;
+  
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ success: false, error: 'Text is required' });
+  }
+  
+  try {
+    const response = await fetch('https://uncled33-bert-humanizer.hf.space/humanize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    
+    const data = await response.json();
+    res.json({ success: true, text: data.text });
+    
+  } catch (error) {
+    console.error('BERT humanizer error:', error);
+    // Fallback: return original text if humanizer fails
+    res.json({ success: true, text });
+  }
+});
+
 // ============================================
-// GROQ + TOPIC SENTENCE DICTATOR (WITH FULL PIPELINE)
+// GROQ + TOPIC SENTENCE DICTATOR (WITH BERT HUMANIZER)
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const { messages, projectInfo, chapterStructure } = req.body;
-  
+
   // Get student's last message
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
@@ -427,8 +453,15 @@ Write 2-3 supporting paragraphs (3-5 sentences each). Add blank lines between pa
     
     let rawSupportingText = completion.choices[0].message.content;
     
-    // Step 2: Run the full humanization pipeline on the supporting text
-    const humanizedSupportingText = await runHumanizationPipeline(rawSupportingText);
+    // Step 2: Apply full humanization pipeline
+    let humanizedSupportingText;
+    try {
+      humanizedSupportingText = await runHumanizationPipeline(rawSupportingText);
+      console.log('Full humanization pipeline applied successfully');
+    } catch (pipelineError) {
+      console.error('Humanization pipeline failed, using original text:', pipelineError.message);
+      humanizedSupportingText = rawSupportingText;
+    }
     
     // Step 3: Combine with student's topic sentence
     const finalResponse = `${studentTopicSentence}\n\n${humanizedSupportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
