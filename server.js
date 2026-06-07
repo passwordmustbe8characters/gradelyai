@@ -398,6 +398,11 @@ app.post('/api/bert-humanize', requireAuth, async (req, res) => {
 // GROQ + TOPIC SENTENCE DICTATOR (WITH BERT HUMANIZER)
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
+
+  console.log('=== SOCRATIC GENERATE CALLED ===');
+  console.log('GROQ_API_KEY at request time:', process.env.GROQ_API_KEY ? 'YES' : 'NO');
+  
+
   const { messages, projectInfo, chapterStructure } = req.body;
 
   // Get student's last message
