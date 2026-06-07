@@ -10,6 +10,11 @@ import jwt from 'jsonwebtoken'
 import db from './database.js'
 import Groq from 'groq-sdk'
 
+// Add this at the VERY TOP of server.js
+console.log('=== SERVER STARTING ===');
+console.log('GROQ_API_KEY from env:', process.env.GROQ_API_KEY ? 'KEY IS SET (length: ' + process.env.GROQ_API_KEY.length + ')' : 'KEY IS MISSING!');
+console.log('OPENAI_API_KEY from env:', process.env.OPENAI_API_KEY ? 'SET' : 'MISSING');
+console.log('========================');
 
 
 // ⬇️ THE BULLETPROOF FIX: Force Node to load the legacy package correctly ⬇️
