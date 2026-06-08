@@ -395,33 +395,25 @@ app.post('/api/bert-humanize', requireAuth, async (req, res) => {
 });
 
 // ============================================
-// GROQ + TOPIC SENTENCE DICTATOR (WITH BERT HUMANIZER)
+// OPENAI + TOPIC SENTENCE DICTATOR (TEMPORARY FIX)
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
+  const { messages } = req.body;
 
-  console.log('=== SOCRATIC GENERATE CALLED ===');
-  console.log('GROQ_API_KEY at request time:', process.env.GROQ_API_KEY ? 'YES' : 'NO');
-  
-
-  const { messages, projectInfo, chapterStructure } = req.body;
-
-  // Get student's last message
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
-  
-  // Check for confirmation responses
-  const isConfirmation = ['yes', 'no', 'next', 'looks good', 'good', 'continue', 'proceed', 'looks good'].includes(
+
+  const isConfirmation = ['yes', 'no', 'next', 'looks good', 'good', 'continue', 'proceed'].includes(
     studentTopicSentence.toLowerCase().trim()
   );
-  
+
   if (isConfirmation) {
     return res.json({
       success: true,
       message: "Great! Moving to the next section. Type your main point for the next section."
     });
   }
-  
-  // Enforce minimum length for topic sentences
+
   const wordCount = studentTopicSentence.trim().split(/\s+/).length;
   if (wordCount < 15) {
     return res.json({
@@ -429,15 +421,21 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
       message: `⚠️ Please write at least 15 words explaining your main point. (You wrote ${wordCount} words)\n\n💡 Tip: Include WHAT you're claiming, WHY it matters, and WHAT happens as a result.\n\nExample: "Nigeria's cybersecurity is weak because the government doesn't fund NITDA properly, and hackers are stealing from banks without being caught."`
     });
   }
-  
+
   try {
-    // Step 1: Generate supporting text with Groq (without the topic sentence)
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content: `You write 2-3 supporting paragraphs for a student's topic sentence.
+    // Use OpenAI instead of Groq
+    const completion = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You write 2-3 supporting paragraphs for a student's topic sentence.
 
 CRITICAL RULES:
 1. Do NOT repeat the student's topic sentence.
@@ -448,38 +446,39 @@ CRITICAL RULES:
 6. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize.
 
 Just write the supporting content. No introductory phrases. No fluff.`
-        },
-        {
-          role: "user",
-          content: `Student's topic sentence: "${studentTopicSentence}"
-
-Section: ${chapterStructure?.currentSection?.title || 'Current section'}
-Project topic: ${projectInfo?.topic || 'Unknown'}
-
-Write 2-3 supporting paragraphs (3-5 sentences each). Add blank lines between paragraphs.`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 1000
+          },
+          {
+            role: "user",
+            content: `Student's topic sentence: "${studentTopicSentence}"\n\nWrite 2-3 supporting paragraphs. Add blank lines between paragraphs.`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
+      })
     });
+
+    const data = await completion.json();
     
-    let rawSupportingText = completion.choices[0].message.content;
-    
-    // Step 2: Apply full humanization pipeline
-    let humanizedSupportingText;
-    try {
-      humanizedSupportingText = await runHumanizationPipeline(rawSupportingText);
-      console.log('Full humanization pipeline applied successfully');
-    } catch (pipelineError) {
-      console.error('Humanization pipeline failed, using original text:', pipelineError.message);
-      humanizedSupportingText = rawSupportingText;
+    if (!completion.ok) {
+      throw new Error(data.error?.message || 'OpenAI API error');
     }
     
-    // Step 3: Combine with student's topic sentence
+    let rawSupportingText = data.choices[0].message.content;
+
+    // Apply humanization pipeline to supporting text
+    let humanizedSupportingText = rawSupportingText;
+    try {
+      humanizedSupportingText = await runHumanizationPipeline(rawSupportingText);
+      console.log('Humanization pipeline applied successfully');
+    } catch (pipelineError) {
+      console.error('Humanization pipeline failed:', pipelineError.message);
+      // Fallback to original text
+    }
+
     const finalResponse = `${studentTopicSentence}\n\n${humanizedSupportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
-    
+
     res.json({ success: true, message: finalResponse });
-    
+
   } catch (error) {
     console.error('Error in socratic-generate:', error);
     res.status(500).json({ 
