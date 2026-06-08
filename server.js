@@ -347,8 +347,11 @@ Write at least 3 rich, academic paragraphs that preserve the student's core argu
     // Step 4: Fix double spaces and punctuation
     result = result.replace(/\s+/g, ' ').trim();
     result = result.replace(/\s+([.!?])/g, '$1');
+
+    // Step 5: Final humanization pass using the local pipeline
+    result = await runHumanizationPipeline(result);
     
-    // Step 5: Ensure at least 3 paragraphs exist
+    // Step 6: Ensure at least 3 paragraphs exist
     const paragraphs = result.split(/\n\s*\n/);
     if (paragraphs.length < 3) {
       // If AI didn't write enough, add a note
@@ -395,7 +398,7 @@ app.post('/api/bert-humanize', requireAuth, async (req, res) => {
 });
 
 // ============================================
-// OPENAI + TOPIC SENTENCE DICTATOR (TEMPORARY FIX)
+// OPENAI + AGGRESSIVE BERT HUMANIZER
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const { messages } = req.body;
@@ -403,6 +406,7 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
 
+  // Check for confirmation responses
   const isConfirmation = ['yes', 'no', 'next', 'looks good', 'good', 'continue', 'proceed'].includes(
     studentTopicSentence.toLowerCase().trim()
   );
@@ -414,6 +418,7 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
     });
   }
 
+  // Enforce minimum length
   const wordCount = studentTopicSentence.trim().split(/\s+/).length;
   if (wordCount < 15) {
     return res.json({
@@ -423,7 +428,7 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   }
 
   try {
-    // Use OpenAI instead of Groq
+    // ----- STEP 1: Generate supporting paragraphs with OpenAI -----
     const completion = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -458,23 +463,40 @@ Just write the supporting content. No introductory phrases. No fluff.`
     });
 
     const data = await completion.json();
-    
     if (!completion.ok) {
       throw new Error(data.error?.message || 'OpenAI API error');
     }
-    
     let rawSupportingText = data.choices[0].message.content;
+    console.log('OpenAI generation complete. Raw text length:', rawSupportingText.length);
 
-    // Apply humanization pipeline to supporting text
-    let humanizedSupportingText = rawSupportingText;
+    // ----- STEP 2: Apply aggressive BERT humanization -----
+    let humanizedSupportingText = rawSupportingText; // fallback
+    console.log('Calling BERT humanizer at https://uncled33-bert-humanizer.hf.space/humanize ...');
+
     try {
-      humanizedSupportingText = await runHumanizationPipeline(rawSupportingText);
-      console.log('Humanization pipeline applied successfully');
-    } catch (pipelineError) {
-      console.error('Humanization pipeline failed:', pipelineError.message);
-      // Fallback to original text
+      const bertResponse = await fetch('https://uncled33-bert-humanizer.hf.space/humanize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: rawSupportingText })
+      });
+
+      if (bertResponse.ok) {
+        const bertData = await bertResponse.json();
+        if (bertData && bertData.text) {
+          humanizedSupportingText = bertData.text;
+          console.log('BERT humanization successful. Humanized text length:', humanizedSupportingText.length);
+        } else {
+          console.log('BERT response missing text field, using original');
+        }
+      } else {
+        console.log(`BERT responded with status ${bertResponse.status}, using original`);
+      }
+    } catch (bertError) {
+      console.error('BERT humanization failed:', bertError.message);
+      // Keep original text as fallback
     }
 
+    // ----- STEP 3: Combine and return -----
     const finalResponse = `${studentTopicSentence}\n\n${humanizedSupportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
 
     res.json({ success: true, message: finalResponse });
