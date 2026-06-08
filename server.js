@@ -398,7 +398,7 @@ app.post('/api/bert-humanize', requireAuth, async (req, res) => {
 });
 
 // ============================================
-// OPENAI + AGGRESSIVE BERT HUMANIZER
+// OPENAI + COLAB GPU BERT HUMANIZER
 // ============================================
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const { messages } = req.body;
@@ -469,12 +469,13 @@ Just write the supporting content. No introductory phrases. No fluff.`
     let rawSupportingText = data.choices[0].message.content;
     console.log('OpenAI generation complete. Raw text length:', rawSupportingText.length);
 
-    // ----- STEP 2: Apply aggressive BERT humanization -----
+    // ----- STEP 2: Apply aggressive BERT humanization via Colab GPU -----
     let humanizedSupportingText = rawSupportingText; // fallback
-    console.log('Calling BERT humanizer at https://uncled33-bert-humanizer.hf.space/humanize ...');
+    const BERT_URL = 'https://vicinity-siding-email.ngrok-free.dev/humanize';
+    console.log(`Calling Colab BERT humanizer at ${BERT_URL} ...`);
 
     try {
-      const bertResponse = await fetch('https://uncled33-bert-humanizer.hf.space/humanize', {
+      const bertResponse = await fetch(BERT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: rawSupportingText })
@@ -484,15 +485,15 @@ Just write the supporting content. No introductory phrases. No fluff.`
         const bertData = await bertResponse.json();
         if (bertData && bertData.text) {
           humanizedSupportingText = bertData.text;
-          console.log('BERT humanization successful. Humanized text length:', humanizedSupportingText.length);
+          console.log('Colab BERT humanization successful. Humanized length:', humanizedSupportingText.length);
         } else {
-          console.log('BERT response missing text field, using original');
+          console.log('Colab BERT response missing text field, using original');
         }
       } else {
-        console.log(`BERT responded with status ${bertResponse.status}, using original`);
+        console.log(`Colab BERT responded with status ${bertResponse.status}, using original`);
       }
     } catch (bertError) {
-      console.error('BERT humanization failed:', bertError.message);
+      console.error('Colab BERT humanization failed:', bertError.message);
       // Keep original text as fallback
     }
 
