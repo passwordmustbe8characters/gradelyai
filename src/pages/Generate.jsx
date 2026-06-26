@@ -9,6 +9,7 @@ import {
   fetchRealPapers,
   analyzeWritingStyle,
 } from '../lib/ai'
+import logoPrimary from '../assets/primary-logo.png';
 
 export default function Generate() {
   const navigate = useNavigate()
@@ -214,8 +215,7 @@ setCurrentChapter(chapterIndex)
       <div style={{ position: 'fixed', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(108,99,255,0.08) 0%, transparent 70%)', top: -200, right: -100, pointerEvents: 'none' }} />
 
       <div style={{ position: 'fixed', top: 20, left: 40, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
-        <span style={{ fontFamily: 'Playfair Display, serif', fontSize: 18, fontWeight: 700 }}>GradelyAI</span>
+        <img src={logoPrimary} alt="GradelyAI" style={{ height: '28px', width: 'auto' }} />
       </div>
 
    <div className="container" style={{ maxWidth: 600 }}>

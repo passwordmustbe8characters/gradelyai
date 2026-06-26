@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import logoPrimary from '../assets/primary-logo.png';
 
 function ConceptIcon() {
   return (
@@ -133,10 +134,9 @@ export default function Flashcards() {
 
       {/* Top bar */}
       <div style={{ width: '100%', maxWidth: 680, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 0 40px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
-          <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18 }}>GradelyAI</span>
-        </div>
+       <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate('/')}>
+  <img src={logoPrimary} alt="GradelyAI" style={{ height: '28px', width: 'auto' }} />
+</div>
         <button className="btn-ghost" onClick={() => navigate('/results')} style={{ fontSize: 13 }}>
           ← Back to Project
         </button>

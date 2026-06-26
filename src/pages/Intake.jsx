@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { generateTopics } from '../lib/ai'
+import { generateTopics, generateAreas, generateProjectStructure } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
-import { NIGERIAN_UNIVERSITIES, DEPARTMENTS_BY_FACULTY, getAreasForDepartment } from '../lib/universities'
+import { NIGERIAN_UNIVERSITIES, DEPARTMENTS_BY_FACULTY } from '../lib/universities'
 import SearchableSelect from '../components/SearchableSelect'
-
+import logoPrimary from '../assets/primary-logo.png';
 
 export default function Intake() {
   const navigate = useNavigate()
@@ -13,9 +13,12 @@ export default function Intake() {
   const mode = params.get('mode')
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [generatingProject, setGeneratingProject] = useState(false) // New: for final generation loading
   const [error, setError] = useState('')
   const [isNewProject, setIsNewProject] = useState(mode === 'new_project')
   const [skipToTopic, setSkipToTopic] = useState(mode === 'new_project')
+  const [dynamicAreas, setDynamicAreas] = useState([])
+  const [areasLoading, setAreasLoading] = useState(false)
 
   const [form, setForm] = useState({
     name: '',
@@ -34,66 +37,144 @@ export default function Intake() {
     builtContext: '',
     githubLink: '',
     styleAnswers: {},
+    supervisorName: '',
   })
 
   const update = (key, value) => setForm(f => ({ ...f, [key]: value }))
 
   const fetchGuideFromDB = async (university, department) => {
-  try {
-    const BASE_URL = import.meta.env.VITE_API_URL || ''
-    const res = await fetch(`${BASE_URL}/api/guides?university=${encodeURIComponent(university)}&department=${encodeURIComponent(department)}`)
-    const data = await res.json()
-    if (data.guides && data.guides.length > 0) {
-      return data.guides[0]
+    try {
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${BASE_URL}/api/guides?university=${encodeURIComponent(university)}&department=${encodeURIComponent(department)}`)
+      const data = await res.json()
+      if (data.guides && data.guides.length > 0) {
+        return data.guides[0]
+      }
+      return null
+    } catch {
+      return null
     }
-    return null
-  } catch {
-    return null
   }
-}
 
- useEffect(() => {
-  // Use setTimeout to avoid setState warning
-  const timer = setTimeout(() => {
-    // Check if this is a "New Project" (skip uni/dept)
-    const params = new URLSearchParams(window.location.search)
-    const mode = params.get('mode')
-    
-    if (mode === 'new_project') {
-      setIsNewProject(true)
-      setSkipToTopic(true)
+  // ─── SAVE PROJECT TO DATABASE ─────────────────────────────────────────────
+  const saveProjectToDb = async (projectData) => {
+    try {
+      const token = localStorage.getItem('gradelyToken')
+      if (!token) {
+        console.warn('No token found, skipping DB save')
+        return null
+      }
+
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: projectData.topic || 'Untitled Project',
+          university: projectData.university || '',
+          department: projectData.department || '',
+          project_type: projectData.projectType || 'research',
+          status: 'in_progress',
+          is_paid: false,
+          chapters: [],
+          abstract: '',
+          references: [],
+          structure: projectData.structure || {},
+          project_info: {
+            topic: projectData.topic || '',
+            supervisorName: projectData.supervisorName || '',
+            supervisorNotes: projectData.supervisorNotes || '',
+            projectType: projectData.projectType || 'research',
+            university: projectData.university || '',
+            department: projectData.department || '',
+            builtContext: projectData.builtContext || '',
+            githubLink: projectData.githubLink || '',
+            guideContent: projectData.guideContent || '',
+          }
+        })
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        console.log('✅ Project saved to database with ID:', data.project?.id)
+        return data.project
+      } else {
+        console.warn('Failed to save project:', data.error)
+        return null
+      }
+    } catch (err) {
+      console.error('Error saving project:', err)
+      return null
+    }
+  }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search)
+      const mode = params.get('mode')
       
-      if (user) {
-        update('name', user.name?.split(' ')[0] || '')
-        // Try to load existing project to copy uni/dept
-        const loadExisting = async () => {
-          try {
-            const { fetchProjects } = await import('../lib/auth')
-            const projects = await fetchProjects()
-            if (projects && projects.length > 0) {
-              const existing = projects[0]
-              update('university', existing.university)
-              update('department', existing.department)
-              setStep(4)
-            } else {
+      if (mode === 'new_project') {
+        setIsNewProject(true)
+        setSkipToTopic(true)
+        
+        if (user) {
+          update('name', user.name?.split(' ')[0] || '')
+          const loadExisting = async () => {
+            try {
+              const { fetchProjects } = await import('../lib/auth')
+              const projects = await fetchProjects()
+              if (projects && projects.length > 0) {
+                const existing = projects[0]
+                update('university', existing.university)
+                update('department', existing.department)
+                setStep(4)
+              } else {
+                setStep(4)
+              }
+            } catch {
               setStep(4)
             }
-          } catch {
-            setStep(4)
           }
+          loadExisting()
         }
-        loadExisting()
+      } else if (user) {
+        update('name', user.name?.split(' ')[0] || '')
+        setStep(2)
       }
-    } else if (user) {
-      update('name', user.name?.split(' ')[0] || '')
-      setStep(2)
-    }
-  }, 0)
-  
-  return () => clearTimeout(timer)
-}, [user])
+    }, 0)
+    
+    return () => clearTimeout(timer)
+  }, [user])
 
-  const areas = getAreasForDepartment(form.department)
+  // Fetch dynamic areas when department changes
+  useEffect(() => {
+    const fetchAreas = async () => {
+      if (!form.department || !form.university) {
+        setDynamicAreas([])
+        return
+      }
+      setAreasLoading(true)
+      setError('')
+      try {
+        const areas = await generateAreas(form.department, form.university)
+        setDynamicAreas(areas)
+      } catch (err) {
+        console.error('Failed to load areas:', err)
+        setError('Could not load areas. Please try selecting a department again.')
+        const { getAreasForDepartment } = await import('../lib/universities')
+        const fallback = getAreasForDepartment(form.department)
+        setDynamicAreas(fallback)
+      }
+      setAreasLoading(false)
+    }
+
+    if (form.department && step >= 3) {
+      fetchAreas()
+    }
+  }, [form.department, form.university, step])
+
   const progress = (step / 10) * 100
 
   const handleGenerateTopics = async () => {
@@ -117,29 +198,138 @@ export default function Intake() {
     reader.readAsText(file)
   }
 
- const handleContinue = async () => {
-  // Save project data to session storage
-  sessionStorage.setItem('gradelyProject', JSON.stringify({
-    ...form,
-    supervisorName: form.supervisorName,
-    topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
-    projectType: form.selectedTopic?.type || form.projectType || 'research',
-    guideContent: form.guideContent || ''
-  }))
+  // ─── UPDATED: Generate Project with Loading Screen ───────────────────────
+  const handleContinue = async () => {
+    if (!form.supervisorName.trim()) {
+      setError('Please enter your supervisor\'s full name.')
+      return
+    }
 
-  sessionStorage.removeItem('gradelyPaid')
-  sessionStorage.removeItem('gradelyResult')
-  sessionStorage.removeItem('gradelyProjectDbId')
+    setGeneratingProject(true)
+    setError('')
 
-  // Mark user as onboarded (only if this is first-time onboarding, not "new project")
-  if (!isNewProject && user && user.onboarded === false) {
-    await markOnboarded()
+    try {
+      // 1. Generate structure
+      const structure = await generateProjectStructure({
+        topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
+        projectType: form.selectedTopic?.type || form.projectType || 'research',
+        university: form.university,
+        department: form.department,
+        hasGuide: form.hasGuide,
+        guideContent: form.guideContent || ''
+      })
+
+      const projectData = {
+        ...form,
+        topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
+        projectType: form.selectedTopic?.type || form.projectType || 'research',
+        supervisorName: form.supervisorName,
+        structure: structure,
+        guideContent: form.guideContent || '',
+        chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
+      }
+
+      // 2. Save to session storage
+      sessionStorage.setItem('gradelyProject', JSON.stringify({
+        ...form,
+        supervisorName: form.supervisorName,
+        topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
+        projectType: form.selectedTopic?.type || form.projectType || 'research',
+        guideContent: form.guideContent || ''
+      }))
+
+      // 3. Save to database IMMEDIATELY
+      const dbProject = await saveProjectToDb(projectData)
+
+      // 4. Prepare result for SocraticBuilder
+      const resultData = {
+        projectInfo: {
+          topic: projectData.topic,
+          supervisorName: projectData.supervisorName,
+          supervisorNotes: projectData.supervisorNotes,
+          projectType: projectData.projectType,
+          university: projectData.university,
+          department: projectData.department,
+          builtContext: projectData.builtContext,
+          githubLink: projectData.githubLink,
+          guideContent: projectData.guideContent,
+        },
+        structure: structure,
+        chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
+        abstract: '',
+        references: [],
+        dbProjectId: dbProject?.id || null,
+        isPaidUser: false,
+      }
+      sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+
+      sessionStorage.removeItem('gradelyPaid')
+      sessionStorage.removeItem('gradelyProjectDbId')
+
+      // 5. Mark user as onboarded
+      if (!isNewProject && user && user.onboarded === false) {
+        await markOnboarded()
+      }
+
+      // 6. Navigate to build
+      navigate('/build')
+    } catch (err) {
+      console.error('Failed to generate project:', err)
+      setError('Failed to generate your project. Please try again.')
+    } finally {
+      setGeneratingProject(false)
+    }
   }
 
-  navigate('/build')
-}
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', background: 'var(--bg)' }}>
+
+      {/* ─── LOADING SCREEN ─────────────────────────────────────────────────── */}
+      {generatingProject && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: 'var(--bg)',
+          animation: 'fadeUp 0.3s ease'
+        }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%',
+            border: '2px solid var(--border)',
+            borderTop: '2px solid var(--accent)',
+            animation: 'spin 0.8s linear infinite',
+            marginBottom: 24
+          }} />
+          <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 26, color: 'var(--text)', marginBottom: 8 }}>
+            Grad is building your project...
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+            Generating your chapter structure and saving your project.
+          </p>
+          <div style={{
+            marginTop: 32, width: 200, height: 2,
+            background: 'var(--border)', borderRadius: 2, overflow: 'hidden'
+          }}>
+            <div style={{
+              width: '40%', height: '100%',
+              background: 'linear-gradient(90deg, var(--accent), var(--accent-light))',
+              animation: 'shimmer 1.2s infinite',
+              borderRadius: 2
+            }} />
+          </div>
+          <style>{`
+            @keyframes spin { to { transform: rotate(360deg); } }
+            @keyframes shimmer {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(300%); }
+            }
+            @keyframes fadeUp {
+              from { opacity: 0; transform: translateY(12px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
 
       <div style={{ position: 'fixed', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,126,167,0.08) 0%, transparent 70%)', top: -200, right: -100, pointerEvents: 'none', filter: 'blur(40px)' }} />
 
@@ -147,10 +337,9 @@ export default function Intake() {
         <div style={{ height: '100%', background: 'var(--accent)', width: `${progress}%`, transition: 'width 0.4s ease' }} />
       </div>
 
-      <div style={{ position: 'fixed', top: 20, left: 40, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
-        <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
-        <span style={{ fontFamily: 'Melodrama, serif', fontSize: 18, color: 'var(--text)' }}>GradelyAI</span>
-      </div>
+    <div style={{ position: 'fixed', top: 20, left: 40, cursor: 'pointer' }} onClick={() => navigate('/')}>
+  <img src={logoPrimary} alt="GradelyAI" style={{ height: '28px', width: 'auto' }} />
+</div>
 
       <div className="container" style={{ maxWidth: 560 }}>
 
@@ -164,35 +353,43 @@ export default function Intake() {
           </StepCard>
         )}
 
-        {/* Step 2 — University - SKIP if new project */}
-{step === 2 && !skipToTopic && (
-  <StepCard
-    title={user ? `Let's build your project, ${form.name}.` : `Good to meet you, ${form.name}.`}
-    subtitle="Which university are you in?">
-    <label className="label">University</label>
-    <SearchableSelect
-      options={NIGERIAN_UNIVERSITIES}
-      value={form.university}
-      onChange={v => update('university', v)}
-      placeholder="Search your university..."
-    />
-    <StepNav onBack={!user ? () => setStep(1) : undefined} onNext={() => form.university && setStep(3)} disabled={!form.university} />
-  </StepCard>
-)}
+        {/* Step 2 — University */}
+        {step === 2 && !skipToTopic && (
+          <StepCard
+            title={user ? (
+              <>
+                Let's build your project,{' '}
+                <span style={{ color: 'var(--accent)' }}>{form.name}</span>.
+              </>
+            ) : (
+              `Good to meet you, ${form.name}.`
+            )}
+            subtitle="Which university are you in?"
+          >
+            <label className="label">University</label>
+            <SearchableSelect
+              options={NIGERIAN_UNIVERSITIES}
+              value={form.university}
+              onChange={v => update('university', v)}
+              placeholder="Search your university..."
+            />
+            <StepNav onBack={!user ? () => setStep(1) : undefined} onNext={() => form.university && setStep(3)} disabled={!form.university} />
+          </StepCard>
+        )}
 
-        {/* Step 3 — Department - SKIP if new project */}
-{step === 3 && !skipToTopic && (
-  <StepCard title="What are you studying?" subtitle="Select your department">
-    <label className="label">Department</label>
-    <SearchableSelect
-      groups={DEPARTMENTS_BY_FACULTY}
-      value={form.department}
-      onChange={v => update('department', v)}
-      placeholder="Search your department..."
-    />
-    <StepNav onBack={() => setStep(2)} onNext={() => form.department && setStep(4)} disabled={!form.department} />
-  </StepCard>
-)}
+        {/* Step 3 — Department */}
+        {step === 3 && !skipToTopic && (
+          <StepCard title="What are you studying?" subtitle="Select your department">
+            <label className="label">Department</label>
+            <SearchableSelect
+              groups={DEPARTMENTS_BY_FACULTY}
+              value={form.department}
+              onChange={v => update('department', v)}
+              placeholder="Search your department..."
+            />
+            <StepNav onBack={() => setStep(2)} onNext={() => form.department && setStep(4)} disabled={!form.department} />
+          </StepCard>
+        )}
 
         {/* Step 4 — Topic or no topic */}
         {step === 4 && (
@@ -231,20 +428,28 @@ export default function Intake() {
           </StepCard>
         )}
 
-        {/* Step 5b — No topic: pick area */}
+        {/* Step 5b — No topic: pick area (using dynamicAreas) */}
         {step === 5 && form.hasTopic === false && (
           <StepCard title="What area interests you?" subtitle="Pick an area and we'll generate topic ideas for you">
             <label className="label">Area of interest</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {areas.map(a => (
-                <ChoiceButton key={a} active={form.areaOfInterest === a} onClick={() => update('areaOfInterest', a)}>
-                  {a}
-                </ChoiceButton>
-              ))}
-            </div>
+            {areasLoading ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>Loading areas for {form.department}...</p>
+            ) : dynamicAreas.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>
+                No areas available. Please go back and select a department.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {dynamicAreas.map(a => (
+                  <ChoiceButton key={a} active={form.areaOfInterest === a} onClick={() => update('areaOfInterest', a)}>
+                    {a}
+                  </ChoiceButton>
+                ))}
+              </div>
+            )}
             {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 12 }}>{error}</p>}
             <StepNav onBack={() => setStep(4)} onNext={handleGenerateTopics}
-              disabled={!form.areaOfInterest} loading={loading} nextLabel="Generate Topics →" />
+              disabled={!form.areaOfInterest || areasLoading} loading={loading || areasLoading} nextLabel="Generate Topics →" />
           </StepCard>
         )}
 
@@ -277,32 +482,30 @@ export default function Intake() {
 
         {/* Step 7 — Project guide */}
         {step === 7 && (
-  <StepCard title="Do you have a project guide?" subtitle="A project manual or guidebook from your department">
-
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <ChoiceButton active={form.hasGuide === true}
-        onClick={() => { update('hasGuide', true); setStep(8) }}>
-        Yes, I have my own project guide to upload
-      </ChoiceButton>
-      <ChoiceButton active={form.hasGuide === false}
-        onClick={async () => {
-          update('hasGuide', false)
-          setLoading(true)
-          const guide = await fetchGuideFromDB(form.university, form.department)
-          if (guide) {
-            update('guideContent', guide.structure)
-            update('guideFound', guide.label)
-          }
-          setLoading(false)
-          setStep(9)
-        }}>
-        {loading ? 'Checking our database...' : 'No — use a standard structure'}
-      </ChoiceButton>
-    </div>
-
-    <StepNav onBack={() => setStep(form.hasTopic ? 5 : 6)} hideNext />
-  </StepCard>
-)}
+          <StepCard title="Do you have a project guide?" subtitle="A project manual or guidebook from your department">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <ChoiceButton active={form.hasGuide === true}
+                onClick={() => { update('hasGuide', true); setStep(8) }}>
+                Yes, I have my own project guide to upload
+              </ChoiceButton>
+              <ChoiceButton active={form.hasGuide === false}
+                onClick={async () => {
+                  update('hasGuide', false)
+                  setLoading(true)
+                  const guide = await fetchGuideFromDB(form.university, form.department)
+                  if (guide) {
+                    update('guideContent', guide.structure)
+                    update('guideFound', guide.label)
+                  }
+                  setLoading(false)
+                  setStep(9)
+                }}>
+                {loading ? 'Checking our database...' : 'No — use a standard structure'}
+              </ChoiceButton>
+            </div>
+            <StepNav onBack={() => setStep(form.hasTopic ? 5 : 6)} hideNext />
+          </StepCard>
+        )}
 
         {/* Step 8 — Upload guide */}
         {step === 8 && (
@@ -319,14 +522,28 @@ export default function Intake() {
           </StepCard>
         )}
 
-               {/* Step 9 — Final details */}
+        {/* Step 9 — Final details */}
         {step === 9 && (
           <StepCard title="Almost there." subtitle="A few final details to make your project as accurate as possible">
-                        <label className="label">Supervisor's Full Name</label>
+            <label className="label" style={{ fontWeight: 600 }}>
+              Supervisor's Full Name <span style={{ color: 'var(--danger)' }}>*</span>
+            </label>
             <input className="input"
               placeholder="e.g. Dr. Chukwu Okafor"
-              value={form.supervisorName} onChange={e => update('supervisorName', e.target.value)}
-              style={{ marginBottom: 20 }} />
+              value={form.supervisorName}
+              onChange={e => {
+                update('supervisorName', e.target.value)
+                if (error && error.includes('supervisor')) setError('')
+              }}
+              style={{
+                marginBottom: 12,
+                borderColor: (error && error.includes('supervisor')) ? 'var(--danger)' : undefined,
+              }}
+            />
+            {error && error.includes('supervisor') && (
+              <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: -8, marginBottom: 16 }}>{error}</p>
+            )}
+
             <label className="label">Any instructions from your supervisor? (optional)</label>
             <textarea className="input" rows={3}
               placeholder="e.g. My supervisor wants the literature review to focus on Nigerian case studies..."
@@ -342,14 +559,28 @@ export default function Intake() {
                   value={form.builtContext} onChange={e => update('builtContext', e.target.value)}
                   style={{ resize: 'vertical', marginBottom: 12 }} />
                 <label className="label">GitHub repo link (optional)</label>
-                <input className="input" placeholder="https://github.com/yourusername/yourrepo"
-                  value={form.githubLink} onChange={e => update('githubLink', e.target.value)} />
+                <input className="input" 
+                  type="url"
+                  placeholder="https://github.com/yourusername/yourrepo"
+                  value={form.githubLink} 
+                  onChange={e => update('githubLink', e.target.value)}
+                  inputMode="url"
+                />
               </>
             )}
 
+            {error && !error.includes('supervisor') && (
+              <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 12 }}>{error}</p>
+            )}
+
             <button className="btn-primary" onClick={handleContinue}
-              style={{ width: '100%', justifyContent: 'center', marginTop: 28, fontSize: 16, padding: '14px' }}>
-              Generate My Project →
+              disabled={!form.supervisorName.trim() || generatingProject}
+              style={{
+                width: '100%', justifyContent: 'center', marginTop: 28, fontSize: 16, padding: '14px',
+                opacity: (form.supervisorName.trim() && !generatingProject) ? 1 : 0.6,
+                cursor: (form.supervisorName.trim() && !generatingProject) ? 'pointer' : 'not-allowed',
+              }}>
+              {generatingProject ? 'Building your project...' : 'Generate My Project →'}
             </button>
             <button className="btn-ghost" onClick={() => setStep(8)}
               style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
@@ -363,9 +594,10 @@ export default function Intake() {
   )
 }
 
+// ─── STEP CARD ────────────────────────────────────────────────────────────────
 function StepCard({ title, subtitle, children }) {
   return (
-   <div className="card" style={{ padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 32px)', animation: 'fadeUp 0.35s ease' }}>
+    <div className="card" style={{ padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 32px)', animation: 'fadeUp 0.35s ease' }}>
       <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 26, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>{title}</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: 28, fontSize: 15, fontFamily: 'Geist, sans-serif' }}>{subtitle}</p>
       {children}
@@ -373,6 +605,7 @@ function StepCard({ title, subtitle, children }) {
   )
 }
 
+// ─── STEP NAV ─────────────────────────────────────────────────────────────────
 function StepNav({ onBack, onNext, disabled, loading, nextLabel = 'Continue →', hideNext = false }) {
   return (
     <div style={{ display: 'flex', gap: 12, marginTop: 28 }}>
@@ -389,6 +622,7 @@ function StepNav({ onBack, onNext, disabled, loading, nextLabel = 'Continue →'
   )
 }
 
+// ─── CHOICE BUTTON ────────────────────────────────────────────────────────────
 function ChoiceButton({ children, active, onClick }) {
   return (
     <button onClick={onClick} style={{

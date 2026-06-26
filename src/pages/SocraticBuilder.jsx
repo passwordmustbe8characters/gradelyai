@@ -1,22 +1,46 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { socraticChat, generateProjectStructure } from '../lib/ai'
+import { useAuth } from '../lib/AuthContext'
 
-const STORAGE_KEY_CHAT = 'gradelyChatHistory';
-const STORAGE_KEY_SECTIONS = 'gradelyCompletedSections';
+// ─── WINDOW SIZE HOOK ─────────────────────────────────────────────────────────
+function useWindowSize() {
+  const [size, setSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  })
+  useEffect(() => {
+    const handleResize = () => setSize({ width: window.innerWidth, height: window.innerHeight })
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+  return size
+}
 
-const ProgressList = ({ chapters, completedSections }) => (
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const STORAGE_KEY_CHAT = 'gradelyChatHistory'
+const STORAGE_KEY_SECTIONS = 'gradelyCompletedSections'
+const STORAGE_KEY_SECTION_INDEX = 'gradelySectionIndex'
+
+// ─── PROGRESS LIST COMPONENT ──────────────────────────────────────────────────
+const ProgressList = ({ chapters, completedSections, sectionIndexMap, onSectionClick }) => (
   <>
     {chapters.length > 0 ? (
       chapters.map(ch => (
         <div key={ch.number || ch.title}>
           <div className="sb-chapter-label">Chapter {ch.number}: {ch.title}</div>
           {(ch.subsections || []).map(sec => {
-            const sectionTitle = typeof sec === 'string' ? sec : sec.title;
-            const secNum = sectionTitle.split(' ')[0];
-            const isReady = completedSections.includes(secNum);
+            const sectionTitle = typeof sec === 'string' ? sec : sec.title
+            const secNum = sectionTitle.split(' ')[0]
+            const isReady = completedSections.includes(secNum)
+            const messageIndex = sectionIndexMap[secNum]
             return (
-              <div key={sectionTitle} className={`sb-section-item ${isReady ? 'done' : 'pending'}`}>
+              <div
+                key={sectionTitle}
+                className={`sb-section-item ${isReady ? 'done' : 'pending'}`}
+                onClick={() => onSectionClick && onSectionClick(secNum, messageIndex)}
+                style={{ cursor: messageIndex !== undefined ? 'pointer' : 'default' }}
+              >
                 <span className={`sb-section-text ${isReady ? 'done' : 'pending'}`}>{sectionTitle}</span>
                 {isReady && <span className="sb-section-check">✓</span>}
               </div>
@@ -30,551 +54,188 @@ const ProgressList = ({ chapters, completedSections }) => (
   </>
 )
 
+// ─── STYLES (unchanged – keep your existing CSS) ────────────────────────────
 const styles = `
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes shimmer {
-    0%   { background-position: -200% center; }
-    100% { background-position:  200% center; }
-  }
-  @keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50%       { transform: translateY(-5px); }
-  }
-  @keyframes pulse-ring {
-    0%,100% { box-shadow: 0 4px 18px rgba(0,126,167,0.28), 0 0 0 0   rgba(0,126,167,0.22); }
-    50%      { box-shadow: 0 4px 18px rgba(0,126,167,0.28), 0 0 0 6px rgba(0,126,167,0);    }
-  }
-  @keyframes slideUp {
-    from { transform: translateY(100%); }
-    to   { transform: translateY(0); }
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes shimmer { 0% { background-position:-200% center; } 100% { background-position:200% center; } }
+  @keyframes float { 0%,100% { transform:translateY(0px); } 50% { transform:translateY(-5px); } }
+  @keyframes pulse-ring { 0%,100% { box-shadow:0 4px 18px rgba(0,126,167,0.28), 0 0 0 0 rgba(0,126,167,0.22); } 50% { box-shadow:0 4px 18px rgba(0,126,167,0.28), 0 0 0 6px rgba(0,126,167,0); } }
+  @keyframes highlightFlash { 0% { background-color:rgba(0,126,167,0.15); } 100% { background-color:transparent; } }
 
-  /* ── ROOT ── */
-  .sb-root {
-    display: flex;
-    height: 100vh;
-    height: 100dvh;
-    background: var(--bg);
-    font-family: 'Geist', sans-serif;
-    position: relative;
-    overflow: hidden;
-  }
-  .sb-root::before {
-    content: '';
-    position: fixed;
-    top: -15%; left: -8%;
-    width: 520px; height: 520px;
-    background: radial-gradient(circle, rgba(0,157,201,0.10) 0%, transparent 68%);
-    pointer-events: none;
-    z-index: 0;
-  }
-  .sb-root::after {
-    content: '';
-    position: fixed;
-    bottom: -20%; right: -8%;
-    width: 440px; height: 440px;
-    background: radial-gradient(circle, rgba(232,160,32,0.08) 0%, transparent 65%);
-    pointer-events: none;
-    z-index: 0;
-  }
+  .sb-root { display:flex; height:100vh; height:100dvh; background:var(--bg); font-family:'Geist',sans-serif; position:relative; overflow:hidden; }
+  .sb-root::before { content:''; position:fixed; top:-15%; left:-8%; width:520px; height:520px; background:radial-gradient(circle,rgba(0,157,201,0.10) 0%,transparent 68%); pointer-events:none; z-index:0; }
+  .sb-root::after { content:''; position:fixed; bottom:-20%; right:-8%; width:440px; height:440px; background:radial-gradient(circle,rgba(232,160,32,0.08) 0%,transparent 65%); pointer-events:none; z-index:0; }
 
-  /* ── CHAT PANEL ── */
-  .sb-chat-panel {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    z-index: 1;
-    min-width: 0;
-  }
+  .sb-sidebar { display:flex; flex-direction:column; flex-shrink:0; background:rgba(240,237,232,0.65); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-right:1px solid var(--border-light); transition:width 0.3s ease,padding 0.3s ease,transform 0.3s ease; overflow:hidden; position:relative; z-index:1; width:280px; }
+  .sb-sidebar.collapsed { width:140px; }
+  .sb-sidebar.mobile { position:fixed; left:0; top:0; bottom:0; z-index:60; transform:translateX(-100%); transition:transform 0.3s ease; border-right:1px solid var(--border); box-shadow:4px 0 30px rgba(0,0,0,0.1); width:280px !important; }
+  .sb-sidebar.mobile.open { transform:translateX(0); }
+  .sb-sidebar.mobile .sb-sidebar-body { display:block !important; }
+  .sb-sidebar.mobile .sb-sidebar-header { justify-content:space-between !important; }
 
-  /* ── HEADER ── */
-  .sb-header {
-    padding: 14px 24px;
-    border-bottom: 1px solid var(--border-light);
-    background: rgba(247,245,240,0.82);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    flex-shrink: 0;
-  }
-  .sb-header-left {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    min-width: 0;
-  }
-  .sb-avatar {
-    width: 40px; height: 40px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--accent) 0%, rgba(0,157,201,0.7) 100%);
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Melodrama', serif;
-    font-size: 17px;
-    color: white;
-    flex-shrink: 0;
-    box-shadow: 0 2px 10px rgba(0,126,167,0.22), inset 0 1px 0 rgba(255,255,255,0.2);
-    letter-spacing: -0.5px;
-  }
-  .sb-header-text { min-width: 0; }
-  .sb-header-title {
-    font-family: 'Melodrama', serif;
-    font-size: 19px;
-    color: var(--text);
-    margin: 0;
-    letter-spacing: -0.3px;
-    line-height: 1.2;
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .sb-header-subtitle {
-    font-size: 12.5px;
-    color: var(--text-muted);
-    font-family: 'Geist', sans-serif;
-    font-weight: 400;
-  }
-  .sb-header-meta {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 5px;
-    flex-wrap: wrap;
-  }
-  .sb-header-topic {
-    font-size: 12px;
-    color: var(--text-dim);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 280px;
-  }
-  .sb-progress-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    background: rgba(0,126,167,0.08);
-    color: var(--accent);
-    border: 1px solid rgba(0,126,167,0.14);
-    white-space: nowrap;
-    flex-shrink: 0;
-    cursor: default;
-  }
-  .sb-progress-pill.complete {
-    background: rgba(45,155,111,0.08);
-    color: var(--success);
-    border-color: rgba(45,155,111,0.18);
-  }
-  .sb-header-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-shrink: 0;
-  }
+  .sb-overlay { display:none; position:fixed; inset:0; z-index:55; background:rgba(13,13,12,0.35); backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px); animation:fadeUp 0.2s ease forwards; }
+  .sb-overlay.open { display:block; }
 
-  /* ── MESSAGES ── */
-  .sb-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 28px 32px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
-  .sb-messages::-webkit-scrollbar       { width: 4px; }
-  .sb-messages::-webkit-scrollbar-track { background: transparent; }
-  .sb-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .sb-sidebar-header { display:flex; align-items:center; height:64px; padding:0 16px; flex-shrink:0; border-bottom:1px solid var(--border-light); background:rgba(247,245,240,0.82); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+  .sb-sidebar-header .sb-logo { display:flex; align-items:center; gap:8px; cursor:pointer; font-family:'Melodrama',serif; font-size:18px; color:var(--text); text-decoration:none; white-space:nowrap; overflow:hidden; }
+  .sb-sidebar-header .sb-logo .sb-logo-icon { width:32px; height:32px; border-radius:8px; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; color:white; flex-shrink:0; }
+  .sb-sidebar-header .sb-logo .sb-logo-text { transition:opacity 0.2s; }
+  .sb-sidebar.collapsed .sb-logo-text { opacity:0; width:0; margin:0; overflow:hidden; }
+  .sb-sidebar.collapsed .sb-sidebar-header { justify-content:space-evenly; }
+  .sb-sidebar-header .sb-header-actions { display:flex; gap:6px; flex-shrink:0; }
+  .sb-sidebar-header .sb-header-actions button { width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.5); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.2s; }
+  .sb-sidebar-header .sb-header-actions button:hover { background:var(--bg-card); border-color:var(--text-dim); color:var(--text); }
+  .sb-sidebar-header .sb-header-actions button.active { color:var(--accent); border-color:rgba(0,126,167,0.25); background:rgba(0,126,167,0.06); }
 
-  .sb-msg-row { display: flex; animation: fadeUp 0.28s ease forwards; }
-  .sb-msg-row.user      { justify-content: flex-end; }
-  .sb-msg-row.assistant { justify-content: flex-start; }
+  .sb-sidebar-body { flex:1; overflow-y:auto; padding:8px 16px 20px; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .sb-sidebar-body::-webkit-scrollbar { width:3px; }
+  .sb-sidebar-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  .sb-sidebar.collapsed .sb-sidebar-body { display:none; }
 
-  .sb-bubble {
-    max-width: 78%;
-    padding: 15px 20px;
-    font-size: 14.5px;
-    line-height: 1.68;
-  }
-  .sb-bubble.user {
-    background: rgba(0,126,167,0.88);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(0,157,201,0.3);
-    color: #fff;
-    border-radius: 18px 18px 4px 18px;
-    box-shadow: 0 4px 20px rgba(0,126,167,0.22), inset 0 1px 0 rgba(255,255,255,0.15);
-  }
-  .sb-bubble.assistant {
-    background: rgba(255,255,255,0.72);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(229,224,216,0.8);
-    color: var(--text);
-    border-radius: 18px 18px 18px 4px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9);
-  }
+  .sb-chapter-label { font-size:10.5px; text-transform:uppercase; letter-spacing:1.3px; color:var(--text-dim); font-weight:600; margin-top:20px; margin-bottom:9px; padding-left:2px; }
+  .sb-section-item { padding:11px 14px; border-radius:var(--radius-sm); margin-bottom:6px; border:1px solid; display:flex; justify-content:space-between; align-items:center; transition:all 0.22s ease; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+  .sb-section-item.done { border-color:rgba(45,155,111,0.22); background:rgba(45,155,111,0.06); box-shadow:0 2px 10px rgba(45,155,111,0.07); }
+  .sb-section-item.pending { border-color:var(--border-light); background:rgba(255,255,255,0.55); box-shadow:0 1px 6px rgba(0,0,0,0.03); }
+  .sb-section-item.pending:hover { border-color:var(--border); background:rgba(255,255,255,0.80); box-shadow:0 2px 10px rgba(0,0,0,0.06); transform:translateX(2px); }
+  .sb-section-item.done:hover { background:rgba(45,155,111,0.10); }
+  .sb-section-text { font-size:13px; font-weight:500; }
+  .sb-section-text.done { color:var(--success); }
+  .sb-section-text.pending { color:var(--text-muted); }
+  .sb-section-check { font-size:12px; color:var(--success); }
 
-  .sb-draft-block {
-    background: rgba(0,126,167,0.04);
-    border: 1px solid rgba(0,126,167,0.14);
-    padding: 16px 18px;
-    border-radius: var(--radius-sm);
-    margin: 12px 0;
-    white-space: pre-wrap;
-    line-height: 1.75;
-    color: var(--text);
-    font-size: 13.5px;
-    box-shadow: inset 0 1px 0 rgba(0,126,167,0.06);
-  }
-  .sb-draft-outro {
-    margin-top: 10px;
-    color: var(--success);
-    font-weight: 600;
-    font-size: 13px;
-    white-space: pre-wrap;
-  }
+  .sb-chat-panel { flex:1; display:flex; flex-direction:column; position:relative; z-index:1; min-width:0; background:var(--bg); }
 
-  .sb-typing {
-    display: flex; align-items: center; gap: 10px;
-    color: var(--text-dim); font-size: 13px; font-style: italic;
-    padding-left: 4px;
-  }
-  .sb-typing-dots { display: flex; gap: 5px; }
-  .sb-typing-dot {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: var(--accent); opacity: 0.55;
-    animation: float 1.1s ease-in-out infinite;
-  }
-  .sb-typing-dot:nth-child(2) { animation-delay: 0.18s; }
-  .sb-typing-dot:nth-child(3) { animation-delay: 0.36s; }
+  .sb-header { height:64px; padding:0 24px; border-bottom:1px solid var(--border-light); background:rgba(247,245,240,0.82); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); display:flex; justify-content:space-between; align-items:center; gap:16px; flex-shrink:0; }
+  .sb-header-left { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+  .sb-header-text-wrapper { display:flex; flex-direction:column; min-width:0; flex:1; }
+  .sb-header-topic { font-size:15px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  .sb-header-type { font-size:12px; color:var(--text-muted); font-weight:400; }
+  .sb-header-type .sb-type-label { color:var(--accent); font-weight:500; }
+  .sb-header-actions { display:flex; gap:10px; align-items:center; flex-shrink:0; }
+  .sb-header-actions .sb-save-exit-btn { padding:8px 20px; border-radius:40px; border:none; background:#1a1a1a; color:white; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; font-family:'Geist',sans-serif; box-shadow:0 2px 10px rgba(0,0,0,0.08); }
+  .sb-header-actions .sb-save-exit-btn:hover { transform:translateY(-1px); box-shadow:0 4px 16px rgba(0,0,0,0.15); }
+  .sb-header-actions .sb-menu-btn { display:none; width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.5); cursor:pointer; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.2s; flex-shrink:0; }
+  .sb-header-actions .sb-menu-btn:hover { background:var(--bg-card); border-color:var(--text-dim); color:var(--text); }
 
-  /* ── INPUT ── */
-  .sb-input-area {
-    padding: 18px 28px 22px;
-    background: rgba(247,245,240,0.75);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid var(--border-light);
-    flex-shrink: 0;
-  }
-  .sb-input-row { display: flex; align-items: flex-end; gap: 12px; }
-  .sb-textarea-wrap { flex: 1; position: relative; }
-  .sb-textarea {
-    width: 100%;
-    padding: 14px 56px 14px 18px;
-    border-radius: 16px;
-    border: 1.5px solid var(--border);
-    background: rgba(255,255,255,0.78);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    color: var(--text);
-    font-size: 14.5px;
-    font-family: 'Geist', sans-serif;
-    resize: none;
-    outline: none;
-    min-height: 58px;
-    box-sizing: border-box;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    line-height: 1.6;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9);
-  }
-  .sb-textarea::placeholder { color: var(--text-dim); }
-  .sb-textarea:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(0,126,167,0.10), 0 2px 10px rgba(0,0,0,0.04);
-  }
-  .sb-word-count {
-    position: absolute; bottom: 11px; right: 15px;
-    font-size: 11px; font-weight: 600; transition: color 0.2s;
-  }
-  .sb-word-count.met   { color: var(--success); }
-  .sb-word-count.unmet { color: var(--text-dim); }
+  .sb-messages-wrapper { flex:1; overflow-y:auto; padding:20px 24px 16px; display:flex; flex-direction:column; align-items:center; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  .sb-messages-wrapper::-webkit-scrollbar { width:4px; }
+  .sb-messages-wrapper::-webkit-scrollbar-track { background:transparent; }
+  .sb-messages-wrapper::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
 
-  .sb-send-btn {
-    border-radius: 100px; border: none;
-    font-size: 14px; font-weight: 600;
-    font-family: 'Geist', sans-serif;
-    cursor: pointer; transition: all 0.2s ease;
-    white-space: nowrap; padding: 14px 24px;
-  }
-  .sb-send-btn.active {
-    background: var(--accent); color: white;
-    animation: pulse-ring 3s infinite;
-  }
-  .sb-send-btn.active:hover {
-    background: var(--accent-light);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 24px rgba(0,126,167,0.38);
-  }
-  .sb-send-btn.inactive {
-    background: var(--bg-elevated); color: var(--text-dim);
-    cursor: not-allowed; border: 1.5px solid var(--border);
-  }
+  .sb-messages-container { max-width:800px; width:100%; display:flex; flex-direction:column; gap:20px; }
 
-  /* ── DESKTOP SIDEBAR ── */
-  .sb-sidebar {
-    width: 300px;
-    flex-shrink: 0;
-    background: rgba(240,237,232,0.65);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    padding: 28px 20px;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    position: relative;
-    z-index: 1;
-    border-left: 1px solid var(--border-light);
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-    transition: width 0.3s ease, padding 0.3s ease, opacity 0.25s ease;
-  }
-  .sb-sidebar::-webkit-scrollbar       { width: 3px; }
-  .sb-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  .sb-sidebar.collapsed {
-    width: 0 !important;
-    padding: 0 !important;
-    opacity: 0;
-    border-left: none;
-    overflow: hidden;
-  }
+  .sb-section-progress { background:rgba(0,126,167,0.06); border:1px solid rgba(0,126,167,0.14); border-radius:12px; padding:10px 16px; display:flex; align-items:center; gap:12px; font-size:13px; color:var(--text-muted); margin-bottom:8px; flex-shrink:0; }
+  .sb-section-progress .sb-section-progress-label { font-weight:600; color:var(--text); }
+  .sb-section-progress .sb-section-progress-status { margin-left:auto; font-weight:600; }
+  .sb-section-progress .sb-section-progress-status.done { color:var(--success); }
 
-  .sb-sidebar-header {
-    display: flex; align-items: center;
-    justify-content: space-between;
-    margin-bottom: 22px;
-  }
-  .sb-sidebar-title {
-    font-family: 'Melodrama', serif;
-    font-size: 20px; color: var(--text);
-    margin: 0; letter-spacing: -0.2px;
-  }
-  .sb-collapse-btn {
-    width: 32px; height: 32px; border-radius: 8px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.5);
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.2s ease; flex-shrink: 0; color: var(--text-muted);
-  }
-  .sb-collapse-btn:hover {
-    background: var(--bg-card); border-color: var(--text-dim); color: var(--text);
-  }
-  .sb-collapse-btn.active { color: var(--accent); border-color: rgba(0,126,167,0.25); background: rgba(0,126,167,0.06); }
+  .sb-msg-row { display:flex; animation:fadeUp 0.28s ease forwards; }
+  .sb-msg-row.user { justify-content:flex-end; }
+  .sb-msg-row.assistant { justify-content:flex-start; }
 
-  .sb-chapter-label {
-    font-size: 10.5px; text-transform: uppercase;
-    letter-spacing: 1.3px; color: var(--text-dim);
-    font-weight: 600; margin-top: 20px; margin-bottom: 9px; padding-left: 2px;
-  }
-  .sb-section-item {
-    padding: 11px 14px; border-radius: var(--radius-sm);
-    margin-bottom: 6px; border: 1px solid;
-    display: flex; justify-content: space-between; align-items: center;
-    transition: all 0.22s ease;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  }
-  .sb-section-item.done {
-    border-color: rgba(45,155,111,0.22);
-    background: rgba(45,155,111,0.06);
-    box-shadow: 0 2px 10px rgba(45,155,111,0.07);
-  }
-  .sb-section-item.pending {
-    border-color: var(--border-light);
-    background: rgba(255,255,255,0.55);
-    box-shadow: 0 1px 6px rgba(0,0,0,0.03);
-  }
-  .sb-section-item.pending:hover {
-    border-color: var(--border);
-    background: rgba(255,255,255,0.80);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-    transform: translateX(2px);
-  }
-  .sb-section-text { font-size: 13px; font-weight: 500; }
-  .sb-section-text.done    { color: var(--success); }
-  .sb-section-text.pending { color: var(--text-muted); }
-  .sb-section-check { font-size: 12px; color: var(--success); }
+  .sb-bubble { max-width:78%; padding:15px 20px; font-size:14.5px; line-height:1.68; position:relative; }
+  .sb-bubble.user { background:rgba(0,126,167,0.88); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(0,157,201,0.3); color:#fff; border-radius:18px 18px 4px 18px; box-shadow:0 4px 20px rgba(0,126,167,0.22), inset 0 1px 0 rgba(255,255,255,0.15); }
+  .sb-bubble.assistant { background:rgba(255,255,255,0.72); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(229,224,216,0.8); color:var(--text); border-radius:18px 18px 18px 4px; box-shadow:0 4px 20px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9); transition:border-color 0.2s, box-shadow 0.2s; }
+  .sb-bubble.assistant.editing { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,126,167,0.12), 0 4px 20px rgba(0,0,0,0.08); }
+  .sb-bubble.assistant.highlight { animation:highlightFlash 1s ease 2; }
 
-  /* ── MOBILE BOTTOM SHEET ── */
-  .sb-sheet-overlay {
-    display: none;
-    position: fixed; inset: 0; z-index: 40;
-    background: rgba(13,13,12,0.35);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-    animation: fadeUp 0.2s ease forwards;
-  }
-  .sb-sheet-overlay.open { display: block; }
+  .sb-bubble .sb-edit-pencil { position:absolute; bottom:4px; right:8px; background:rgba(255,255,255,0.85); border:1px solid var(--border); border-radius:50%; width:28px; height:28px; display:flex; align-items:center; justify-content:center; color:var(--text-muted); cursor:pointer; transition:all 0.2s; opacity:0; font-size:12px; }
+  .sb-bubble.assistant:hover .sb-edit-pencil { opacity:1; }
+  .sb-bubble.assistant .sb-edit-pencil:hover { background:var(--accent); color:white; border-color:var(--accent); }
+  .sb-bubble .sb-edit-area { margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light); }
+  .sb-bubble .sb-edit-area textarea { width:100%; padding:10px; border-radius:10px; border:1.5px solid var(--border); background:rgba(255,255,255,0.9); font-size:14px; font-family:'Geist',sans-serif; resize:vertical; min-height:80px; outline:none; transition:border-color 0.2s; }
+  .sb-bubble .sb-edit-area textarea:focus { border-color:var(--accent); }
+  .sb-bubble .sb-edit-actions { display:flex; gap:8px; margin-top:8px; }
+  .sb-bubble .sb-edit-actions button { padding:6px 16px; border-radius:20px; border:none; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s; }
+  .sb-bubble .sb-edit-actions .sb-edit-save { background:var(--accent); color:white; }
+  .sb-bubble .sb-edit-actions .sb-edit-save:hover { background:var(--accent-light); }
+  .sb-bubble .sb-edit-actions .sb-edit-cancel { background:var(--bg-elevated); color:var(--text-muted); }
+  .sb-bubble .sb-edit-actions .sb-edit-cancel:hover { background:var(--border); }
+  .sb-bubble .sb-edit-actions .sb-edit-generate { background:rgba(0,126,167,0.08); color:var(--accent); border:1px solid rgba(0,126,167,0.2); }
+  .sb-bubble .sb-edit-actions .sb-edit-generate:hover { background:rgba(0,126,167,0.15); }
 
-  .sb-sheet {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    z-index: 50;
-    max-height: 75vh;
-    background: rgba(247,245,240,0.97);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border-top: 1px solid var(--border);
-    border-radius: 20px 20px 0 0;
-    display: flex; flex-direction: column;
-    transform: translateY(100%);
-    transition: transform 0.35s cubic-bezier(0.32,0.72,0,1);
-    box-shadow: 0 -8px 40px rgba(0,0,0,0.12);
-  }
-  .sb-sheet.open { transform: translateY(0); }
+  .sb-draft-block { background:rgba(0,126,167,0.04); border:1px solid rgba(0,126,167,0.14); padding:16px 18px; border-radius:var(--radius-sm); margin:12px 0; white-space:pre-wrap; line-height:1.75; color:var(--text); font-size:13.5px; box-shadow:inset 0 1px 0 rgba(0,126,167,0.06); }
+  .sb-draft-outro { margin-top:10px; color:var(--success); font-weight:600; font-size:13px; white-space:pre-wrap; }
 
-  .sb-sheet-handle-row {
-    padding: 14px 20px 10px;
-    display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 1px solid var(--border-light);
-    flex-shrink: 0;
-  }
-  .sb-sheet-handle {
-    width: 36px; height: 4px; border-radius: 2px;
-    background: var(--border); margin: 0 auto 0;
-    position: absolute; left: 50%; transform: translateX(-50%); top: 10px;
-  }
-  .sb-sheet-title {
-    font-family: 'Melodrama', serif;
-    font-size: 18px; color: var(--text); margin: 0;
-  }
-  .sb-sheet-close {
-    width: 28px; height: 28px; border-radius: 8px;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.6);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    color: var(--text-muted); transition: all 0.2s;
-  }
-  .sb-sheet-close:hover { background: var(--bg-card); color: var(--text); }
+  .sb-typing { display:flex; align-items:center; gap:10px; color:var(--text-dim); font-size:13px; font-style:italic; padding-left:4px; }
+  .sb-typing-dots { display:flex; gap:5px; }
+  .sb-typing-dot { width:5px; height:5px; border-radius:50%; background:var(--accent); opacity:0.55; animation:float 1.1s ease-in-out infinite; }
+  .sb-typing-dot:nth-child(2) { animation-delay:0.18s; }
+  .sb-typing-dot:nth-child(3) { animation-delay:0.36s; }
 
-  .sb-sheet-body {
-    flex: 1; overflow-y: auto; padding: 16px 20px 32px;
-    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  .sb-quick-replies { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-light); }
+  .sb-quick-reply-btn { padding:6px 14px; border-radius:20px; border:1px solid var(--border); background:rgba(255,255,255,0.6); font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s; color:var(--text-muted); display:inline-flex; align-items:center; gap:6px; }
+  .sb-quick-reply-btn:hover { background:var(--bg-card); border-color:var(--accent); color:var(--accent); }
+  .sb-quick-reply-btn.success { border-color:var(--success); color:var(--success); }
+  .sb-quick-reply-btn.success:hover { background:rgba(45,155,111,0.08); }
+
+  .sb-input-area { padding:18px 28px 22px; background:rgba(247,245,240,0.75); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-top:1px solid var(--border-light); flex-shrink:0; display:flex; flex-direction:column; align-items:center; }
+  .sb-input-inner { max-width:800px; width:100%; }
+  .sb-input-row { display:flex; align-items:flex-end; gap:12px; width:100%; position:relative; }
+  .sb-textarea-wrap { flex:1; position:relative; width:100%; }
+  .sb-textarea { width:100%; padding:14px 56px 14px 18px; border-radius:16px; border:1.5px solid var(--border); background:rgba(255,255,255,0.78); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); color:var(--text); font-size:14.5px; font-family:'Geist',sans-serif; resize:none; outline:none; min-height:58px; box-sizing:border-box; transition:border-color 0.2s,box-shadow 0.2s; line-height:1.6; box-shadow:0 2px 10px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9); }
+  .sb-textarea::placeholder { color:var(--text-dim); }
+  .sb-textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,126,167,0.10), 0 2px 10px rgba(0,0,0,0.04); }
+
+  .sb-send-btn { border-radius:100px; border:none; font-size:14px; font-weight:600; font-family:'Geist',sans-serif; cursor:pointer; transition:all 0.2s ease; white-space:nowrap; padding:14px 24px; flex-shrink:0; }
+  .sb-send-btn.active { background:var(--accent); color:white; animation:pulse-ring 3s infinite; }
+  .sb-send-btn.active:hover { background:var(--accent-light); transform:translateY(-1px); box-shadow:0 6px 24px rgba(0,126,167,0.38); }
+  .sb-send-btn.inactive { background:var(--bg-elevated); color:var(--text-dim); cursor:not-allowed; border:1.5px solid var(--border); }
+
+  .sb-send-btn-mobile { position:absolute; bottom:10px; right:10px; width:38px; height:38px; border-radius:50%; border:none; background:var(--accent); color:white; font-size:18px; cursor:pointer; display:none; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 2px 10px rgba(0,126,167,0.25); }
+  .sb-send-btn-mobile:hover { transform:scale(1.05); box-shadow:0 4px 16px rgba(0,126,167,0.35); }
+  .sb-send-btn-mobile:disabled { background:var(--bg-elevated); color:var(--text-dim); cursor:not-allowed; box-shadow:none; }
+  .sb-send-btn-mobile .arrow-up { display:inline-block; transform:rotate(0deg); line-height:1; }
+
+  .sb-search-overlay { display:none; position:fixed; inset:0; z-index:100; background:rgba(13,13,12,0.35); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); animation:fadeUp 0.2s ease forwards; justify-content:center; align-items:flex-start; padding-top:80px; }
+  .sb-search-overlay.open { display:flex; }
+  .sb-search-modal { background:var(--bg-card); border-radius:20px; max-width:600px; width:90%; max-height:70vh; box-shadow:0 20px 60px rgba(0,0,0,0.2); display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border); }
+  .sb-search-modal .sb-search-input-wrap { padding:16px 20px; border-bottom:1px solid var(--border-light); display:flex; align-items:center; gap:12px; }
+  .sb-search-modal .sb-search-input-wrap input { flex:1; border:none; outline:none; font-size:16px; font-family:'Geist',sans-serif; background:transparent; color:var(--text); }
+  .sb-search-modal .sb-search-input-wrap input::placeholder { color:var(--text-dim); }
+  .sb-search-modal .sb-search-input-wrap .sb-search-close { cursor:pointer; color:var(--text-muted); font-size:18px; }
+  .sb-search-results { flex:1; overflow-y:auto; padding:8px 0; }
+  .sb-search-results .sb-search-result-item { padding:12px 20px; cursor:pointer; border-bottom:1px solid var(--border-light); transition:background 0.15s; }
+  .sb-search-results .sb-search-result-item:hover { background:rgba(0,126,167,0.05); }
+  .sb-search-results .sb-search-result-item .sb-search-result-preview { font-size:13px; color:var(--text); line-height:1.5; }
+  .sb-search-results .sb-search-result-item .sb-search-result-preview .highlight { background:rgba(232,160,32,0.25); padding:0 2px; border-radius:2px; }
+  .sb-search-results .sb-search-result-item .sb-search-result-meta { font-size:11px; color:var(--text-dim); margin-top:4px; }
+  .sb-search-results .sb-search-no-results { padding:24px; text-align:center; color:var(--text-dim); font-size:14px; }
+
+  @media (max-width:768px) {
+    .sb-root { flex-direction:column; }
+    .sb-sidebar { display:none !important; }
+    .sb-sidebar.mobile { display:flex !important; }
+    .sb-header { height:56px; padding:0 12px; }
+    .sb-sidebar-header { height:56px; }
+    .sb-header-left { display:flex; flex-direction:row; align-items:center; gap:8px; flex:1; min-width:0; }
+    .sb-header-actions .sb-menu-btn { display:flex !important; flex-shrink:0; }
+    .sb-header-text-wrapper { display:flex; flex-direction:column; min-width:0; flex:1; }
+    .sb-header-topic { font-size:13px; max-width:140px; flex-shrink:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sb-header-type { font-size:10px; flex-shrink:0; white-space:nowrap; }
+    .sb-header-actions .sb-save-exit-btn { padding:6px 14px; font-size:12px; }
+    .sb-messages-wrapper { padding:12px 12px 8px; }
+    .sb-bubble { max-width:88%; padding:12px 15px; font-size:14px; }
+    .sb-input-area { padding:10px 12px 14px; }
+    .sb-textarea { font-size:13px; padding:12px 48px 12px 14px; min-height:50px; }
+    .sb-send-btn-desktop { display:none !important; }
+    .sb-send-btn-mobile { display:flex !important; }
+    .sb-search-overlay { padding-top:60px; }
+    .sb-search-modal { max-width:95%; max-height:80vh; }
+    .sb-quick-reply-btn { font-size:11px; padding:4px 10px; }
   }
-
-  /* Progress button shown in header on mobile */
-  .sb-progress-btn {
-    display: none;
-    align-items: center; gap: 6px;
-    padding: 6px 12px; border-radius: 20px;
-    border: 1px solid rgba(0,126,167,0.2);
-    background: rgba(0,126,167,0.07);
-    color: var(--accent); font-size: 12px; font-weight: 600;
-    font-family: 'Geist', sans-serif; cursor: pointer;
-    transition: all 0.2s; white-space: nowrap; flex-shrink: 0;
+  @media (max-width:380px) {
+    .sb-header-topic { max-width:80px; font-size:12px; }
+    .sb-header-type { font-size:9px; }
+    .sb-header-actions .sb-save-exit-btn { padding:4px 10px; font-size:11px; }
+    .sb-bubble { padding:10px 12px; font-size:13px; }
+    .sb-textarea { font-size:12px; padding:10px 44px 10px 12px; min-height:44px; }
+    .sb-send-btn-mobile { width:34px; height:34px; font-size:16px; bottom:8px; right:8px; }
   }
-  .sb-progress-btn.complete {
-    border-color: rgba(45,155,111,0.2);
-    background: rgba(45,155,111,0.07);
-    color: var(--success);
-  }
-  .sb-progress-btn:hover { opacity: 0.8; }
+`
 
-  /* ── LOADING ── */
-  .sb-loading {
-    min-height: 100vh; min-height: 100dvh;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    background: var(--bg); position: relative; overflow: hidden;
-  }
-  .sb-loading::before {
-    content: '';
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%,-50%);
-    width: 480px; height: 480px;
-    background: radial-gradient(circle, rgba(0,157,201,0.09) 0%, transparent 65%);
-    pointer-events: none;
-  }
-  .sb-spinner {
-    width: 42px; height: 42px; border-radius: 50%;
-    border: 2px solid var(--border);
-    border-top: 2px solid var(--accent);
-    animation: spin 0.85s linear infinite;
-    margin-bottom: 24px;
-    box-shadow: 0 0 18px rgba(0,126,167,0.18);
-  }
-  .sb-loading-title {
-    font-family: 'Melodrama', serif; font-size: 26px;
-    color: var(--text); margin: 0 0 8px 0; letter-spacing: -0.3px;
-    text-align: center; padding: 0 24px;
-  }
-  .sb-loading-sub { color: var(--text-muted); font-size: 14px; margin: 0; }
-  .sb-loading-bar {
-    margin-top: 32px; width: 180px; height: 2px;
-    background: var(--border); border-radius: 2px;
-    overflow: hidden; position: relative;
-  }
-  .sb-loading-bar::after {
-    content: ''; position: absolute; top: 0; left: 0;
-    height: 100%; width: 40%;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    background-size: 200% 100%; animation: shimmer 1.6s infinite;
-  }
-
-  /* ── MOBILE OVERRIDES ── */
-  @media (max-width: 768px) {
-    .sb-root { flex-direction: column; }
-
-    /* hide desktop sidebar entirely */
-    .sb-sidebar        { display: none !important; }
-    .sb-sidebar-reopen { display: none !important; }
-
-    /* show the progress button in header */
-    .sb-progress-btn { display: inline-flex; }
-
-    /* hide progress pill (replaced by button) */
-    .sb-progress-pill { display: none; }
-
-    /* tighter header */
-    .sb-header { padding: 12px 16px; gap: 10px; }
-    .sb-avatar  { width: 34px; height: 34px; font-size: 14px; border-radius: 10px; }
-    .sb-header-title    { font-size: 17px; }
-    .sb-header-subtitle { display: none; }
-    .sb-header-topic    { max-width: 160px; font-size: 11px; }
-    .sb-header-meta     { margin-top: 3px; gap: 6px; }
-
-    /* exit button text → icon on mobile */
-    .sb-exit-label { display: none; }
-    .sb-exit-icon  { display: inline !important; }
-
-    /* messages */
-    .sb-messages { padding: 16px 14px 12px; gap: 14px; }
-    .sb-bubble   { max-width: 88%; padding: 12px 15px; font-size: 14px; }
-
-    /* input */
-    .sb-input-area { padding: 12px 14px 16px; }
-    .sb-textarea   { font-size: 14px; padding: 12px 48px 12px 14px; min-height: 50px; }
-    .sb-send-btn   { padding: 12px 18px; font-size: 13px; }
-  }
-
-  @media (max-width: 380px) {
-    .sb-header-topic { display: none; }
-    .sb-send-btn { padding: 12px 14px; }
-  }
-`;
-
-const ChevronDown = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-    <path d="M9 4.5L6 7.5L3 4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-
+// ─── ICONS ──────────────────────────────────────────────────────────────────
 const PanelIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.4"/>
@@ -582,338 +243,556 @@ const PanelIcon = () => (
   </svg>
 )
 
+const SearchIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.6"/>
+    <line x1="12.5" y1="12.5" x2="16.5" y2="16.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+  </svg>
+)
+
+const MenuIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <line x1="2" y1="4.5" x2="16" y2="4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+    <line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+    <line x1="2" y1="13.5" x2="16" y2="13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+  </svg>
+)
+
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function SocraticBuilder() {
   const navigate = useNavigate()
+  const { width } = useWindowSize()
+  const { user, markOnboarded } = useAuth()
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isLoadingStructure, setIsLoadingStructure] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [editingMessageIndex, setEditingMessageIndex] = useState(null)
+  const [editContent, setEditContent] = useState('')
+  const [lastTopicSentence, setLastTopicSentence] = useState('')
   const chatEndRef = useRef(null)
+  const messagesContainerRef = useRef(null)
+  const textareaRef = useRef(null)
 
-  let savedResult = null;
-  let savedProjectInfo = null;
+  const isMobile = width < 768
+
+  let savedResult = null
+  let savedProjectInfo = null
   try {
-    const res = sessionStorage.getItem('gradelyResult');
-    if (res) savedResult = JSON.parse(res);
-    const proj = sessionStorage.getItem('gradelyProject');
-    if (proj) savedProjectInfo = JSON.parse(proj);
-  } catch (e) { console.error(e); }
+    const res = sessionStorage.getItem('gradelyResult')
+    if (res) savedResult = JSON.parse(res)
+    const proj = sessionStorage.getItem('gradelyProject')
+    if (proj) savedProjectInfo = JSON.parse(proj)
+  } catch (e) { console.error(e) }
 
   const projectData = {
     topic: savedResult?.projectInfo?.topic || savedProjectInfo?.topic || "Your Project Topic",
+    type: savedResult?.projectInfo?.projectType || savedProjectInfo?.projectType || "Research",
     chapters: savedResult?.structure?.chapters || [],
     references: savedResult?.references || []
   }
 
   const [messages, setMessages] = useState(() => {
     try {
-      const saved = sessionStorage.getItem(STORAGE_KEY_CHAT);
-      const parsed = saved ? JSON.parse(saved) : [];
-      if (parsed.length > 0) return parsed;
-    } catch (error) {
-      console.error(error);
-    }
-    return [];
-  });
+      const saved = sessionStorage.getItem(STORAGE_KEY_CHAT)
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })
 
   const [completedSections, setCompletedSections] = useState(() => {
     try {
-      const saved = sessionStorage.getItem(STORAGE_KEY_SECTIONS);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+      const saved = sessionStorage.getItem(STORAGE_KEY_SECTIONS)
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })
 
-  const [coachingFeedback, setCoachingFeedback] = useState(null);
-  const [canSend, setCanSend] = useState(true);
+  const [sectionIndexMap, setSectionIndexMap] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY_SECTION_INDEX)
+      return saved ? JSON.parse(saved) : {}
+    } catch { return {} }
+  })
 
+  // ─── DERIVED: current section ──────────────────────────────────────────────
+  const allSections = projectData.chapters.flatMap(ch =>
+    (ch.subsections || []).map(sec => {
+      const title = typeof sec === 'string' ? sec : sec.title
+      const num = title.split(' ')[0]
+      return { number: num, title }
+    })
+  )
+  const completedSet = new Set(completedSections)
+  const currentSection = allSections.find(s => !completedSet.has(s.number)) || null
+
+  // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    sessionStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages))
+  }, [messages])
+
+  useEffect(() => {
+    sessionStorage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(completedSections))
+  }, [completedSections])
+
+  useEffect(() => {
+    sessionStorage.setItem(STORAGE_KEY_SECTION_INDEX, JSON.stringify(sectionIndexMap))
+  }, [sectionIndexMap])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
+
+  // ─── Auto‑resize textarea on mobile ────────────────────────────────────────
+  useEffect(() => {
+    if (isMobile && textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px'
+    }
+  }, [input, isMobile])
+
+  // ─── INIT PROJECT ──────────────────────────────────────────────────────────
   useEffect(() => {
     const initProject = async () => {
       if (savedResult?.structure?.chapters?.length > 0) {
-        setIsLoadingStructure(false);
+        setIsLoadingStructure(false)
         if (messages.length === 0) {
-          setMessages([{
-            role: 'assistant',
-            content: `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?`
-          }]);
+          const firstPrompt = `Hey! I've analyzed your project guide for "${projectData.topic}". Let's build Chapter 1: Introduction. To start with Section 1.1 (Background), tell me in your own words: Why is this topic important right now?`
+          setMessages([{ role: 'assistant', content: firstPrompt }])
         }
-        return;
+        return
       }
-      setIsLoadingStructure(true);
+      setIsLoadingStructure(true)
       try {
-        const projInfo = savedProjectInfo || {};
-        const structure = await generateProjectStructure(projInfo);
+        const projInfo = savedProjectInfo || {}
+        const structure = await generateProjectStructure(projInfo)
         const newResult = {
-          ...projInfo, structure,
+          ...projInfo,
+          structure,
           chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
-          abstract: '', references: [], projectInfo: projInfo, humanized: false
-        };
-        sessionStorage.setItem('gradelyResult', JSON.stringify(newResult));
-        window.location.reload();
+          abstract: '',
+          references: [],
+          projectInfo: projInfo,
+          humanized: false
+        }
+        sessionStorage.setItem('gradelyResult', JSON.stringify(newResult))
+        window.location.reload()
       } catch (err) {
-        console.error("Failed to generate structure:", err);
-        alert("Failed to generate project structure. Please try again.");
-        navigate('/start');
+        console.error('Failed to generate structure:', err)
+        alert('Failed to generate project structure. Please try again.')
+        navigate('/start')
       } finally {
-        setIsLoadingStructure(false);
+        setIsLoadingStructure(false)
       }
-    };
-    initProject();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }
+    initProject()
+  }, []) // eslint-disable-line
 
-  useEffect(() => { sessionStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages)); }, [messages]);
-  useEffect(() => { sessionStorage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(completedSections)); }, [completedSections]);
-
-  // lock body scroll when sheet is open
-  useEffect(() => {
-    document.body.style.overflow = sheetOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; }
-  }, [sheetOpen]);
-
+  // ─── HELPERS ──────────────────────────────────────────────────────────────────
   const lastMessageWasDraft = messages.length > 0 &&
     messages[messages.length - 1].role === 'assistant' &&
     messages[messages.length - 1].content.includes('[SECTION_DRAFT]')
   const isChapter1Complete = messages.some(m => m.content.includes('[CHAPTER_1_COMPLETE]'))
-  const MIN_WORDS = (lastMessageWasDraft || isChapter1Complete) ? 1 : 10
-  const wordCount = input.trim() === '' ? 0 : input.trim().split(/\s+/).length
-  const isThresholdMet = wordCount >= MIN_WORDS
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isTyping])
+  const isAskingForTopic = () => {
+    const last = messages[messages.length - 1]
+    if (!last || last.role !== 'assistant') return false
+    const phrases = ['tell me in your own words', 'what is the main point', 'why is this topic important', 'what is the specific problem', 'what are your main objectives', 'what is the aim', 'significance', 'scope']
+    return phrases.some(p => last.content.toLowerCase().includes(p))
+  }
 
-// ============================================
-// TOPIC SENTENCE COACHING SYSTEM
-// ============================================
+  // ─── SEND MESSAGE (AI) ─────────────────────────────────────────────────────
+  const handleSend = async (overrideInput = null) => {
+    const text = overrideInput || input
+    if (!text.trim()) return
 
-// Function to analyze topic sentence quality
-const analyzeTopicSentence = (sentence) => {
-  const wordCount = sentence.trim().split(/\s+/).filter(w => w.length > 0).length;
-  
-  const checks = {
-    length: { 
-      passed: wordCount >= 15, 
-      message: `${wordCount}/15 words`, 
-      tip: "Add more detail to reach 15 words" 
-    },
-    claim: { 
-      passed: false, 
-      message: "Missing a clear claim", 
-      tip: "Start with what you're arguing (e.g., 'Cybersecurity is weak because...')" 
-    },
-    evidence: { 
-      passed: false, 
-      message: "Missing specific evidence", 
-      tip: "Add numbers, dates, or specific examples (e.g., '₦500 billion lost')" 
-    },
-    consequence: { 
-      passed: false, 
-      message: "Missing the consequence", 
-      tip: "Explain what happens as a result (e.g., 'which leads to hackers getting away')" 
+    // Store the topic sentence for regeneration
+    if (!text.toLowerCase().includes('regenerate') && !text.toLowerCase().includes('looks good')) {
+      setLastTopicSentence(text)
     }
-  };
-  
-  // Check for claim indicators
-  const claimWords = ['is', 'are', 'has', 'have', 'causes', 'leads to', 'results in', 'creates', 'because', 'due to'];
-  checks.claim.passed = claimWords.some(word => sentence.toLowerCase().includes(word));
-  if (checks.claim.passed) {
-    checks.claim.message = "✓ Has a clear claim";
-  }
-  
-  // Check for evidence (numbers, specific nouns, data)
-  const hasNumber = /\d+/.test(sentence);
-  const hasSpecificNouns = /(percent|%|million|billion|naira|₦|bank|hacker|attack|breach|law|policy|data|user|system|network|security|threat|vulnerability)/i.test(sentence);
-  checks.evidence.passed = hasNumber || hasSpecificNouns;
-  if (checks.evidence.passed) {
-    checks.evidence.message = "✓ Includes specific evidence";
-  }
-  
-  // Check for consequence indicators
-  const consequenceWords = ['because', 'so', 'therefore', 'leads to', 'results in', 'causes', 'means that', 'which means', 'as a result'];
-  checks.consequence.passed = consequenceWords.some(word => sentence.toLowerCase().includes(word));
-  if (checks.consequence.passed) {
-    checks.consequence.message = "✓ Shows the consequence/result";
-  }
-  
-  const allPassed = checks.length.passed && checks.claim.passed && checks.evidence.passed && checks.consequence.passed;
-  const score = Math.round((Object.values(checks).filter(c => c.passed).length / 4) * 100);
-  
-  return { allPassed, checks, wordCount, score };
-};
 
-// Function to get coaching tip based on analysis
-const getCoachingTip = (analysis) => {
-  if (analysis.allPassed) {
-    return { type: 'success', message: '✅ Excellent topic sentence! Ready to generate your paragraph.' };
-  }
-  
-  if (analysis.wordCount < 10) {
-    return { type: 'warning', message: `📝 Write at least 15 words (${analysis.wordCount}/15). Be specific about your main point.` };
-  }
-  
-  const failedChecks = Object.values(analysis.checks).filter(c => !c.passed);
-  if (failedChecks.length > 0) {
-    const firstFailed = failedChecks[0];
-    return { type: 'info', message: `💡 ${firstFailed.tip}` };
-  }
-  
-  return { type: 'info', message: 'Keep going! Add more specific details to strengthen your topic sentence.' };
-};
+    // Add user message
+    setMessages(prev => [...prev, { role: 'user', content: text }])
+    setInput('')
+    setIsTyping(true)
 
-// Check if AI is asking for a topic sentence (student needs to write one)
-const isAskingForTopic = () => {
-  const lastMessage = messages[messages.length - 1];
-  if (!lastMessage || lastMessage.role !== 'assistant') return false;
-  
-  const askingPhrases = [
-    'tell me in your own words',
-    'what is the main point',
-    'why is this topic important',
-    'what is the specific problem',
-    'write at least',
-    'explain your main point'
-  ];
-  
-  return askingPhrases.some(phrase => lastMessage.content.toLowerCase().includes(phrase));
-};
+    try {
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
+      const aiReply = await socraticChat(
+        savedProjectInfo || currentResult?.projectInfo || {},
+        chapter1Structure,
+        messages,
+        text,
+        currentResult?.references || []
+      )
 
-// Handle input changes with real-time coaching
-const handleInputWithCoaching = (value) => {
-  setInput(value);
-  if (isAskingForTopic()) {
-    const analysis = analyzeTopicSentence(value);
-    setCoachingFeedback(analysis);
-    setCanSend(analysis.allPassed);
-  } else {
-    setCanSend(true);
-  }
-};
+      let newMessages = [...messages, { role: 'user', content: text }]
 
-// Render coaching UI (shows only when AI is asking for topic sentence)
-const renderCoachingUI = () => {
-  if (!isAskingForTopic()) return null;
-  
-  const analysis = coachingFeedback || analyzeTopicSentence(input);
-  const coachingTip = getCoachingTip(analysis);
-  
-  return (
-    <div className="coaching-panel" style={{
-      marginTop: '12px',
-      padding: '12px 16px',
-      borderRadius: '12px',
-      background: coachingTip.type === 'success' ? 'rgba(45, 155, 111, 0.1)' : 'rgba(0, 126, 167, 0.08)',
-      border: `1px solid ${coachingTip.type === 'success' ? 'rgba(45, 155, 111, 0.3)' : 'rgba(0, 126, 167, 0.2)'}`,
-      fontSize: '13px'
-    }}>
-      <div style={{ marginBottom: '8px', fontWeight: 600, color: coachingTip.type === 'success' ? 'var(--success)' : 'var(--accent)' }}>
-        {coachingTip.message}
-      </div>
-      
-      {!analysis.allPassed && analysis.wordCount > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-          <span style={{ 
-            padding: '2px 10px', 
-            borderRadius: '20px', 
-            fontSize: '11px',
-            background: analysis.checks.claim.passed ? 'rgba(45, 155, 111, 0.15)' : 'rgba(217, 79, 79, 0.1)',
-            color: analysis.checks.claim.passed ? 'var(--success)' : 'var(--danger)'
-          }}>
-            {analysis.checks.claim.message}
-          </span>
-          <span style={{ 
-            padding: '2px 10px', 
-            borderRadius: '20px', 
-            fontSize: '11px',
-            background: analysis.checks.evidence.passed ? 'rgba(45, 155, 111, 0.15)' : 'rgba(217, 79, 79, 0.1)',
-            color: analysis.checks.evidence.passed ? 'var(--success)' : 'var(--danger)'
-          }}>
-            {analysis.checks.evidence.message}
-          </span>
-          <span style={{ 
-            padding: '2px 10px', 
-            borderRadius: '20px', 
-            fontSize: '11px',
-            background: analysis.checks.consequence.passed ? 'rgba(45, 155, 111, 0.15)' : 'rgba(217, 79, 79, 0.1)',
-            color: analysis.checks.consequence.passed ? 'var(--success)' : 'var(--danger)'
-          }}>
-            {analysis.checks.consequence.message}
-          </span>
-        </div>
-      )}
-      
-      {/* Example of a good topic sentence - only show when struggling */}
-      {analysis.wordCount > 0 && analysis.wordCount < 15 && (
-        <div style={{ marginTop: '10px', fontSize: '11px', color: 'var(--text-muted)', borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: '8px' }}>
-          📖 <strong>Example:</strong> "Nigeria's cybersecurity is weak because the government doesn't fund NITDA properly, and hackers are stealing from banks without being caught."
-        </div>
-      )}
-    </div>
-  );
-};
+      // If the AI response contains a draft, extract the section number and store
+      if (aiReply.includes('[SECTION_DRAFT]')) {
+        // The backend wraps the entire response in [SECTION_DRAFT]...[/SECTION_DRAFT]
+        // We'll extract the section number from the "review" part.
+        const reviewText = aiReply.split('[/SECTION_DRAFT]')[0] || ''
+        const sectionMatch = reviewText.match(/(\d+\.\d+)/)
+        if (sectionMatch) {
+          const secNum = sectionMatch[1]
+          // Only add if not already completed
+          if (!completedSections.includes(secNum)) {
+            setCompletedSections(prev => [...prev, secNum])
+            const newIndex = newMessages.length // index where assistant will be added
+            setSectionIndexMap(prev => ({ ...prev, [secNum]: newIndex }))
+          }
+        }
 
-
- const handleSend = async () => {
-  // If AI is asking for a topic sentence, check coaching rules
-  if (isAskingForTopic()) {
-    const analysis = analyzeTopicSentence(input);
-    if (!analysis.allPassed) {
-      // Don't send, show error instead
-      setCoachingFeedback(analysis);
-      return;
-    }
-  }
-  
-  if (!isThresholdMet) return;
-  
-  const userMessage = input;
-  setInput('');
-  setCoachingFeedback(null);
-  setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-  setIsTyping(true);
-  
-  try {
-    const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
-    const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] };
-    const aiReply = await socraticChat(
-      savedProjectInfo || currentResult?.projectInfo || {},
-      chapter1Structure, messages, userMessage, currentResult?.references || []
-    );
-    
-    if (aiReply.includes('[SECTION_DRAFT]')) {
-      const outroText = aiReply.split('[/SECTION_DRAFT]')[1] || '';
-      const sectionMatch = outroText.match(/(\d+\.\d+)/);
-      if (sectionMatch) {
-        setCompletedSections(prev => prev.includes(sectionMatch[1]) ? prev : [...prev, sectionMatch[1]]);
+        // Extract draft content and store in project data
+        const parts = aiReply.split('[SECTION_DRAFT]')
+        if (parts.length > 1) {
+          const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim()
+          if (draftContent) {
+            const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+            if (cur.chapters && cur.chapters[0]) {
+              const updatedChapters = cur.chapters.map((chapter, index) =>
+                index === 0
+                  ? { ...chapter, content: (chapter.content || '') + '\n\n' + draftContent }
+                  : chapter
+              )
+              const updatedResult = { ...cur, chapters: updatedChapters }
+              sessionStorage.setItem('gradelyResult', JSON.stringify(updatedResult))
+            }
+          }
+        }
       }
-      const parts = aiReply.split('[SECTION_DRAFT]');
-      if (parts.length > 1) {
-        const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim();
-        if (draftContent) {
-          let cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}');
-          if (cur.chapters && cur.chapters[0]) {
-            cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + draftContent;
-            sessionStorage.setItem('gradelyResult', JSON.stringify(cur));
+
+      // Clean the AI reply from any leftover button text (already done in backend)
+      let cleanedReply = aiReply
+        .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')
+        .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|/gi, '')
+        .replace(/\*\*Regenerate\*\*/gi, '')
+        .replace(/\|/g, '')
+        .replace(/Yes,\s*looks\s*good\./gi, '')
+        .replace(/No,\s*let\s*me\s*edit\./gi, '')
+        .replace(/Regenerate\./gi, '')
+        .trim()
+
+      // Store the topic sentence in the assistant message for later regeneration
+      const assistantMsg = { 
+        role: 'assistant', 
+        content: cleanedReply,
+        topicSentence: text // store the user's topic sentence that generated this
+      }
+      newMessages.push(assistantMsg)
+      setMessages(newMessages)
+    } catch (err) {
+      console.error('AI generation error:', err)
+      const lastMsg = messages[messages.length - 1]
+      if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content.includes('trouble generating')) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "I had trouble generating that. Could you rephrase and try again?"
+        }])
+      }
+    }
+    setIsTyping(false)
+  }
+
+  // ─── GENERATE SECTION PROMPT ──────────────────────────────────────────────
+  const getSectionPrompt = (sectionTitle) => {
+    const title = sectionTitle.toLowerCase()
+    if (title.includes('background')) {
+      return 'Why is this topic important right now?'
+    } else if (title.includes('problem') || title.includes('statement')) {
+      return 'What is the specific problem you are addressing?'
+    } else if (title.includes('aim') || title.includes('objective')) {
+      return 'What is the main aim and what are the specific objectives of your project?'
+    } else if (title.includes('significance')) {
+      return 'Why does this project matter? Who benefits from it and how?'
+    } else if (title.includes('scope') || title.includes('limitation')) {
+      return 'What is the scope of your study? What are the limitations?'
+    } else if (title.includes('definition')) {
+      return 'What are the key terms that need to be defined in your project?'
+    } else if (title.includes('organization')) {
+      return 'How will you organize the remaining chapters of your project?'
+    } else {
+      return 'Tell me in your own words: what is the main point of this section?'
+    }
+  }
+
+  // ─── LOOKS GOOD ─────────────────────────────────────────────────────────────
+  const handleLooksGood = (messageIndex) => {
+    // 1. Get the message content
+    const msg = messages[messageIndex]
+    if (!msg || msg.role !== 'assistant') {
+      console.warn('Invalid message for "Looks good"')
+      return
+    }
+
+    // 2. Extract section number from the message content
+    const sectionMatch = msg.content.match(/(\d+\.\d+)/)
+    if (!sectionMatch) {
+      console.warn('No section number found in message')
+      return
+    }
+    const sectionNumber = sectionMatch[1]
+
+    // 3. Check if this section is already completed
+    if (completedSections.includes(sectionNumber)) {
+      // Already complete – ignore or notify
+      alert(`Section ${sectionNumber} is already completed.`)
+      return
+    }
+
+    // 4. Check if this is the current active section
+    if (currentSection && currentSection.number === sectionNumber) {
+      // Proceed to mark complete and advance
+      // Mark as complete
+      setCompletedSections(prev => [...prev, sectionNumber])
+
+      // Add user confirmation message
+      setMessages(prev => [...prev, { role: 'user', content: '✅ Looks good, moving on.' }])
+
+      // Find the next section (excluding the one just completed)
+      const nextSection = allSections.find(s => !completedSections.includes(s.number) && s.number !== sectionNumber)
+      if (nextSection) {
+        const prompt = getSectionPrompt(nextSection.title)
+        const message = `Let's move to the next section: **${nextSection.title}**. ${prompt}`
+        setMessages(prev => [...prev, { role: 'assistant', content: message }])
+      } else {
+        // All sections complete
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '🎉 Congratulations! You have completed all sections of Chapter 1. You can now review your project or proceed to the next steps.'
+        }])
+        setMessages(prev => [...prev, { role: 'assistant', content: '[CHAPTER_1_COMPLETE]' }])
+      }
+    } else {
+      // The message is not for the current section – ignore or warn
+      alert(`This message is for section ${sectionNumber}, but you are currently on section ${currentSection?.number || 'none'}. Please use the "Looks good" button on the latest draft.`)
+    }
+  }
+
+  // ─── REGENERATE ─────────────────────────────────────────────────────────────
+  const handleRegenerate = () => {
+    if (!lastTopicSentence) {
+      alert('No topic sentence to regenerate.')
+      return
+    }
+    // Remove the last assistant message (the draft we want to replace)
+    setMessages(prev => {
+      const newMessages = [...prev]
+      if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+        newMessages.pop()
+      }
+      return newMessages
+    })
+    // Send the last topic sentence again
+    handleSend(lastTopicSentence)
+  }
+
+  // ─── QUICK REPLY HANDLER ────────────────────────────────────────────────────
+  const handleQuickReply = (e, type, msgIndex) => {
+    e.stopPropagation(); // Prevents the click from hitting the parent bubble/input
+
+    if (type === 'yes') {
+      handleLooksGood(e, msgIndex)
+      // Find the assistant message index if not provided
+      let index = msgIndex
+      if (index === null) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant') {
+            index = i
+            break
+          }
+        }
+      }
+      if (index !== null && messages[index] && messages[index].role === 'assistant') {
+        handleLooksGood(index)
+      } else {
+        alert('No draft message to confirm.')
+      }
+    } else if (type === 'edit') {
+      let index = msgIndex
+      if (index === null) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant') {
+            index = i
+            break
+          }
+        }
+      }
+      if (index !== null && messages[index] && messages[index].role === 'assistant') {
+        startEditing(index, messages[index].content)
+      } else {
+        alert('No draft message to edit.')
+      }
+    } else if (type === 'regenerate') {
+      handleRegenerate()
+    }
+  }
+
+  // ─── SEARCH ──────────────────────────────────────────────────────────────────
+  const handleSearch = (query) => {
+    setSearchQuery(query)
+    if (!query.trim()) {
+      setSearchResults([])
+      return
+    }
+    const results = []
+    messages.forEach((msg, idx) => {
+      if (msg.role === 'assistant' && msg.content.toLowerCase().includes(query.toLowerCase())) {
+        results.push({ index: idx, preview: msg.content.slice(0, 120) + '...', full: msg.content })
+      }
+    })
+    setSearchResults(results)
+  }
+
+  const scrollToMessage = (index) => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    setSearchResults([])
+    const bubble = document.querySelector(`[data-msg-index="${index}"]`)
+    if (bubble) {
+      bubble.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      bubble.classList.add('highlight')
+      setTimeout(() => bubble.classList.remove('highlight'), 2000)
+    } else {
+      console.warn('Bubble not found for index', index)
+    }
+  }
+
+  const handleSectionClick = (secNum, messageIndex) => {
+    if (messageIndex !== undefined) {
+      scrollToMessage(messageIndex)
+    } else {
+      const section = allSections.find(s => s.number === secNum)
+      if (section) {
+        const title = section.title
+        for (let i = 0; i < messages.length; i++) {
+          if (messages[i].role === 'assistant' && messages[i].content.includes(title)) {
+            scrollToMessage(i)
+            break
           }
         }
       }
     }
-    setMessages(prev => [...prev, { role: 'assistant', content: aiReply }]);
-  } catch (err) {
-    console.error(err);
-    setMessages(prev => [...prev, { role: 'assistant', content: "I had trouble generating that. Could you rephrase your main point and try again?" }]);
-  }
-  setIsTyping(false);
-};
-
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   }
 
+  // ─── SAVE & EXIT ────────────────────────────────────────────────────────────
+  const handleSaveAndExit = async () => {
+    if (user && user.onboarded === false) {
+      try {
+        await markOnboarded()
+      } catch (err) { console.error('Failed to mark onboarded:', err) }
+    }
+    navigate('/dashboard')
+  }
+
+  // ─── INLINE EDITING ─────────────────────────────────────────────────────────
+  const startEditing = (index, content) => {
+    setEditingMessageIndex(index)
+    setEditContent(content)
+  }
+
+  const cancelEditing = () => {
+    setEditingMessageIndex(null)
+    setEditContent('')
+  }
+
+  const saveEdit = (index) => {
+    setMessages(prev => {
+      const newMessages = [...prev]
+      if (newMessages[index]) newMessages[index].content = editContent
+      return newMessages
+    })
+    setEditingMessageIndex(null)
+    setEditContent('')
+  }
+
+  const handleEditGenerate = async (index) => {
+    const msg = messages[index]
+    if (!msg || msg.role !== 'assistant') return
+
+    let topicSentence = msg.topicSentence || lastTopicSentence
+    if (!topicSentence) {
+      alert('No topic sentence found for this message. Please type your main point again.')
+      return
+    }
+
+    setIsTyping(true)
+    try {
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
+      const aiReply = await socraticChat(
+        savedProjectInfo || currentResult?.projectInfo || {},
+        chapter1Structure,
+        messages.slice(0, index),
+        topicSentence,
+        currentResult?.references || []
+      )
+
+      let cleanedReply = aiReply
+        .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')
+        .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|/gi, '')
+        .replace(/\*\*Regenerate\*\*/gi, '')
+        .replace(/\|/g, '')
+        .replace(/Yes,\s*looks\s*good\./gi, '')
+        .replace(/No,\s*let\s*me\s*edit\./gi, '')
+        .replace(/Regenerate\./gi, '')
+        .trim()
+
+      setMessages(prev => {
+        const newMessages = [...prev]
+        if (newMessages[index]) {
+          newMessages[index].content = cleanedReply
+          newMessages[index].topicSentence = topicSentence
+        }
+        return newMessages
+      })
+
+      if (cleanedReply.includes('[SECTION_DRAFT]')) {
+        const parts = cleanedReply.split('[SECTION_DRAFT]')
+        if (parts.length > 1) {
+          const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim()
+          if (draftContent) {
+            let cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+            if (cur.chapters && cur.chapters[0]) {
+              const existingContent = cur.chapters[0].content || ''
+              const updatedContent = existingContent + '\n\n' + draftContent
+              cur.chapters[0].content = updatedContent
+              sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+            }
+          }
+        }
+      }
+
+      setEditingMessageIndex(null)
+      setEditContent('')
+    } catch (err) {
+      console.error('Regenerate error:', err)
+      alert('Failed to regenerate. Please try again.')
+    } finally {
+      setIsTyping(false)
+    }
+  }
+
+  // ─── FORMAT MESSAGE ─────────────────────────────────────────────────────────
   const formatMessage = (content) => {
-    if (!content.includes('[SECTION_DRAFT]')) {
-      const clean = content.replace('[CHAPTER_1_COMPLETE]', '');
+    let clean = content
+      .replace(/✅\s*Yes,\s*looks\s*good!/gi, '')
+      .replace(/✅\s*No,\s*let\s*me\s*edit!/gi, '')
+      .replace(/🔄\s*Regenerate/gi, '')
+      .replace(/\*\*Please review this section\.\*\*/gi, '')
+      .replace(/\*\*/g, '')
+      .replace(/\|/g, '')
+      .trim()
+    clean = clean.replace(/Does it capture your main point correctly\?[\s\S]*?(?=\n\n|$)/i, '').trim()
+
+    if (!clean.includes('[SECTION_DRAFT]')) {
       return <span style={{ whiteSpace: 'pre-wrap' }}>{clean}</span>
     }
-    const parts = content.split('[SECTION_DRAFT]')
+    const parts = clean.split('[SECTION_DRAFT]')
     const intro = parts[0]
     const [draft, outro = ''] = parts[1].split('[/SECTION_DRAFT]')
     return (
@@ -923,6 +802,14 @@ const renderCoachingUI = () => {
         {outro && <p className="sb-draft-outro">{outro}</p>}
       </>
     )
+  }
+
+  // ─── PLACEHOLDER ────────────────────────────────────────────────────────────
+  const getPlaceholder = () => {
+    if (isChapter1Complete) return "Type 'pay' to unlock chapters 2-5..."
+    if (isAskingForTopic()) return isMobile ? "Write your main point" : "Write your main point here – what's your claim? Why does it matter?"
+    if (lastMessageWasDraft) return "Type 'yes' or 'next'..."
+    return "Tell Grad your thoughts..."
   }
 
   if (isLoadingStructure) {
@@ -942,173 +829,216 @@ const renderCoachingUI = () => {
   return (
     <>
       <style>{styles}</style>
+      <div className={`sb-overlay${mobileSidebarOpen ? ' open' : ''}`} onClick={() => setMobileSidebarOpen(false)} />
 
-      {/* ── MOBILE BOTTOM SHEET ── */}
-      <div
-        className={`sb-sheet-overlay${sheetOpen ? ' open' : ''}`}
-        onClick={() => setSheetOpen(false)}
-      />
-      <div className={`sb-sheet${sheetOpen ? ' open' : ''}`}>
-        <div className="sb-sheet-handle-row" style={{ position: 'relative' }}>
-          <div className="sb-sheet-handle" />
-          <h3 className="sb-sheet-title">Project Progress</h3>
-          <button className="sb-sheet-close" onClick={() => setSheetOpen(false)}>
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-              <path d="M1 1L10 10M10 1L1 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-          </button>
+      <div className={`sb-search-overlay${searchOpen ? ' open' : ''}`} onClick={(e) => {
+        if (e.target === e.currentTarget) setSearchOpen(false)
+      }}>
+        <div className="sb-search-modal">
+          <div className="sb-search-input-wrap">
+            <input
+              type="text"
+              placeholder="Search messages..."
+              value={searchQuery}
+              onChange={e => handleSearch(e.target.value)}
+              autoFocus
+            />
+            <span className="sb-search-close" onClick={() => setSearchOpen(false)}>✕</span>
+          </div>
+          <div className="sb-search-results">
+            {searchQuery.trim() && searchResults.length === 0 && (
+              <div className="sb-search-no-results">No messages found for "{searchQuery}"</div>
+            )}
+            {searchResults.map((res, idx) => (
+              <div key={idx} className="sb-search-result-item" onClick={() => scrollToMessage(res.index)}>
+                <div className="sb-search-result-preview" dangerouslySetInnerHTML={{
+                  __html: res.preview.replace(new RegExp(searchQuery, 'gi'), match => `<span class="highlight">${match}</span>`)
+                }} />
+                <div className="sb-search-result-meta">Message #{res.index + 1}</div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="sb-sheet-body"><ProgressList chapters={projectData.chapters} completedSections={completedSections} /></div>
       </div>
 
       <div className="sb-root">
-        <div className="sb-chat-panel" style={{ position: 'relative' }}>
+        {isMobile ? (
+          <div className={`sb-sidebar mobile${mobileSidebarOpen ? ' open' : ''}`}>
+            <div className="sb-sidebar-header">
+              <div className="sb-logo" onClick={() => navigate('/')}>
+                <div className="sb-logo-icon">G</div>
+                <span className="sb-logo-text">Gradely</span>
+              </div>
+              <div className="sb-header-actions">
+                <button onClick={() => { setSearchOpen(true); setMobileSidebarOpen(false) }} title="Search messages">
+                  <SearchIcon />
+                </button>
+                <button onClick={() => setMobileSidebarOpen(false)}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+            </div>
+            <div className="sb-sidebar-body">
+              <ProgressList
+                chapters={projectData.chapters}
+                completedSections={completedSections}
+                sectionIndexMap={sectionIndexMap}
+                onSectionClick={handleSectionClick}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className={`sb-sidebar${sidebarOpen ? '' : ' collapsed'}`}>
+            <div className="sb-sidebar-header">
+              <div className="sb-logo" onClick={() => navigate('/')}>
+                <div className="sb-logo-icon">G</div>
+                <span className="sb-logo-text">Gradely</span>
+              </div>
+              <div className="sb-header-actions">
+                <button onClick={() => setSearchOpen(true)} title="Search messages"><SearchIcon /></button>
+                <button
+                  className={!sidebarOpen ? 'active' : ''}
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+                >
+                  <PanelIcon />
+                </button>
+              </div>
+            </div>
+            <div className="sb-sidebar-body">
+              <ProgressList
+                chapters={projectData.chapters}
+                completedSections={completedSections}
+                sectionIndexMap={sectionIndexMap}
+                onSectionClick={handleSectionClick}
+              />
+            </div>
+          </div>
+        )}
 
-          {/* ── HEADER ── */}
+        <div className="sb-chat-panel">
           <div className="sb-header">
             <div className="sb-header-left">
-              <div className="sb-avatar">G</div>
-              <div className="sb-header-text">
-                <h2 className="sb-header-title">
-                  Grad
-                  <span className="sb-header-subtitle">(Your Project Gee)</span>
-                </h2>
-                <div className="sb-header-meta">
-                  <p className="sb-header-topic">📁 {projectData.topic}</p>
-                  {/* desktop pill */}
-                  <span className={`sb-progress-pill${isChapter1Complete ? ' complete' : ''}`}>
-                    {isChapter1Complete ? '✓ Ch 1 Complete' : `${completedSections.length} section${completedSections.length !== 1 ? 's' : ''} done`}
-                  </span>
-                  {/* mobile button — opens sheet */}
-                  <button
-                    className={`sb-progress-btn${isChapter1Complete ? ' complete' : ''}`}
-                    onClick={() => setSheetOpen(true)}
-                  >
-                    {isChapter1Complete ? '✓ Done' : `${completedSections.length}/${projectData.chapters.reduce((a,c) => a + (c.subsections?.length||0), 0)}`}
-                    <ChevronDown />
-                  </button>
+              {isMobile && (
+                <button className="sb-menu-btn" onClick={() => setMobileSidebarOpen(true)}>
+                  <MenuIcon />
+                </button>
+              )}
+              <div className="sb-header-text-wrapper">
+                <div className="sb-header-topic">{projectData.topic}</div>
+                <div className="sb-header-type">
+                  <span className="sb-type-label">Project type:</span> {projectData.type}
                 </div>
               </div>
             </div>
             <div className="sb-header-actions">
-              <button
-                className="btn-ghost"
-                onClick={() => {
-                  sessionStorage.removeItem(STORAGE_KEY_CHAT);
-                  sessionStorage.removeItem(STORAGE_KEY_SECTIONS);
-                  navigate('/dashboard');
-                }}
-                style={{ fontSize: 13 }}
-              >
-                <span className="sb-exit-label">Exit</span>
-                <span className="sb-exit-icon" style={{ display: 'none' }}>✕</span>
-              </button>
-              {isChapter1Complete && (
-               <div style={{ display: 'flex', gap: '8px' }}>
-  <button
-    className="btn-primary"
-    onClick={() => {
-      // Save current progress
-      const currentResult = sessionStorage.getItem('gradelyResult')
-      if (currentResult) {
-        // Here you would call an API to save to dashboard
-      }
-      navigate('/dashboard')
-    }}
-    style={{ fontSize: 13, padding: '8px 16px' }}
-  >
-    Save to Dashboard →
-  </button>
-  <button
-    className="btn-accent"
-    onClick={() => navigate('/results')}
-    style={{ fontSize: 13, padding: '8px 16px' }}
-  >
-    Review Project
-  </button>
-</div>
+              <button className="sb-save-exit-btn" onClick={handleSaveAndExit}>Save & Exit</button>
+            </div>
+          </div>
+
+          <div className="sb-messages-wrapper" ref={messagesContainerRef}>
+            <div className="sb-messages-container">
+              {currentSection && !isChapter1Complete && (
+                <div className="sb-section-progress">
+                  <span className="sb-section-progress-label">📍 {currentSection.title}</span>
+                  <span className="sb-section-progress-status">
+                    {completedSections.includes(currentSection.number) ? (
+                      <span className="done">✓ Complete</span>
+                    ) : (
+                      `Section ${currentSection.number} of ${allSections.length}`
+                    )}
+                  </span>
+                </div>
               )}
-              {/* panel toggle — desktop only */}
-              <button
-                className={`sb-collapse-btn hide-mobile${sidebarOpen ? ' active' : ''}`}
-                onClick={() => setSidebarOpen(p => !p)}
-                title={sidebarOpen ? 'Hide panel' : 'Show panel'}
-              >
-                <PanelIcon />
-              </button>
+
+              {messages.map((msg, idx) => {
+                const isEditing = editingMessageIndex === idx
+                const isDraft = msg.content.includes('[SECTION_DRAFT]')
+                const isConfirmation = msg.content.toLowerCase().includes('capture your main point') ||
+                                       msg.content.toLowerCase().includes('review this section')
+                const isAssistant = msg.role === 'assistant'
+                const showQuickReplies = isAssistant && (isDraft || isConfirmation)
+
+                return (
+                  <div key={idx} className={`sb-msg-row ${msg.role}`}>
+                    <div className={`sb-bubble ${msg.role}${isEditing ? ' editing' : ''}`} data-msg-index={idx}>
+                      {msg.role === 'assistant' ? (
+                        <>
+                          {formatMessage(msg.content)}
+                          {showQuickReplies && (
+                            <div className="sb-quick-replies">
+                              <button className="sb-quick-reply-btn success" onClick={(e) => handleQuickReply(e, 'yes', idx)}>
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7L5.5 10.5L12 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                Looks good
+                              </button>
+                              <button className="sb-quick-reply-btn" onClick={() => handleQuickReply('edit', idx)}>
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                Edit
+                              </button>
+                              <button className="sb-quick-reply-btn" onClick={() => handleQuickReply('regenerate')}>
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 3C9.8 1.8 8.1 1 6.2 1C2.8 1 0 3.8 0 7.2C0 10.6 2.8 13.4 6.2 13.4C9 13.4 11.4 11.5 12.1 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M13 1V4H10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                Regenerate
+                              </button>
+                            </div>
+                          )}
+                          {isDraft && (
+                            <button className="sb-edit-pencil" onClick={() => startEditing(idx, msg.content)} title="Edit this section">
+                              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </button>
+                          )}
+                          {isEditing && (
+                            <div className="sb-edit-area">
+                              <textarea value={editContent} onChange={e => setEditContent(e.target.value)} rows={4} />
+                              <div className="sb-edit-actions">
+                                <button className="sb-edit-save" onClick={() => saveEdit(idx)}>Save</button>
+                                <button className="sb-edit-cancel" onClick={cancelEditing}>Cancel</button>
+                                <button className="sb-edit-generate" onClick={() => handleEditGenerate(idx)}>🔄 Regenerate</button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {isTyping && (
+                <div className="sb-typing">
+                  <div className="sb-typing-dots"><div className="sb-typing-dot" /><div className="sb-typing-dot" /><div className="sb-typing-dot" /></div>
+                  Grad is thinking...
+                </div>
+              )}
+              <div ref={chatEndRef} />
             </div>
           </div>
 
-          {/* ── MESSAGES ── */}
-          <div className="sb-messages">
-            {messages.map((msg, i) => (
-              <div key={i} className={`sb-msg-row ${msg.role}`}>
-                <div className={`sb-bubble ${msg.role}`}>
-                  {msg.role === 'assistant' ? formatMessage(msg.content) : msg.content}
-                </div>
-              </div>
-            ))}
-            {isTyping && (
-              <div className="sb-typing">
-                <div className="sb-typing-dots">
-                  <div className="sb-typing-dot" /><div className="sb-typing-dot" /><div className="sb-typing-dot" />
-                </div>
-                Grad is thinking...
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-                    {/* ── INPUT ── */}
           <div className="sb-input-area">
-            <div className="sb-input-row">
-              <div className="sb-textarea-wrap">
-                <textarea
-                  className="sb-textarea"
-                  value={input}
-                  onChange={e => handleInputWithCoaching(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={
-                    isChapter1Complete ? "Type 'pay' to unlock chapters 2-5..."
-                    : isAskingForTopic() ? "Write your main point here (at least 15 words). Be specific: What's your claim? Why does it matter? What happens as a result?"
-                    : lastMessageWasDraft ? "Type 'yes' or 'next'..."
-                    : "Tell Grad your thoughts in your own words..."
-                  }
-                  rows={3}
-                />
-                <div className={`sb-word-count ${isThresholdMet ? 'met' : 'unmet'}`}>
-                  {isAskingForTopic() ? (
-                    <span style={{ color: (coachingFeedback?.wordCount || 0) >= 15 ? 'var(--success)' : 'var(--text-dim)' }}>
-                      {(coachingFeedback?.wordCount || 0)}/15 words
-                    </span>
-                  ) : (
-                    (lastMessageWasDraft || isChapter1Complete) ? '✓' : `${wordCount}/${MIN_WORDS}`
-                  )}
+            <div className="sb-input-inner">
+              <div className="sb-input-row">
+                <div className="sb-textarea-wrap">
+                  <textarea
+                    ref={textareaRef}
+                    className="sb-textarea"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                    placeholder={getPlaceholder()}
+                    rows={isMobile ? 2 : 3}
+                  />
+                  <button className="sb-send-btn-mobile" onClick={() => handleSend()} disabled={!input.trim() || isTyping}>
+                    <span className="arrow-up">↑</span>
+                  </button>
                 </div>
+                <button className={`sb-send-btn sb-send-btn-desktop ${input.trim() && !isTyping ? 'active' : 'inactive'}`} onClick={() => handleSend()} disabled={!input.trim() || isTyping}>
+                  Submit →
+                </button>
               </div>
-              <button
-                className={`sb-send-btn ${isThresholdMet && !isTyping && (isAskingForTopic() ? canSend : true) ? 'active' : 'inactive'}`}
-                onClick={handleSend}
-                disabled={!isThresholdMet || isTyping || (isAskingForTopic() && !canSend)}
-              >
-                Send
-              </button>
             </div>
-            
-            {/* COACHING PANEL - appears only when AI is asking for topic sentence */}
-            {renderCoachingUI()}
-            
           </div>
         </div>
-
-        {/* ── DESKTOP SIDEBAR ── */}
-        <div className={`sb-sidebar${sidebarOpen ? '' : ' collapsed'}`}>
-          <div className="sb-sidebar-header">
-            <h3 className="sb-sidebar-title">Project Progress</h3>
-          </div>
-          <ProgressList chapters={projectData.chapters} completedSections={completedSections} />
-        </div>
-
       </div>
     </>
   )

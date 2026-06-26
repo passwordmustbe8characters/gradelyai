@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { register, login } from '../lib/auth'
 import { useAuth } from '../lib/AuthContext'
+import logoStacked from '../assets/secondary-logo.png';
 
 function EyeIcon({ open }) {
   return open ? (
@@ -27,6 +28,14 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
+  // Touched flags
+  const [emailTouched, setEmailTouched] = useState(false)
+  const [setPasswordTouched] = useState(false)
+  const [confirmTouched, setConfirmTouched] = useState(false)
+  const [passwordFocused, setPasswordFocused] = useState(false)
+  const [confirmFocused, setConfirmFocused] = useState(false)
+  const [passwordEverFocused, setPasswordEverFocused] = useState(false)
+
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -41,16 +50,65 @@ export default function Auth() {
     setError('')
     setShowPassword(false)
     setShowConfirm(false)
+    setEmailTouched(false)
+    setPasswordTouched(false)
+    setConfirmTouched(false)
+    setPasswordEverFocused(false)
+  }
+
+  // ---------- Validation helpers (computed on render) ----------
+  const getEmailError = (email) => {
+    if (!email) return ''
+    const parts = email.split('@')
+    if (parts.length !== 2) return 'Invalid email format'
+    const domain = parts[1]
+    if (!domain.includes('.') || domain.split('.').pop().length < 2) {
+      return 'Please include a valid domain (e.g., .com, .ng)'
+    }
+    return ''
+  }
+
+  const getPasswordRules = (password) => {
+    const rules = [
+      { id: 'length', label: 'At least 6 characters', test: p => p.length >= 6 },
+      { id: 'special', label: 'At least 1 special character (!@#$%^&*)', test: p => /[!@#$%^&*]/.test(p) },
+      { id: 'uppercase', label: 'At least 1 uppercase letter', test: p => /[A-Z]/.test(p) },
+      { id: 'lowercase', label: 'At least 1 lowercase letter', test: p => /[a-z]/.test(p) },
+    ]
+    return rules.map(rule => ({ ...rule, satisfied: rule.test(password) }))
+  }
+
+  const getConfirmError = (confirm, password) => {
+    if (!confirm) return ''
+    if (confirm !== password) return 'Passwords do not match'
+    return ''
+  }
+
+  const emailError = getEmailError(form.email)
+  const confirmError = getConfirmError(form.confirmPassword, form.password)
+  const passwordRules = getPasswordRules(form.password)
+  const allPasswordRulesSatisfied = passwordRules.every(r => r.satisfied)
+
+  const isFormValid = () => {
+    if (mode === 'login') {
+      return form.email && !getEmailError(form.email) && form.password
+    } else {
+      if (!form.name.trim()) return false
+      if (getEmailError(form.email)) return false
+      if (!allPasswordRulesSatisfied) return false
+      if (getConfirmError(form.confirmPassword, form.password)) return false
+      return true
+    }
   }
 
   const handleSubmit = async () => {
     setError('')
-
     if (mode === 'register') {
       if (!form.name.trim()) return setError('Please enter your name')
       if (!form.email.trim()) return setError('Please enter your email')
-      if (form.password.length < 6) return setError('Password must be at least 6 characters')
-      if (form.password !== form.confirmPassword) return setError('Passwords do not match')
+      if (emailError) return setError('Please fix the email address')
+      if (!allPasswordRulesSatisfied) return setError('Please meet all password requirements')
+      if (confirmError) return setError('Passwords do not match')
     } else {
       if (!form.email.trim()) return setError('Please enter your email')
       if (!form.password) return setError('Please enter your password')
@@ -63,13 +121,26 @@ export default function Auth() {
         : await login(form.email, form.password)
 
       setUser(data.user)
-      const redirect = location.state?.redirect || '/dashboard'
-      navigate(redirect)
+
+      // ---------- REDIRECT FIX ----------
+      let redirectTo = location.state?.redirect
+      if (!redirectTo) {
+        if (mode === 'register') {
+          // New users go to onboarding (which is at /start)
+          redirectTo = '/start'
+        } else {
+          redirectTo = '/dashboard'
+        }
+      }
+      navigate(redirectTo)
+      // --------------------------------
     } catch (err) {
       setError(err.message)
     }
     setLoading(false)
   }
+
+  const actualShowPassword = confirmFocused ? false : showPassword
 
   return (
     <div style={{
@@ -79,7 +150,15 @@ export default function Auth() {
       padding: '40px 24px'
     }}>
 
-      {/* Background */}
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+  <img 
+    src={logoStacked} 
+    alt="GradelyAI" 
+    style={{ height: '60px', width: 'auto', margin: '0 auto' }} 
+  />
+</div>
+
+      {/* Background glows */}
       <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', filter: 'blur(80px)', background: 'radial-gradient(circle, rgba(0,126,167,0.12) 0%, transparent 70%)', top: -200, right: -100 }} />
         <div style={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', filter: 'blur(60px)', background: 'radial-gradient(circle, rgba(232,160,32,0.08) 0%, transparent 70%)', bottom: -100, left: -50 }} />
@@ -92,14 +171,13 @@ export default function Auth() {
           <span style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)' }}>GradelyAI</span>
         </div>
         <p style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
-  {location.state?.message || (mode === 'login' ? 'Sign in to your account' : 'Create your free account')}
-</p>
+          {location.state?.message || (mode === 'login' ? 'Sign in to your account' : 'Create your free account')}
+        </p>
       </div>
 
       {/* Card */}
       <div className="container" style={{ maxWidth: 440 }}>
-  <div className="card">
-
+        <div className="card">
           {/* Mode tabs */}
           <div style={{
             display: 'flex', gap: 0, marginBottom: 32,
@@ -127,9 +205,8 @@ export default function Auth() {
 
           {/* Fields */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
             {mode === 'register' && (
-              <div style={{ animation: 'fadeUp 0.3s ease' }}>
+              <div>
                 <label className="label">Full Name</label>
                 <input className="input" placeholder="e.g. Chidi Okonkwo"
                   value={form.name} onChange={e => update('name', e.target.value)}
@@ -137,22 +214,48 @@ export default function Auth() {
               </div>
             )}
 
+            {/* Email */}
             <div>
               <label className="label">Email Address</label>
-              <input className="input" type="email" placeholder="yourname@email.com"
-                value={form.email} onChange={e => update('email', e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
+              <input className="input" type="email"
+                placeholder="yourname@email.com"
+                value={form.email}
+                onChange={e => update('email', e.target.value)}
+                onBlur={() => setEmailTouched(true)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                style={{
+                  borderColor: (emailTouched && emailError) ? 'var(--danger)' : undefined,
+                  boxShadow: (emailTouched && emailError) ? '0 0 0 3px rgba(217,79,79,0.15)' : undefined,
+                }}
+              />
+              {emailTouched && emailError && (
+                <div style={{
+                  marginTop: 6, fontSize: 13, color: 'var(--danger)',
+                  fontFamily: 'Geist, sans-serif'
+                }}>
+                  {emailError}
+                </div>
+              )}
             </div>
 
+            {/* Password */}
             <div>
               <label className="label">Password</label>
               <div style={{ position: 'relative' }}>
                 <input className="input"
-                  type={showPassword ? 'text' : 'password'}
+                  type={actualShowPassword ? 'text' : 'password'}
                   placeholder={mode === 'register' ? 'Minimum 6 characters' : 'Enter your password'}
-                  value={form.password} onChange={e => update('password', e.target.value)}
+                  value={form.password}
+                  onChange={e => update('password', e.target.value)}
+                  onFocus={() => {
+                    setPasswordFocused(true)
+                    setPasswordEverFocused(true)
+                    setPasswordTouched(true)
+                  }}
+                  onBlur={() => setPasswordFocused(false)}
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                  style={{ paddingRight: 44 }} />
+                  style={{ paddingRight: 44 }}
+                />
                 <button onClick={() => setShowPassword(p => !p)}
                   style={{
                     position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
@@ -163,21 +266,57 @@ export default function Auth() {
                   onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
                   onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
                 >
-                  <EyeIcon open={showPassword} />
+                  <EyeIcon open={actualShowPassword} />
                 </button>
               </div>
+              {mode === 'register' && passwordEverFocused && (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {passwordRules.map(rule => {
+                    const isSatisfied = rule.satisfied
+                    let color = 'var(--text-muted)'
+                    if (isSatisfied) {
+                      color = 'var(--success)'
+                    } else if (!passwordFocused) {
+                      color = 'var(--danger)'
+                    }
+                    return (
+                      <div key={rule.id} style={{
+                        fontSize: 13,
+                        color,
+                        fontFamily: 'Geist, sans-serif',
+                        transition: 'color 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}>
+                        <span>{isSatisfied ? '✓' : '○'}</span>
+                        {rule.label}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
+            {/* Confirm Password */}
             {mode === 'register' && (
-              <div style={{ animation: 'fadeUp 0.3s ease' }}>
+              <div>
                 <label className="label">Confirm Password</label>
                 <div style={{ position: 'relative' }}>
                   <input className="input"
                     type={showConfirm ? 'text' : 'password'}
                     placeholder="Repeat your password"
-                    value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)}
+                    value={form.confirmPassword}
+                    onChange={e => update('confirmPassword', e.target.value)}
+                    onFocus={() => setConfirmFocused(true)}
+                    onBlur={() => { setConfirmFocused(false); setConfirmTouched(true) }}
                     onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                    style={{ paddingRight: 44 }} />
+                    style={{
+                      paddingRight: 44,
+                      borderColor: (confirmTouched && confirmError) ? 'var(--danger)' : undefined,
+                      boxShadow: (confirmTouched && confirmError) ? '0 0 0 3px rgba(217,79,79,0.15)' : undefined,
+                    }}
+                  />
                   <button onClick={() => setShowConfirm(p => !p)}
                     style={{
                       position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
@@ -191,12 +330,18 @@ export default function Auth() {
                     <EyeIcon open={showConfirm} />
                   </button>
                 </div>
+                {confirmTouched && confirmError && (
+                  <div style={{
+                    marginTop: 6, fontSize: 13, color: 'var(--danger)',
+                    fontFamily: 'Geist, sans-serif'
+                  }}>
+                    {confirmError}
+                  </div>
+                )}
               </div>
             )}
-
           </div>
 
-          {/* Error */}
           {error && (
             <div style={{
               marginTop: 16, padding: '12px 16px', borderRadius: 10,
@@ -207,9 +352,14 @@ export default function Auth() {
             </div>
           )}
 
-          {/* Submit */}
-          <button className="btn-primary" onClick={handleSubmit} disabled={loading}
-            style={{ width: '100%', justifyContent: 'center', marginTop: 24, padding: '14px', fontSize: 15 }}>
+          <button className="btn-primary" onClick={handleSubmit}
+            disabled={loading || !isFormValid()}
+            style={{
+              width: '100%', justifyContent: 'center', marginTop: 24,
+              padding: '14px', fontSize: 15,
+              opacity: (!loading && isFormValid()) ? 1 : 0.6,
+              cursor: (!loading && isFormValid()) ? 'pointer' : 'not-allowed'
+            }}>
             {loading
               ? (mode === 'login' ? 'Signing in...' : 'Creating account...')
               : (mode === 'login' ? 'Sign In →' : 'Create Account →')
@@ -228,12 +378,11 @@ export default function Auth() {
           {mode === 'register' && (
             <p style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6, fontFamily: 'Geist, sans-serif' }}>
               By creating an account you agree to our{' '}
-              <a href="#" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Terms</a>
+              <a href="/terms" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Terms</a>
               {' '}and{' '}
-              <a href="#" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
+              <a href="/privacy" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
             </p>
           )}
-
         </div>
 
         <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>

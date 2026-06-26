@@ -1,35 +1,33 @@
-
 // GradelyAI — Core AI Engine (Claude)
 
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+const BASE_URL = 'http://localhost:3001'
 
 async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
-  // Grab the secure login token from the browser
-  const token = localStorage.getItem('token'); 
+  const token = localStorage.getItem('gradelyToken');
 
   const res = await fetch(`${BASE_URL}/api/ai`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}` // Inject the VIP pass
+      'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
-  model: 'gpt-4o-mini',
-  max_tokens: maxTokens,
-  messages: [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
-  ]
-})
-  })
+      model: 'gpt-4o-mini',
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    })
+  });
 
   if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.error?.message || 'API call failed')
+    const err = await res.json();
+    throw new Error(err.error?.message || 'API call failed');
   }
 
-  const data = await res.json()
-  return data.choices[0].message.content
+  const data = await res.json();
+  return data.choices[0].message.content;
 }
 
 // ─── SAFE JSON PARSER ─────────────────────────────────────────────────────────
@@ -129,40 +127,207 @@ function formatPapersForPrompt(papers) {
   }).join('\n')
 }
 
-// ─── TOPIC GENERATION ────────────────────────────────────────────────────────
+// ─── AREA GENERATION (Dynamic, department-aware) ────────────────────────────
+
+export async function generateAreas(department, university) {
+  const system = `You are a Nigerian university academic advisor. Your task is to suggest relevant research/project areas for a student's final year project based on their department. The areas must be specific to the department and relevant to the Nigerian/African context.
+
+Return a JSON array of area names (strings). Each area should be a broad field within the department, e.g., for Computer Science: "Artificial Intelligence", "Cybersecurity", "Data Science", "Software Engineering", "Networking", "Database Systems", "Cloud Computing", "IoT".
+
+Make sure the areas are distinct and cover the main sub‑fields of the department. Keep the list between 5 and 8 areas.
+
+Return ONLY valid JSON array. No markdown, no preamble.`
+
+  const user = `Department: ${department}
+University: ${university}
+
+Suggest 6 relevant areas for a final year project in this department.`
+
+  try {
+    const raw = await callAI(system, user, 500)
+    const parsed = safeParseJSON(raw)
+    if (Array.isArray(parsed) && parsed.length >= 3) {
+      return parsed
+    }
+    // Fallback to static list if AI fails
+    return getStaticAreas(department)
+  } catch (error) {
+    console.error('Area generation failed, using static fallback:', error)
+    return getStaticAreas(department)
+  }
+}
+
+// ─── STATIC AREAS (Fallback) ─────────────────────────────────────────────────
+
+function getStaticAreas(department) {
+  const map = {
+    'Computer Science': ['Artificial Intelligence', 'Cybersecurity', 'Web Development', 'Mobile Applications', 'Database Systems', 'Machine Learning', 'Networking', 'Cloud Computing', 'IoT Systems'],
+    'Business Administration': ['Marketing', 'Finance', 'Entrepreneurship', 'Human Resources', 'Operations Management', 'Strategic Management', 'Consumer Behavior', 'Business Analytics'],
+    'Mass Communication': ['Broadcast Journalism', 'Public Relations', 'Advertising', 'Digital Media', 'Film Production', 'Media Ethics', 'Social Media Studies', 'Communication Theory'],
+    'Electrical Engineering': ['Power Systems', 'Control Systems', 'Telecommunications', 'Renewable Energy', 'Signal Processing', 'Embedded Systems', 'Robotics', 'Electric Machines'],
+    'Civil Engineering': ['Structural Engineering', 'Geotechnical Engineering', 'Transportation Engineering', 'Water Resources', 'Construction Management', 'Environmental Engineering', 'Urban Planning', 'Materials Engineering'],
+  }
+  return map[department] || ['General Studies', 'Project Management', 'Research Methods']
+}
+
+// ─── TOPIC GENERATION (Ultra-strict) ────────────────────────────────────────
 
 export async function generateTopics(department, university, areaOfInterest) {
-  const system = `You are an expert Nigerian university academic supervisor with deep knowledge of 
-final year project requirements across Nigerian universities. You generate relevant, feasible, 
-and academically rich project topics tailored to the Nigerian academic context.
-Always respond with valid JSON only. No markdown. No preamble. No explanation.`
+  // Department-specific example topics to guide the AI
+  const examplesByDept = {
+    'Computer Science': `
+- "Blockchain-Based Document Verification System for Nigerian Universities" (software)
+- "AI-Powered Student Performance Prediction Using Machine Learning" (software)
+- "Network Intrusion Detection System Using Deep Learning" (software)
+- "Mobile Health Appointment Scheduler for Nigerian Clinics" (software)
+- "Analysis of Cybersecurity Threats in Nigerian Banking" (research)`,
+    'Business Administration': `
+- "Impact of Digital Marketing on SME Growth in Lagos" (research)
+- "Employee Retention Strategies in Nigerian Tech Startups" (research)
+- "Consumer Purchase Behaviour on E-commerce Platforms" (research)
+- "Financial Literacy and Investment Decisions Among Nigerian Youth" (research)
+- "Corporate Social Responsibility and Brand Loyalty in Nigeria" (research)`,
+    'Mass Communication': `
+- "Social Media and Political Awareness Among Nigerian Youth" (research)
+- "Fake News Detection and Media Literacy in Nigeria" (research)
+- "The Role of Radio in Rural Development in Nigeria" (research)
+- "Representation of Women in Nollywood Films" (research)
+- "Impact of Digital Media on Traditional Journalism" (research)`,
+    'Electrical Engineering': `
+- "Design of a Solar-Powered Water Pumping System" (hardware)
+- "Development of a Smart Home Automation System" (mixed)
+- "Analysis of Power Distribution Losses in Nigeria" (research)
+- "Design of an IoT-Based Transformer Monitoring System" (mixed)
+- "Optimal Sizing of Solar PV Systems for Residential Buildings" (research)`,
+    'Civil Engineering': `
+- "Analysis of Building Materials for Sustainable Construction in Nigeria" (research)
+- "Design of a Low-Cost Housing Model for Urban Areas" (hardware)
+- "Assessment of Road Pavement Deterioration in Lagos Metropolis" (research)
+- "Analysis of Flood Control Measures in Nigerian Cities" (research)
+- "Design of a Drainage System for Flood-Prone Areas in Nigeria" (hardware)`,
+  }
 
-  const user = `Generate 5 final year project topic ideas for a student with these details:
+  const examples = examplesByDept[department] || examplesByDept['Computer Science']
+
+  const system = `You are a Nigerian university project supervisor. Your ONLY task is to generate project topics that are SPECIFIC to the student's department and relevant to the Nigerian/African context.
+
+EXAMPLES OF GOOD TOPICS FOR ${department}:
+${examples}
+
+CRITICAL RULES:
+- The topic title MUST clearly reflect ${department} — it must mention concepts from that field.
+- The description MUST explain the relevance to ${department} and the Nigerian context.
+- DO NOT generate topics that could fit any other department.
+- If the student gave an area of interest, focus topics within that area, but still ensure they are ${department}-specific.
+- Use simple, clear English.
+
+Return valid JSON only. No markdown, no preamble.`
+
+  const user = `Generate 5 project topics for:
 - University: ${university}
 - Department: ${department}
-- Area of interest: ${areaOfInterest}
+- Area of interest: ${areaOfInterest || 'any'}
 
-For each topic provide:
-1. A clear specific project title
-2. A 2-3 sentence description explaining what the project is about, why it matters, and what the student will build or research
-3. Project type: "research" | "software" | "hardware" | "mixed"
-4. Difficulty: "moderate" | "challenging" | "advanced"
+The topics MUST be specific to ${department}. For each topic, provide:
+1. id (auto-increment)
+2. title (clear, specific, includes ${department} keywords)
+3. description (2-3 sentences, explains how it relates to ${department} and Nigeria)
+4. type ("research", "software", "hardware", or "mixed" – choose what's typical for ${department})
+5. difficulty ("moderate", "challenging", "advanced")
 
 Return ONLY this JSON:
 {
   "topics": [
-    {
-      "id": 1,
-      "title": "...",
-      "description": "...",
-      "type": "software",
-      "difficulty": "moderate"
-    }
+    { "id": 1, "title": "...", "description": "...", "type": "...", "difficulty": "..." }
   ]
 }`
 
-  const raw = await callAI(system, user, 1500)
-  return safeParseJSON(raw)
+  // Helper: check if topics are relevant
+  const isRelevant = (topics, dept) => {
+    const keywords = getDepartmentKeywords(dept)
+    const relevant = topics.filter(t => {
+      const text = (t.title + ' ' + t.description).toLowerCase()
+      return keywords.some(kw => text.includes(kw))
+    })
+    return relevant.length >= 3
+  }
+
+  // Attempt up to 2 times
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const raw = await callAI(system, user, 1500)
+      const result = safeParseJSON(raw)
+      if (result && result.topics && result.topics.length >= 3) {
+        if (isRelevant(result.topics, department)) {
+          return result
+        } else {
+          console.warn(`Attempt ${attempt}: topics not relevant, retrying...`)
+        }
+      }
+    } catch (err) {
+      console.error(`Attempt ${attempt} failed:`, err)
+    }
+  }
+
+  // Fallback to department-specific static topics
+  console.warn('Using fallback topics for', department)
+  return getFallbackTopics(department)
+}
+
+// ─── DEPARTMENT KEYWORDS (for validation) ────────────────────────────────────
+
+function getDepartmentKeywords(department) {
+  const map = {
+    'Computer Science': ['software', 'app', 'system', 'algorithm', 'data', 'network', 'security', 'ai', 'machine learning', 'database', 'programming', 'cyber', 'web', 'mobile', 'cloud', 'authentication', 'encryption', 'blockchain', 'iot', 'api'],
+    'Business Administration': ['business', 'marketing', 'finance', 'management', 'entrepreneur', 'consumer', 'investment', 'customer', 'employee', 'organization', 'leadership', 'strategy', 'supply chain', 'hr', 'brand', 'sales', 'loyalty'],
+    'Mass Communication': ['media', 'communication', 'journalism', 'broadcast', 'public relations', 'advertising', 'social media', 'news', 'radio', 'tv', 'film', 'mass media', 'press', 'digital media'],
+    'Electrical Engineering': ['power', 'circuit', 'control', 'telecommunications', 'signal', 'motor', 'generator', 'transformer', 'grid', 'renewable', 'solar', 'wind', 'instrumentation', 'embedded', 'microcontroller', 'distribution'],
+    'Civil Engineering': ['construction', 'structure', 'material', 'transport', 'road', 'bridge', 'foundation', 'soil', 'water', 'drainage', 'environmental', 'sustainable', 'concrete', 'steel', 'surveying', 'housing']
+  }
+  return map[department] || ['project', 'study', 'analysis', 'system']
+}
+
+// ─── FALLBACK TOPICS (department-specific) ───────────────────────────────────
+
+function getFallbackTopics(department) {
+  const map = {
+    'Computer Science': [
+      { id: 1, title: 'AI-Powered Student Performance Prediction System', type: 'software', difficulty: 'moderate' },
+      { id: 2, title: 'Blockchain-Based Document Verification System for Nigerian Universities', type: 'software', difficulty: 'challenging' },
+      { id: 3, title: 'Network Intrusion Detection System Using Machine Learning', type: 'software', difficulty: 'advanced' },
+      { id: 4, title: 'Mobile Healthcare Appointment Scheduler for Nigerian Hospitals', type: 'software', difficulty: 'moderate' },
+      { id: 5, title: 'Analysis of Cybersecurity Threats in Nigerian Banking Sector', type: 'research', difficulty: 'moderate' },
+    ],
+    'Business Administration': [
+      { id: 1, title: 'Impact of Digital Marketing on SME Growth in Nigeria', type: 'research', difficulty: 'moderate' },
+      { id: 2, title: 'Financial Literacy and Investment Decisions Among Nigerian Youth', type: 'research', difficulty: 'moderate' },
+      { id: 3, title: 'Employee Retention Strategies in Nigerian Tech Startups', type: 'research', difficulty: 'moderate' },
+      { id: 4, title: 'Consumer Behavior and E-commerce Adoption in Lagos', type: 'research', difficulty: 'moderate' },
+      { id: 5, title: 'Corporate Social Responsibility and Brand Loyalty in Nigeria', type: 'research', difficulty: 'moderate' },
+    ],
+    'Mass Communication': [
+      { id: 1, title: 'Social Media and Political Awareness Among Nigerian Youth', type: 'research', difficulty: 'moderate' },
+      { id: 2, title: 'Fake News Detection and Media Literacy in Nigeria', type: 'research', difficulty: 'moderate' },
+      { id: 3, title: 'The Role of Radio in Rural Development in Nigeria', type: 'research', difficulty: 'moderate' },
+      { id: 4, title: 'Representation of Women in Nollywood Films', type: 'research', difficulty: 'moderate' },
+      { id: 5, title: 'Impact of Digital Media on Traditional Journalism in Nigeria', type: 'research', difficulty: 'moderate' },
+    ],
+    'Electrical Engineering': [
+      { id: 1, title: 'Design of a Solar-Powered Water Pumping System', type: 'hardware', difficulty: 'challenging' },
+      { id: 2, title: 'Development of a Smart Home Automation System', type: 'mixed', difficulty: 'advanced' },
+      { id: 3, title: 'Analysis of Power Distribution Losses in Nigeria', type: 'research', difficulty: 'moderate' },
+      { id: 4, title: 'Design of an IoT-Based Transformer Monitoring System', type: 'mixed', difficulty: 'challenging' },
+      { id: 5, title: 'Optimal Sizing of Solar PV Systems for Residential Buildings', type: 'research', difficulty: 'moderate' },
+    ],
+    'Civil Engineering': [
+      { id: 1, title: 'Analysis of Building Materials for Sustainable Construction in Nigeria', type: 'research', difficulty: 'moderate' },
+      { id: 2, title: 'Design of a Low-Cost Housing Model for Urban Areas', type: 'hardware', difficulty: 'challenging' },
+      { id: 3, title: 'Assessment of Road Pavement Deterioration in Lagos Metropolis', type: 'research', difficulty: 'moderate' },
+      { id: 4, title: 'Analysis of Flood Control Measures in Nigerian Cities', type: 'research', difficulty: 'moderate' },
+      { id: 5, title: 'Design of a Drainage System for Flood-Prone Areas in Nigeria', type: 'hardware', difficulty: 'advanced' },
+    ],
+  }
+  return { topics: (map[department] || map['Computer Science']).slice(0, 5) }
 }
 
 // ─── STRUCTURE GENERATION ─────────────────────────────────────────────────────

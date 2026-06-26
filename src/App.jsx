@@ -9,6 +9,12 @@ import Admin from './pages/Admin'
 import Dashboard from './pages/Dashboard'
 import SocraticBuilder from './pages/SocraticBuilder' // <-- ADD THIS
 import { useAuth } from './lib/AuthContext'
+import Gallery from './pages/Gallery' // <-- ADD THIS
+import ProjectDetails from './pages/ProjectDetails'
+import Privacy from './pages/Privacy'
+import Terms from './pages/Terms'
+import About from './pages/About'
+import Humanizer from './pages/Humanizer'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -20,6 +26,8 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/project/:id" element={<ProjectDetails />} />
+      <Route path="/gallery" element={<Gallery />} /> {/* <-- ADD THIS */}
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/start" element={<Intake />} />
@@ -27,6 +35,10 @@ export default function App() {
       <Route path="/build" element={<SocraticBuilder />} /> {/* <-- ADD THIS */}
       <Route path="/results" element={<Results />} />
       <Route path="/flashcards" element={<Flashcards />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/humanizer" element={<Humanizer />} />
+      <Route path="/about" element={<About />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/dashboard" element={
         <ProtectedRoute>

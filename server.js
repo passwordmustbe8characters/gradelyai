@@ -8,28 +8,17 @@ import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import db from './database.js'
-import Groq from 'groq-sdk'
 
-// Add this at the VERY TOP of server.js
 console.log('=== SERVER STARTING ===');
 console.log('GROQ_API_KEY from env:', process.env.GROQ_API_KEY ? 'KEY IS SET (length: ' + process.env.GROQ_API_KEY.length + ')' : 'KEY IS MISSING!');
 console.log('OPENAI_API_KEY from env:', process.env.OPENAI_API_KEY ? 'SET' : 'MISSING');
 console.log('========================');
 
-
-// ⬇️ THE BULLETPROOF FIX: Force Node to load the legacy package correctly ⬇️
 import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const pdfParse = require('pdf-parse-new')
-// ⬆️ END FIX ⬆️
-
 
 dotenv.config()
-
-// Initialize Groq client
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-})
 
 console.log('GROQ_API_KEY loaded:', process.env.GROQ_API_KEY ? 'YES (length: ' + process.env.GROQ_API_KEY.length + ')' : 'NO - KEY MISSING!');
 
@@ -88,7 +77,6 @@ function requireAuth(req, res, next) {
 // ============================================
 class MicroHumanizer {
   constructor() {
-    // Word swaps for AI trigger words
     this.wordSwaps = {
       'crucial': 'key',
       'furthermore': 'also',
@@ -113,8 +101,6 @@ class MicroHumanizer {
       'however': 'but',
       'therefore': 'so'
     };
-    
-    // Conversational pivots for natural flow
     this.pivots = [
       'Look, ',
       'The reality is, ',
@@ -129,8 +115,6 @@ class MicroHumanizer {
   humanize(text, alterationPercentage = 0.15) {
     if (!text || typeof text !== 'string') return text;
     let result = text;
-    
-    // 1. Swap banned AI words
     for (const [ai, human] of Object.entries(this.wordSwaps)) {
       const regex = new RegExp(`\\b${ai}\\b`, 'gi');
       result = result.replace(regex, (match) => {
@@ -138,11 +122,8 @@ class MicroHumanizer {
         return isCapitalized ? human[0].toUpperCase() + human.slice(1) : human;
       });
     }
-    
-    // 2. Split long sentences with em-dash (only 15% of sentences)
     const sentences = result.split(/(?<=[.!?])\s+/);
     const processed = [];
-    
     for (const sentence of sentences) {
       const wordCount = sentence.split(/\s+/).length;
       if (wordCount > 18 && Math.random() < alterationPercentage) {
@@ -156,25 +137,19 @@ class MicroHumanizer {
       }
     }
     result = processed.join(' ');
-    
-    // 3. Inject conversational pivots (15% of sentences)
     const sentencesWithPivots = result.split(/(?<=[.!?])\s+/);
     const numToAlter = Math.floor(sentencesWithPivots.length * alterationPercentage);
     const indicesToAlter = this._getRandomIndices(sentencesWithPivots.length, numToAlter);
-    
     for (const idx of indicesToAlter) {
       const pivot = this.pivots[Math.floor(Math.random() * this.pivots.length)];
       const sentence = sentencesWithPivots[idx];
       sentencesWithPivots[idx] = pivot + sentence.charAt(0).toLowerCase() + sentence.slice(1);
     }
     result = sentencesWithPivots.join(' ');
-    
-    // 4. Clean up spacing and punctuation
     result = result.replace(/\s+/g, ' ');
     result = result.replace(/\s+([,.!?])/g, '$1');
     result = result.replace(/\s+—/g, ' —');
     result = result.trim();
-    
     return result;
   }
   
@@ -188,14 +163,9 @@ class MicroHumanizer {
   }
 }
 
-// Initialize the humanizer
 const humanizer = new MicroHumanizer();
 
-// ============================================
-// HUMANIZATION PIPELINE HELPERS
-// ============================================
-
-// Simulated translation roundabout (breaks AI patterns without external API)
+// ─── HELPER: Translation roundabout ──────────────────────────────────────────
 function translationRoundabout(text) {
   let result = text;
   const patterns = [
@@ -212,7 +182,6 @@ function translationRoundabout(text) {
   for (const [pattern, replacement] of patterns) {
     result = result.replace(pattern, replacement);
   }
-  // Optional: invert a small number of sentences (adds natural variation)
   const sentences = result.split(/(?<=[.!?])\s+/);
   const processed = sentences.map(sent => {
     if (Math.random() < 0.1 && sent.includes(' is ') && sent.includes(' because ')) {
@@ -223,7 +192,6 @@ function translationRoundabout(text) {
   return processed.join(' ');
 }
 
-// Burstiness enhancer – randomly break/merge sentences
 function enhanceBurstiness(text) {
   const sentences = text.split(/(?<=[.!?])\s+/);
   const processed = [];
@@ -245,190 +213,242 @@ function enhanceBurstiness(text) {
   return processed.join(' ');
 }
 
-// Full pipeline that runs on any AI-generated supporting text
 async function runHumanizationPipeline(text) {
   let result = text;
-  // 1. Word swaps & pivot injection (existing MicroHumanizer)
   result = humanizer.humanize(result, 0.25);
-  // 2. Translation roundabout
   result = translationRoundabout(result);
-  // 3. Burstiness enhancement
   result = enhanceBurstiness(result);
-  // 4. Final cleanup
   result = result.replace(/\s+/g, ' ').trim();
   result = result.replace(/\s+([,.!?])/g, '$1');
   return result;
 }
 
-// ─── GRADELYAI: MASTER PIPELINE PRODUCTION ROUTES ─────────────────────────────
-
-/**
- * 1. THE MICRO-HUMANIZER (Replaces T5 Colab Engine)
- * Uses programmatic post-processing instead of slow AI rewriting.
- */
-// ============================================
-// HUMANIZER V3 - Rich Paragraphs + Grammar Fix
-// ============================================
-
-app.post('/api/humanize-v2', requireAuth, async (req, res) => {
-  const { text, context } = req.body;
-  
-  if (!text || typeof text !== 'string') {
-    return res.status(400).json({ success: false, error: 'Text is required' });
-  }
-  
-  try {
-    // Call Groq with detailed expansion instructions
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content: `You are an academic writing assistant. You help students turn their rough ideas into well-written academic paragraphs.
-
-CRITICAL RULES:
-1. PRESERVE the student's core argument and meaning
-2. FIX grammar issues naturally (don't change their voice)
-3. START with their main point (rewritten properly if needed)
-4. Write at least 3 FULL PARAGRAPHS (not just sentences)
-5. Each paragraph should be 3-5 sentences
-6. NEVER use these words: crucial, furthermore, moreover, delve, robust, leverage, utilize, pivotal, notably, consequently, accordingly, nevertheless
-7. Use simple transitions: "also", "so", "but", "because", "this means", "for example"
-
-FORBIDDEN PHRASES: "in addition", "on the other hand", "as a result", "however", "therefore"
-
-GOOD PHRASES: "look at it this way", "the key point is", "this matters because", "here's an example", "what this means is"
-
-OUTPUT FORMAT:
-- Paragraph 1: Restate and expand the student's main argument
-- Paragraph 2: Add evidence, examples, or explanation
-- Paragraph 3: Connect to broader context or implications
-
-Be substantive. No fluff. Every sentence should add value.`
-        },
-        {
-          role: "user",
-          content: `Student's rough idea: "${text}"
-
-${context ? `Project context: ${context}` : ''}
-
-Write at least 3 rich, academic paragraphs that preserve the student's core argument but fix any grammar issues. Start with their main point (rewritten properly).`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 1500
-    });
-    
-    let result = completion.choices[0].message.content;
-    
-    // Step 2: Clean up any AI nonsense patterns
-    result = result.replace(/\b(crucial|furthermore|moreover|delve|robust|leverage|utilize|pivotal|notably|consequently|accordingly|nevertheless)\b/gi, 
-      (match) => {
-        const swaps = {
-          'crucial': 'key',
-          'furthermore': 'also',
-          'moreover': 'plus',
-          'delve': 'explore',
-          'robust': 'solid',
-          'leverage': 'use',
-          'utilize': 'use',
-          'pivotal': 'major',
-          'notably': 'especially',
-          'consequently': 'so',
-          'accordingly': 'thus',
-          'nevertheless': 'but'
-        };
-        return swaps[match.toLowerCase()] || match;
-      });
-    
-    // Step 3: Remove "in addition", "on the other hand", etc.
-    result = result.replace(/\b(in addition|on the other hand|as a result|however|therefore)\b/gi, '');
-    
-    // Step 4: Fix double spaces and punctuation
-    result = result.replace(/\s+/g, ' ').trim();
-    result = result.replace(/\s+([.!?])/g, '$1');
-
-    // Step 5: Final humanization pass using the local pipeline
-    result = await runHumanizationPipeline(result);
-    
-    // Step 6: Ensure at least 3 paragraphs exist
-    const paragraphs = result.split(/\n\s*\n/);
-    if (paragraphs.length < 3) {
-      // If AI didn't write enough, add a note
-      result = result + "\n\n" + paragraphs[paragraphs.length - 1] + " This is a key consideration for understanding the full scope of the issue.";
-    }
-    
-    res.json({ 
-      success: true, 
-      text: result,
-      originalLength: text.length,
-      newLength: result.length
-    });
-    
-  } catch (error) {
-    console.error('Humanizer error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-
 app.post('/api/bert-humanize', requireAuth, async (req, res) => {
   const { text } = req.body;
-  
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ success: false, error: 'Text is required' });
   }
-  
   try {
     const response = await fetch('https://uncled33-bert-humanizer.hf.space/humanize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text })
     });
-    
     const data = await response.json();
-    res.json({ success: true, text: data.text });
-    
+    const outputText = (response.ok && data.text && typeof data.text === 'string') ? data.text : text;
+    const humanizedText = await runHumanizationPipeline(outputText);
+    res.json({ success: true, text: humanizedText });
   } catch (error) {
     console.error('BERT humanizer error:', error);
-    // Fallback: return original text if humanizer fails
-    res.json({ success: true, text });
+    const humanizedText = await runHumanizationPipeline(text);
+    res.json({ success: true, text: humanizedText });
   }
 });
 
-// ============================================
-// OPENAI + COLAB GPU BERT HUMANIZER
-// ============================================
-app.post('/api/socratic-generate', requireAuth, async (req, res) => {
-  const { messages } = req.body;
+async function updateUserWordUsage(userId, words) {
+  const now = new Date().toISOString();
+  const user = await db.execute({
+    sql: 'SELECT words_used_this_month, last_reset_date FROM users WHERE id = ?',
+    args: [userId]
+  });
+  if (!user.rows.length) return;
+  let used = user.rows[0].words_used_this_month;
+  let lastReset = user.rows[0].last_reset_date;
+  const currentMonth = now.slice(0,7);
+  if (!lastReset || lastReset.slice(0,7) !== currentMonth) {
+    used = 0;
+    await db.execute({
+      sql: 'UPDATE users SET words_used_this_month = 0, last_reset_date = ? WHERE id = ?',
+      args: [now, userId]
+    });
+  }
+  const newUsed = used + words;
+  await db.execute({
+    sql: 'UPDATE users SET words_used_this_month = ? WHERE id = ?',
+    args: [newUsed, userId]
+  });
+}
 
+app.post('/api/humanize', requireAuth, async (req, res) => {
+  const { text } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ success: false, error: 'Text is required' });
+  }
+  try {
+    const response = await fetch('https://api.writehuman.ai/v1/humanize', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.WRITEHUMAN_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text, intensity: 'standard' })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'WriteHuman API error');
+    const wordCount = text.split(/\s+/).length;
+    await updateUserWordUsage(req.user.id, wordCount);
+    res.json({ success: true, text: data.humanizedText });
+  } catch (error) {
+    console.error('WriteHuman error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── RAG ──────────────────────────────────────────────────────────────────────
+async function getRelevantGuideContent(university, department, sectionTitle) {
+  let guide = await db.execute({
+    sql: `SELECT structure, writing_expectations FROM guides 
+          WHERE university = ? AND department = ? 
+          ORDER BY year DESC LIMIT 1`,
+    args: [university, department]
+  });
+  if (!guide.rows.length) {
+    guide = await db.execute({
+      sql: `SELECT structure, writing_expectations FROM guides 
+            WHERE department = ? 
+            ORDER BY year DESC LIMIT 1`,
+      args: [department]
+    });
+  }
+  if (!guide.rows.length && department) {
+    const deptKeywords = department.split(' ');
+    for (const keyword of deptKeywords) {
+      const result = await db.execute({
+        sql: `SELECT structure, writing_expectations FROM guides 
+              WHERE department LIKE ? 
+              ORDER BY year DESC LIMIT 1`,
+        args: [`%${keyword}%`]
+      });
+      if (result.rows.length) {
+        guide = result;
+        break;
+      }
+    }
+  }
+  if (guide.rows.length) {
+    const { structure, writing_expectations } = guide.rows[0];
+    const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sectionPattern = new RegExp(
+      `(?:(?:\\d+\\.\\d+)\\s*${escapedTitle}[\\s\\S]*?(?=\\n\\d+\\.\\d+|$))`,
+      'i'
+    );
+    const match = structure.match(sectionPattern);
+    const relevantPart = match ? match[0] : structure.substring(0, 1000);
+    return { structure: relevantPart, expectations: writing_expectations };
+  }
+  return null;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports.getRelevantGuideContent = getRelevantGuideContent;
+}
+
+// ─── GALLERY ──────────────────────────────────────────────────────────────────
+app.post('/api/projects/:id/publish', requireAuth, async (req, res) => {
+  const projectId = req.params.id;
+  const userId = req.user.id;
+  try {
+    const project = await db.execute({
+      sql: `SELECT title, abstract, department, university, project_info, chapters 
+            FROM projects WHERE id = ? AND user_id = ?`,
+      args: [projectId, userId]
+    });
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const p = project.rows[0];
+    let projectInfo = {};
+    let chapters = [];
+    try {
+      projectInfo = p.project_info ? JSON.parse(p.project_info) : {};
+    } catch (error) {
+      console.warn('Failed to parse project_info:', error);
+    }
+    try {
+      chapters = p.chapters ? JSON.parse(p.chapters) : [];
+    } catch (error) {
+      console.warn('Failed to parse chapters:', error);
+    }
+    const fullContent = chapters.map(ch => ch.content || '').join('\n\n');
+    const title = p.title ? String(p.title) : '';
+    const abstract = p.abstract ? String(p.abstract) : '';
+    const department = p.department ? String(p.department) : '';
+    const university = p.university ? String(p.university) : '';
+    const supervisorName = projectInfo.supervisorName ? String(projectInfo.supervisorName) : '';
+    const projectTopic = projectInfo.topic ? String(projectInfo.topic) : '';
+    await db.execute({
+      sql: `INSERT INTO published_projects 
+            (user_id, project_id, title, abstract, department, university, supervisor_name, project_topic, full_content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        userId, projectId, title, abstract, department, university,
+        supervisorName, projectTopic, fullContent
+      ]
+    });
+    res.json({ success: true, message: 'Project published to gallery' });
+  } catch (error) {
+    console.error('Publish error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/gallery', async (req, res) => {
+  const { department, university, topic, page = 1, limit = 12 } = req.query;
+  let sql = `
+    SELECT p.id, p.title, p.abstract, p.department, p.university, 
+           p.supervisor_name, p.project_topic, p.published_at,
+           u.name as publisher_name
+    FROM published_projects p
+    JOIN users u ON p.user_id = u.id
+    WHERE 1=1
+  `;
+  const args = [];
+  if (department && department !== 'all') { sql += ` AND p.department = ?`; args.push(department); }
+  if (university && university !== 'all') { sql += ` AND p.university = ?`; args.push(university); }
+  if (topic) { sql += ` AND (p.title LIKE ? OR p.project_topic LIKE ?)`; args.push(`%${topic}%`, `%${topic}%`); }
+  sql += ` ORDER BY p.published_at DESC LIMIT ? OFFSET ?`;
+  args.push(Number(limit), (Number(page)-1)*Number(limit));
+  const rows = await db.execute({ sql, args });
+  const deptRes = await db.execute(`SELECT DISTINCT department FROM published_projects WHERE department IS NOT NULL AND department != ''`);
+  const univRes = await db.execute(`SELECT DISTINCT university FROM published_projects WHERE university IS NOT NULL AND university != ''`);
+  res.json({ 
+    projects: rows.rows,
+    departments: deptRes.rows.map(r => r.department),
+    universities: univRes.rows.map(r => r.university)
+  });
+});
+
+// ─── SOCRATIC GENERATE (FIXED – no word count, no button text in response) ──
+app.post('/api/socratic-generate', requireAuth, async (req, res) => {
+  console.log('🔥 SOCRATIC GENERATE CALLED');
+
+  const { messages, projectInfo, chapterStructure } = req.body;
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
 
-  // Check for confirmation responses
-  const isConfirmation = ['yes', 'no', 'next', 'looks good', 'good', 'continue', 'proceed'].includes(
-    studentTopicSentence.toLowerCase().trim()
-  );
-
-  if (isConfirmation) {
-    return res.json({
-      success: true,
-      message: "Great! Moving to the next section. Type your main point for the next section."
-    });
+  // ─── RAG: retrieve guide content ──────────────────────────────────────────
+  let guideContext = '';
+  try {
+    const currentSection = chapterStructure?.currentSection || { title: 'Introduction' };
+    const guideData = await getRelevantGuideContent(
+      projectInfo?.university || '',
+      projectInfo?.department || '',
+      currentSection.title || 'Introduction'
+    );
+    if (guideData) {
+      guideContext = `\n\nIMPORTANT - Follow this exact departmental guide structure for this section:\n${guideData.structure}\n\n`;
+      if (guideData.expectations) {
+        guideContext += `Writing expectations: ${guideData.expectations}\n`;
+      }
+    }
+  } catch (err) {
+    console.error('RAG fetch error:', err);
   }
 
-  // Enforce minimum length
-  const wordCount = studentTopicSentence.trim().split(/\s+/).length;
-  if (wordCount < 15) {
-    return res.json({
-      success: true,
-      message: `⚠️ Please write at least 15 words explaining your main point. (You wrote ${wordCount} words)\n\n💡 Tip: Include WHAT you're claiming, WHY it matters, and WHAT happens as a result.\n\nExample: "Nigeria's cybersecurity is weak because the government doesn't fund NITDA properly, and hackers are stealing from banks without being caught."`
-    });
-  }
+  // ─── OpenAI call ───────────────────────────────────────────────────────────
+  const systemPrompt = `You write 2-3 supporting paragraphs for a student's topic sentence. Do NOT repeat the topic sentence. Use simple language. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize.${guideContext}`;
 
   try {
-    // ----- STEP 1: Generate supporting paragraphs with OpenAI -----
     const completion = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -438,24 +458,8 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-          {
-            role: "system",
-            content: `You write 2-3 supporting paragraphs for a student's topic sentence.
-
-CRITICAL RULES:
-1. Do NOT repeat the student's topic sentence.
-2. Write 2-3 paragraphs (3-5 sentences each).
-3. Put a blank line BETWEEN each paragraph.
-4. Vary sentence length (some short, some long).
-5. Use simple transitions like "this means", "for example", "the key point is".
-6. NEVER use: crucial, furthermore, moreover, delve, robust, leverage, utilize.
-
-Just write the supporting content. No introductory phrases. No fluff.`
-          },
-          {
-            role: "user",
-            content: `Student's topic sentence: "${studentTopicSentence}"\n\nWrite 2-3 supporting paragraphs. Add blank lines between paragraphs.`
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Student's topic sentence: "${studentTopicSentence}"\n\nWrite 2-3 supporting paragraphs.` }
         ],
         temperature: 0.7,
         max_tokens: 1000
@@ -463,80 +467,53 @@ Just write the supporting content. No introductory phrases. No fluff.`
     });
 
     const data = await completion.json();
-    if (!completion.ok) {
-      throw new Error(data.error?.message || 'OpenAI API error');
-    }
-    let rawSupportingText = data.choices[0].message.content;
-    console.log('OpenAI generation complete. Raw text length:', rawSupportingText.length);
+    if (!completion.ok) throw new Error(data.error?.message || 'OpenAI error');
+    const rawSupportingText = data.choices[0].message.content;
 
-    // ----- STEP 2: Apply aggressive BERT humanization via Colab GPU -----
-    let humanizedSupportingText = rawSupportingText; // fallback
-    const BERT_URL = 'https://vicinity-siding-email.ngrok-free.dev/humanize';
-    console.log(`Calling Colab BERT humanizer at ${BERT_URL} ...`);
+    // ─── NO HUMANIZATION – just pass the raw text ──────────────────────────
+    // (you can add simple cleaning if needed)
 
-    try {
-      const bertResponse = await fetch(BERT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: rawSupportingText })
-      });
+    // Build final response with draft wrapper
+    let finalResponse = `${studentTopicSentence}\n\n${rawSupportingText}\n\n---\n**Please review this section.** Does it capture your main point correctly?`;
 
-      if (bertResponse.ok) {
-        const bertData = await bertResponse.json();
-        if (bertData && bertData.text) {
-          humanizedSupportingText = bertData.text;
-          console.log('Colab BERT humanization successful. Humanized length:', humanizedSupportingText.length);
-        } else {
-          console.log('Colab BERT response missing text field, using original');
-        }
-      } else {
-        console.log(`Colab BERT responded with status ${bertResponse.status}, using original`);
-      }
-    } catch (bertError) {
-      console.error('Colab BERT humanization failed:', bertError.message);
-      // Keep original text as fallback
-    }
+    // Clean any leftover button text
+    finalResponse = finalResponse
+      .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')
+      .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|/gi, '')
+      .replace(/\*\*Regenerate\*\*/gi, '')
+      .replace(/\|/g, '')
+      .replace(/Yes,\s*looks\s*good\./gi, '')
+      .replace(/No,\s*let\s*me\s*edit\./gi, '')
+      .replace(/Regenerate\./gi, '')
+      .trim();
 
-    // ----- STEP 3: Combine and return -----
-    const finalResponse = `${studentTopicSentence}\n\n${humanizedSupportingText}\n\n---\n✅ **Please review this section.** Does it capture your main point correctly?\n\n👍 **Yes, looks good** | ✏️ **No, let me edit** | 🔄 **Regenerate**`;
+    // Wrap the draft so frontend can extract it
+    finalResponse = `[SECTION_DRAFT]${finalResponse}[/SECTION_DRAFT]`;
 
+    console.log('3. Sending final response (no humanization)');
     res.json({ success: true, message: finalResponse });
 
   } catch (error) {
-    console.error('Error in socratic-generate:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
+    console.error('Error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-/**
- * 2. THE SUPERVISOR CORRECTION PERSISTENCE TRACKER
- * POST /api/projects/:id/persist-chapters
- */
+// ─── PERSIST CHAPTERS ────────────────────────────────────────────────────────
 app.post('/api/projects/:id/persist-chapters', requireAuth, async (req, res) => {
   const { chapters } = req.body;
-  
   if (!chapters || !Array.isArray(chapters)) {
     return res.status(400).json({ success: false, error: "Valid chapters array required." });
   }
-
   try {
-    // Failsafe validation guard: Verify the project belongs to the requesting user
     const existing = await db.execute({ 
       sql: 'SELECT id, is_paid FROM projects WHERE id = ? AND user_id = ?', 
       args: [req.params.id, req.user.id] 
     });
-    
     if (existing.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Project record context not found.' });
     }
-
     const projectRecord = existing.rows[0];
-
-    // 3. THE CHAPTER 1 PAYWALL LOGIC GATE
-    // If the account has not paid ₦5,000, reject any attempt to save text past Chapter 1
     if (!projectRecord.is_paid) {
       const hasRestrictedContent = chapters.some(ch => ch.number > 1 && ch.content && ch.content.trim().length > 0);
       if (hasRestrictedContent) {
@@ -546,77 +523,52 @@ app.post('/api/projects/:id/persist-chapters', requireAuth, async (req, res) => 
         });
       }
     }
-
-    // Persist changes cleanly back to SQLite database columns
     await db.execute({
       sql: 'UPDATE projects SET chapters = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
       args: [JSON.stringify(chapters), req.params.id, req.user.id]
     });
-
     return res.status(200).json({ success: true, message: "Project changes synchronized successfully." });
-
   } catch (error) {
     console.error("[Database Persistence Fault]:", error);
     return res.status(500).json({ success: false, error: "Failed to persist document modifications." });
   }
 });
 
-/**
- * 4. THE DEFENSE PREP PANELS & FLASHCARDS COMPILATION GATEWAY
- * POST /api/projects/:id/defense-prep
- */
+// ─── DEFENSE PREP ─────────────────────────────────────────────────────────────
 app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
   try {
     const existing = await db.execute({
       sql: 'SELECT chapters, project_info, is_paid FROM projects WHERE id = ? AND user_id = ?',
       args: [req.params.id, req.user.id]
     });
-
     if (existing.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Project not found.' });
     }
-
     const project = existing.rows[0];
-
-    // Paywall Gate Verification Check
     if (!project.is_paid) {
       return res.status(402).json({ success: false, error: "Defense optimization features require premium access." });
     }
-
     const parsedChapters = JSON.parse(project.chapters || '[]');
     const parsedInfo = JSON.parse(project.project_info || '{}');
-    
-    // Stitch text context together cleanly
     const collectiveText = parsedChapters.map(c => c.content).join('\n\n');
-
-    // Import the high-value Claude diagnostic tools directly from your ai.js schema setup
     const { generateStudentBreakdown, generateFlashcards, analyzeWeaknesses } = await import('./lib/ai.js');
-
     console.log(`[Defense Engine] Synthesizing evaluation assets for project: ${req.params.id}`);
-
-    // Compute all three diagnostic layers simultaneously to minimize client processing requests
     const [breakdown, flashcards, weaknesses] = await Promise.all([
       generateStudentBreakdown(parsedInfo, collectiveText),
       generateFlashcards(parsedInfo, collectiveText),
       analyzeWeaknesses(parsedInfo, collectiveText)
     ]);
-
     return res.status(200).json({
       success: true,
-      data: {
-        breakdown,
-        flashcards,
-        weaknesses
-      }
+      data: { breakdown, flashcards, weaknesses }
     });
-
   } catch (error) {
     console.error("[Defense Prep Route Error]:", error);
     return res.status(500).json({ success: false, error: "Failed to compile defense training matrices." });
   }
 });
 
-// ─── PROXY: OpenAI ─────────────────────────────────────────────────
+// ─── PROXY: OpenAI ────────────────────────────────────────────────────────────
 app.post('/api/ai', async (req, res) => {
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -627,12 +579,10 @@ app.post('/api/ai', async (req, res) => {
       },
       body: JSON.stringify(req.body)
     })
-
     const text = await response.text()
     if (!text || text.trim() === '') {
       return res.status(500).json({ error: { message: 'Empty response from OpenAI' } })
     }
-
     try {
       const data = JSON.parse(text)
       if (!response.ok) return res.status(response.status).json(data)
@@ -646,13 +596,10 @@ app.post('/api/ai', async (req, res) => {
 })
 
 // ─── PROXY: Semantic Scholar ──────────────────────────────────────────────────
-
 app.get('/api/papers', async (req, res) => {
   const { query } = req.query
   if (!query) return res.json({ data: [] })
-
   const queries = [query.split(' ').slice(0, 4).join(' '), query]
-
   for (const q of queries) {
     try {
       const encoded = encodeURIComponent(q)
@@ -668,8 +615,7 @@ app.get('/api/papers', async (req, res) => {
   res.json({ data: [] })
 })
 
-// ─── ADMIN: Auth (Using JWT) ──────────────────────────────────────────────────
-
+// ─── ADMIN ────────────────────────────────────────────────────────────────────
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body
   if (password === ADMIN_PASSWORD) {
@@ -688,13 +634,11 @@ app.get('/api/admin/check', requireAdmin, (req, res) => {
   res.json({ isAdmin: true })
 })
 
-// ─── GUIDES: Public ───────────────────────────────────────────────────────────
-
+// ─── GUIDES ───────────────────────────────────────────────────────────────────
 app.get('/api/guides', async (req, res) => {
   try {
     const { university, department } = req.query
     let result
-
     if (university && department) {
       result = await db.execute({
         sql: 'SELECT * FROM guides WHERE university = ? AND department = ? ORDER BY year DESC',
@@ -724,8 +668,6 @@ app.get('/api/guides/:id', async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
-
-// ─── GUIDES: Admin ────────────────────────────────────────────────────────────
 
 app.get('/api/admin/guides', requireAdmin, async (req, res) => {
   try {
@@ -776,32 +718,25 @@ app.delete('/api/admin/guides/:id', requireAdmin, async (req, res) => {
   }
 })
 
-// ─── GUIDES: PDF Upload ───────────────────────────────────────────────────────
-
 app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async (req, res) => {
   try {
     const { university, department, year, label } = req.body
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
-
-   let text = ''
+    let text = ''
     if (req.file.mimetype === 'application/pdf') {
       const buffer = fs.readFileSync(req.file.path)
-      
       let parseFunction = pdfParse
       if (typeof parseFunction !== 'function') parseFunction = pdfParse.default
       if (typeof parseFunction !== 'function') parseFunction = Object.values(pdfParse).find(val => typeof val === 'function')
-      
       if (typeof parseFunction !== 'function') {
         console.error("PDF Library Object:", pdfParse)
         return res.status(500).json({ error: 'Server configuration error: PDF library failed to load.' })
       }
-
       const data = await parseFunction(buffer)
       text = data.text
     } else {
       text = fs.readFileSync(req.file.path, 'utf-8')
     }
-
     fs.unlinkSync(req.file.path)
 
     const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
@@ -831,26 +766,20 @@ WRITING EXPECTATIONS:
     })
 
     const aiData = await aiResponse.json()
-
     if (aiData.error) {
       console.error('Anthropic API Error:', aiData.error)
       return res.status(500).json({ error: `Anthropic API Error: ${aiData.error.message}` })
     }
-
     if (!aiData.content || !aiData.content[0]) {
       console.error('Unexpected AI Response:', aiData)
       return res.status(500).json({ error: 'AI returned an empty or unexpected response.' })
     }
-
     const aiText = aiData.content[0].text
-
     const structureMatch = aiText.match(/STRUCTURE:\n([\s\S]*?)(?=WRITING EXPECTATIONS:|$)/i)
     const expectationsMatch = aiText.match(/WRITING EXPECTATIONS:\n([\s\S]*?)$/i)
-
     const structure = structureMatch ? structureMatch[1].trim() : text.substring(0, 3000)
     const writing_expectations = expectationsMatch ? expectationsMatch[1].trim() : ''
     const finalLabel = label || `${university} ${department} — ${year}`
-
     const result = await db.execute({
       sql: 'INSERT INTO guides (university, department, year, label, structure, writing_expectations) VALUES (?, ?, ?, ?, ?, ?)',
       args: [
@@ -862,7 +791,6 @@ WRITING EXPECTATIONS:
         writing_expectations
       ]
     })
-
     const guide = await db.execute({ sql: 'SELECT * FROM guides WHERE id = ?', args: [result.lastInsertRowid] })
     res.json({ guide: guide.rows[0] })
   } catch (err) {
@@ -870,74 +798,60 @@ WRITING EXPECTATIONS:
   }
 })
 
-// ─── AUTH: Register ───────────────────────────────────────────────────────────
-
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
-
   try {
     const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] })
     if (existing.rows.length > 0) return res.status(400).json({ error: 'An account with this email already exists' })
-
     const hashed = await bcrypt.hash(password, 10)
-   const result = await db.execute({
-  sql: 'INSERT INTO users (name, email, password, onboarded, is_admin) VALUES (?, ?, ?, 0, 0)',
-  args: [name, email.toLowerCase().trim(), hashed]
-})
-
+    const result = await db.execute({
+      sql: 'INSERT INTO users (name, email, password, onboarded, is_admin) VALUES (?, ?, ?, 0, 0)',
+      args: [name, email.toLowerCase().trim(), hashed]
+    })
     const userResult = await db.execute({ sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?', args: [result.lastInsertRowid] })
     const user = userResult.rows[0]
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
-
     res.json({ user, token })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── AUTH: Login ──────────────────────────────────────────────────────────────
-
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' })
-
   try {
     const result = await db.execute({ sql: 'SELECT * FROM users WHERE email = ?', args: [email.toLowerCase().trim()] })
     if (result.rows.length === 0) return res.status(401).json({ error: 'No account found with this email' })
-
     const user = result.rows[0]
     const valid = await bcrypt.compare(password, user.password)
     if (!valid) return res.status(401).json({ error: 'Incorrect password' })
-
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
-   const safeUser = { 
-  ...user, 
-  onboarded: user.onboarded === 1,
-  is_admin: user.is_admin === 1
-}
-delete safeUser.password
-
+    const safeUser = { 
+      ...user, 
+      onboarded: user.onboarded === 1,
+      is_admin: user.is_admin === 1
+    }
+    delete safeUser.password
     res.json({ user: safeUser, token })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── AUTH: Me ─────────────────────────────────────────────────────────────────
-
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
-   const result = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded, is_admin FROM users WHERE id = ?', args: [req.user.id] })
+    const result = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded, is_admin FROM users WHERE id = ?', args: [req.user.id] })
     if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' })
-  res.json({ user: { ...result.rows[0], onboarded: result.rows[0].onboarded === 1 } })
+    res.json({ user: { ...result.rows[0], onboarded: result.rows[0].onboarded === 1 } })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
-// ─── ONBOARDING: Mark complete ────────────────────────────────────────────────
 app.post('/api/auth/onboarded', requireAuth, async (req, res) => {
   try {
     await db.execute({
@@ -950,7 +864,6 @@ app.post('/api/auth/onboarded', requireAuth, async (req, res) => {
   }
 })
 
-// ─── NEW PROJECT: Reset session but keep user onboarded ───────────────────────
 app.post('/api/auth/new-project', requireAuth, async (req, res) => {
   try {
     res.json({ success: true, message: 'Start new project flow' })
@@ -959,9 +872,7 @@ app.post('/api/auth/new-project', requireAuth, async (req, res) => {
   }
 })
 
-
-// ─── PROJECTS: Save ───────────────────────────────────────────────────────────
-
+// ─── PROJECTS ─────────────────────────────────────────────────────────────────
 app.post('/api/projects', requireAuth, async (req, res) => {
   const { title, university, department, project_type, status, is_paid, chapters, abstract, references, structure, project_info } = req.body
   try {
@@ -984,15 +895,12 @@ app.post('/api/projects', requireAuth, async (req, res) => {
   }
 })
 
-// ─── PROJECTS: Update ─────────────────────────────────────────────────────────
-
 app.put('/api/projects/:id', requireAuth, async (req, res) => {
   const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness } = req.body
   try {
     const existing = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
     const p = existing.rows[0]
-
     await db.execute({
       sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
       args: [
@@ -1009,15 +917,12 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
         req.params.id, req.user.id
       ]
     })
-
     const updated = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ?', args: [req.params.id] })
     res.json({ project: updated.rows[0] })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
-
-// ─── PROJECTS: Get all ────────────────────────────────────────────────────────
 
 app.get('/api/projects', requireAuth, async (req, res) => {
   try {
@@ -1030,8 +935,6 @@ app.get('/api/projects', requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
-
-// ─── PROJECTS: Get single ─────────────────────────────────────────────────────
 
 app.get('/api/projects/:id', requireAuth, async (req, res) => {
   try {
@@ -1052,8 +955,6 @@ app.get('/api/projects/:id', requireAuth, async (req, res) => {
   }
 })
 
-// ─── PROJECTS: Delete ─────────────────────────────────────────────────────────
-
 app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     const existing = await db.execute({ sql: 'SELECT id FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
@@ -1065,8 +966,26 @@ app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   }
 })
 
-// ─── TEST SESSIONS ────────────────────────────────────────────────────────────
+app.get('/api/project/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.execute({
+      sql: `
+        SELECT p.*, u.name as publisher_name
+        FROM published_projects p
+        JOIN users u ON p.user_id = u.id
+        WHERE p.id = ?
+      `,
+      args: [id]
+    });
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
+// ─── TEST SESSIONS ────────────────────────────────────────────────────────────
 app.post('/api/test-sessions', requireAuth, async (req, res) => {
   const { project_id, mode, score, total, got, almost, missed } = req.body
   try {
@@ -1095,11 +1014,7 @@ app.get('/api/test-sessions/:project_id', requireAuth, async (req, res) => {
 })
 
 // ─── START ────────────────────────────────────────────────────────────────────
-
 const PORT = process.env.PORT || 3001;
-
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running open on port ${PORT}`);
 });
-
-// Triggering production deployment

@@ -168,6 +168,11 @@ p {
   background: rgba(0,0,0,0.02);
 }
 
+.gallery-page .card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
 /* ─── FORM ELEMENTS ────────────────────────────────────────────────── */
 .input, select, textarea {
   background: var(--bg-card);
@@ -181,6 +186,16 @@ p {
   outline: none;
   transition: all 0.2s ease;
   box-shadow: var(--shadow);
+}
+
+/* Custom select styling */
+select.input {
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B6B6B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 16px;
+  cursor: pointer;
 }
 
 .input:focus, select:focus, textarea:focus {
