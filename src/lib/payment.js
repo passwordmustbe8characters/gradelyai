@@ -1,65 +1,44 @@
-const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
+// lib/payment.js
 
-export function initiatePayment({ email, name, onSuccess, onClose }) {
-  if (!window.PaystackPop) {
-    alert('Payment system not loaded. Please refresh and try again.')
-    onClose && onClose()
-    return
-  }
+/**
+ * Initializes the Monnify payment SDK.
+ * @param {Object} user - The user object from your AuthContext.
+ * @param {number} amount - The amount to charge in NGN.
+ * @param {string} planName - Description of the plan (e.g., 'Standard Plan').
+ */
+export const initMonnifyPayment = (user, amount, planName) => {
+  return new Promise((resolve, reject) => {
+    // 1. Ensure the SDK is loaded (it must be in index.html)
+    if (!window.MonnifySDK) {
+      alert('Payment system is loading. Please try again in a moment.');
+      return reject('Monnify SDK not loaded');
+    }
 
-  try {
-    const handler = window.PaystackPop.setup({
-      key: PAYSTACK_PUBLIC_KEY,
-      email,
-      amount: 500000,
-      currency: 'NGN',
-      ref: `gradely_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      metadata: {
-        custom_fields: [
-          { display_name: 'Customer Name', variable_name: 'customer_name', value: name },
-          { display_name: 'Product', variable_name: 'product', value: 'GradelyAI Pro' }
-        ]
+    // 2. Initialize the payment
+    window.MonnifySDK.initialize({
+      amount: amount,
+      currency: "NGN",
+      reference: "gradely_" + Math.floor(Math.random() * 1000000000),
+      customerName: user.name,
+      customerEmail: user.email,
+      apiKey: import.meta.env.VITE_MONNIFY_API_KEY,
+      contractCode: import.meta.env.VITE_MONNIFY_CONTRACT_CODE,
+      paymentDescription: `GradelyAI ${planName}`,
+      // This is crucial: we pass the user ID so your backend knows who paid!
+      metaData: {
+        userId: user.id
       },
-      callback: function(response) {
-        if (response.status === 'success') {
-          sessionStorage.setItem('gradelyPaid', JSON.stringify({
-            paid: true,
-            reference: response.reference,
-            timestamp: Date.now()
-          }))
-          onSuccess(response)
+      onComplete: (response) => {
+        // response.status will be 'SUCCESSFUL' if the transaction went through
+        if (response.status === 'SUCCESSFUL') {
+          resolve(response);
+        } else {
+          reject(response);
         }
       },
-      onClose: function() {
-        onClose && onClose()
+      onClose: () => {
+        reject("Payment closed by user");
       }
-    })
-    handler.openIframe()
-  } catch (err) {
-    console.error('Paystack error:', err)
-    onClose && onClose()
-  }
-}
-
-export function isPaid() {
-  const saved = sessionStorage.getItem('gradelyPaid')
-  if (!saved) return false
-  try {
-    const data = JSON.parse(saved)
-    return data.paid === true
-  } catch {
-    return false
-  }
-}
-
-export function markAsPaid(reference) {
-  sessionStorage.setItem('gradelyPaid', JSON.stringify({
-    paid: true,
-    reference,
-    timestamp: Date.now()
-  }))
-}
-
-export function clearPayment() {
-  sessionStorage.removeItem('gradelyPaid')
-}
+    });
+  });
+};

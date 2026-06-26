@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { fetchProjects, deleteProject, fetchProject } from '../lib/auth'
 import logoPrimary from '../assets/primary-logo.png'
+import { initMonnifyPayment } from '../lib/payment';
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -21,7 +22,17 @@ export default function Dashboard() {
     setLoading(false)
   }
 
-
+const handlePurchase = async (amount, planName) => {
+  try {
+    await initMonnifyPayment(user, amount, planName);
+    alert("Payment successful! Credits will be added shortly.");
+    // Reload user data to show new credit balance
+    window.location.reload(); 
+  } catch (err) {
+    console.error("Payment failed:", err);
+    alert("Payment failed or was cancelled.");
+  }
+};
   
   useEffect(() => {
     if (!user) {
@@ -181,16 +192,21 @@ export default function Dashboard() {
           {projects.length > 0 && (
 <div className="dash-stats-grid">
               {[
-                { label: 'Total Projects', value: projects.length, color: 'var(--accent)' },
+               { label: 'Total Projects', value: projects.length, color: 'var(--accent)' },
                 { label: 'Completed', value: projects.filter(p => p.status === 'complete').length, color: 'var(--success)' },
                 { label: 'Readiness', value: projects.length > 0 ? Math.round(projects.reduce((acc, p) => acc + (p.defense_readiness || 0), 0) / projects.length) + '%' : '—', color: 'var(--text)' },
-                { 
-                  label: 'Humanization Credits', 
-                  value: user?.humanization_credits?.toLocaleString() || 0, 
-                  color: 'var(--success)', 
-                  isAction: true,
-                  onClick: () => navigate('/plans') 
-                },
+              { 
+  label: 'Humanization Credits', 
+  value: user?.humanization_credits?.toLocaleString() || 0, 
+  color: 'var(--success)', 
+  isAction: true,
+  // NEW: Updated to show a choice when clicked
+  onClick: () => {
+    const choice = prompt("Select Plan:\n1. Standard (10k NGN = 10k words)\n2. Premium (15k NGN = 20k words)\n\nEnter '1' or '2'");
+    if (choice === '1') handlePurchase(10000, 'Standard Plan');
+    else if (choice === '2') handlePurchase(15000, 'Premium Plan');
+  }
+},
               ].map((s, i) => (
                 <div key={i} onClick={s.onClick} style={{
                   background: 'var(--bg-card)',
@@ -202,7 +218,7 @@ export default function Dashboard() {
                 }}>
                   <p style={{ fontFamily: 'Melodrama, serif', fontSize: 32, fontWeight: 700, color: s.color, marginBottom: 4 }}>{s.value}</p>
                   <p style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
-                    {s.label} {s.isAction && ' ↗'}
+                    {s.label} {s.isAction && ' (Buy 10k)'}
                   </p>
                 </div>
               ))}
