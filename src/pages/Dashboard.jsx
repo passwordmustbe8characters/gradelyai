@@ -21,6 +21,8 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+
+  
   useEffect(() => {
     if (!user) {
       navigate('/auth')
@@ -177,21 +179,31 @@ export default function Dashboard() {
 
           {/* Stats row */}
           {projects.length > 0 && (
-            <div className="dash-stats-grid">
+<div className="dash-stats-grid">
               {[
                 { label: 'Total Projects', value: projects.length, color: 'var(--accent)' },
                 { label: 'Completed', value: projects.filter(p => p.status === 'complete').length, color: 'var(--success)' },
-                { label: 'In Progress', value: projects.filter(p => p.status === 'in_progress').length, color: '#E8A020' },
-                { label: 'Avg Readiness', value: projects.length > 0 ? Math.round(projects.reduce((acc, p) => acc + (p.defense_readiness || 0), 0) / projects.length) + '%' : '—', color: 'var(--text)' },
+                { label: 'Readiness', value: projects.length > 0 ? Math.round(projects.reduce((acc, p) => acc + (p.defense_readiness || 0), 0) / projects.length) + '%' : '—', color: 'var(--text)' },
+                { 
+                  label: 'Humanization Credits', 
+                  value: user?.humanization_credits?.toLocaleString() || 0, 
+                  color: 'var(--success)', 
+                  isAction: true,
+                  onClick: () => navigate('/plans') 
+                },
               ].map((s, i) => (
-                <div key={i} style={{
+                <div key={i} onClick={s.onClick} style={{
                   background: 'var(--bg-card)',
                   borderRadius: 16,
                   padding: '20px 24px',
                   boxShadow: 'var(--shadow)',
+                  cursor: s.isAction ? 'pointer' : 'default',
+                  border: s.isAction ? '1px solid var(--accent)' : 'none'
                 }}>
                   <p style={{ fontFamily: 'Melodrama, serif', fontSize: 32, fontWeight: 700, color: s.color, marginBottom: 4 }}>{s.value}</p>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>{s.label}</p>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
+                    {s.label} {s.isAction && ' ↗'}
+                  </p>
                 </div>
               ))}
             </div>

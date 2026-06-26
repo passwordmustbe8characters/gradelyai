@@ -274,7 +274,22 @@ app.post('/api/humanize', requireAuth, async (req, res) => {
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ success: false, error: 'Text is required' });
   }
+
   try {
+    // --- NEW: THE GATEKEEPER ---
+    // Check if the user has enough credits
+    const userRes = await db.execute({
+      sql: 'SELECT humanization_credits FROM users WHERE id = ?',
+      args: [req.user.id]
+    });
+    const credits = userRes.rows[0]?.humanization_credits || 0;
+    const wordCount = text.split(/\s+/).length;
+
+    if (credits < wordCount) {
+      return res.status(403).json({ success: false, error: 'Insufficient credits. Please top up your plan.' });
+    }
+    // ---------------------------
+
     const response = await fetch('https://api.writehuman.ai/v1/humanize', {
       method: 'POST',
       headers: {
@@ -283,15 +298,58 @@ app.post('/api/humanize', requireAuth, async (req, res) => {
       },
       body: JSON.stringify({ text, intensity: 'standard' })
     });
+
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'WriteHuman API error');
-    const wordCount = text.split(/\s+/).length;
+
+    // Update usage only after a successful humanization
     await updateUserWordUsage(req.user.id, wordCount);
+    
+    // Optional: Also decrement the humanization_credits from the database here
+    await db.execute({
+      sql: 'UPDATE users SET humanization_credits = humanization_credits - ? WHERE id = ?',
+      args: [wordCount, req.user.id]
+    });
+
     res.json({ success: true, text: data.humanizedText });
   } catch (error) {
     console.error('WriteHuman error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+
+
+// Add this to your server.js
+app.post('/api/payments/webhook', async (req, res) => {
+    // These are the variables that were causing the warning
+    const { transactionReference, status, amount, customerEmail, metaData } = req.body;
+
+    if (status === 'SUCCESSFUL') {
+        const userId = metaData.userId;
+        let creditsToAdd = 0;
+
+        // Logic: Allocate fair share of credits
+        if (amount >= 15000) creditsToAdd = 20000; // Premium Plan
+        else if (amount >= 10000) creditsToAdd = 10000; // Standard Plan
+
+        // 1. Update the User's Wallet
+        await db.execute({
+            sql: 'UPDATE users SET humanization_credits = humanization_credits + ? WHERE id = ?',
+            args: [creditsToAdd, userId]
+        });
+
+        // 2. Log the payment (Using the variables that were "unused")
+        // This clears your ESLint errors because you are now using them!
+        await db.execute({
+            sql: 'INSERT INTO payments (reference, email, user_id, amount, status) VALUES (?, ?, ?, ?, ?)',
+            args: [transactionReference, customerEmail, userId, amount, 'success']
+        });
+
+        console.log(`Successfully credited user ${userId} with ${creditsToAdd} tokens.`);
+    }
+    
+    res.status(200).send('Webhook Received');
 });
 
 // ─── RAG ──────────────────────────────────────────────────────────────────────
@@ -844,9 +902,9 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
-    const result = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded, is_admin FROM users WHERE id = ?', args: [req.user.id] })
+    const result = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded, is_admin, humanization_credits FROM users WHERE id = ?', args: [req.user.id] })
     if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' })
-    res.json({ user: { ...result.rows[0], onboarded: result.rows[0].onboarded === 1 } })
+ res.json({ user: { ...result.rows[0], onboarded: result.rows[0].onboarded === 1 } })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
