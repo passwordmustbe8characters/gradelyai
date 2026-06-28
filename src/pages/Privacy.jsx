@@ -119,6 +119,7 @@ export default function Privacy() {
               <li>Generate your project chapters and related content (defense questions, flashcards, analysis).</li>
               <li>Personalize your experience — the project is written in your voice based on your answers.</li>
               <li>Process payments and manage your account.</li>
+              <li>Process KYC (Know Your Customer) verification and fraud prevention; as required by the agreement with our payment partner, Monnify.</li>
               <li>Improve our AI models and platform performance.</li>
               <li>Send you important updates about your project, account, and new features.</li>
               <li>Respond to your support requests and feedback.</li>

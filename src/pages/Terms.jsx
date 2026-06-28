@@ -108,8 +108,11 @@ export default function Terms() {
           </Section>
 
           <Section title="2. Description of Service">
-            <p>GradelyAI is an AI-powered platform designed to help Nigerian university students build and prepare their final year projects. The Service provides:</p>
+            <p>GradelyAI provides AI-powered tools designed to assist Nigerian university students with project research, drafting, and defense preparation. While we strive for accuracy, please note the following:</p>
             <ul style={{ paddingLeft: 24, lineHeight: 1.8, color: 'var(--text-muted)' }}>
+              <li><strong>AI Output Disclaimer:</strong> Our AI generates content based on patterns and data; it may occasionally produce inaccuracies, "hallucinations," or non-existent citations. You are strictly responsible for verifying all facts, citations, and data generated.</li>
+    <li><strong>Tool, Not Replacement:</strong> GradelyAI is a productivity tool, not a replacement for your own research or university requirements.</li>
+    <li><strong>Core Features:</strong> Includes chapter generation, voice adaptation, defense prep, flashcards, and document export.</li>
               <li>Chapter-by-chapter project generation (5 chapters)</li>
               <li>Personal Voice Mode that adapts to your writing style</li>
               <li>Defense preparation with 20+ panel questions and model answers</li>
@@ -120,23 +123,24 @@ export default function Terms() {
           </Section>
 
           <Section title="3. User Accounts">
-            <p>To access certain features of the Service, you must create an account. You agree to:</p>
+            <p>To access the Service, you must create an account. You agree to:</p>
             <ul style={{ paddingLeft: 24, lineHeight: 1.8, color: 'var(--text-muted)' }}>
-              <li>Provide accurate, complete, and current information during registration.</li>
-              <li>Maintain the security of your account credentials and not share them with others.</li>
-              <li>Notify us immediately of any unauthorized use of your account.</li>
-              <li>Be solely responsible for all activities that occur under your account.</li>
+              <li>Provide accurate and current information.</li>
+    <li><strong>Account Security:</strong> You are responsible for all activity on your account. Sharing passwords, selling access, or using a single account for multiple students is strictly prohibited and grounds for immediate termination.</li>
+    <li><strong>Suspicious Activity:</strong> We reserve the right to suspend or terminate accounts that exhibit automated scraping, suspicious bulk traffic, or misuse of our API credits.</li>
+    <li>Notify us immediately of any unauthorized access.</li>
             </ul>
           </Section>
 
           <Section title="4. Payment and Pricing">
-            <p>GradelyAI operates on a monthly payment model - which you can cancel anytime -  for full project generation. The current pricing is:</p>
+            <p>Payments are processed securely via our third-party payment partner, Monnify. By making a payment, you agree to the following:</p>
             <ul style={{ paddingLeft: 24, lineHeight: 1.8, color: 'var(--text-muted)' }}>
-              <li><strong>Free Tier:</strong> ₦0 — Chapter 1 generation, topic suggestions, and project structure.</li>
-              <li><strong>Pro:</strong> ₦7,000 — All 5 chapters, defense prep, flashcards, Word export, and full humanization.</li>
-              <li><strong>Premium:</strong> ₦10,000 — All Pro features with 20,000 words/month and priority support.</li>
-            </ul>
-            <p style={{ marginTop: 12 }}>All payments are processed securely through Moniepoint. Prices are in Nigerian Naira (₦) and are subject to change with prior notice.</p>
+             <li><strong>Currency & Terms:</strong> All transactions are in Nigerian Naira (₦).</li>
+    <li><strong>Third-Party Processing:</strong> Your payment data is handled by Monnify in accordance with their privacy policies. We do not store your full card details on our servers.</li>
+    <li><strong>Chargebacks & Fraud:</strong> In the event of a chargeback or disputed transaction, you agree to cooperate with our fraud investigation procedures. Fraudulent disputes or attempts to bypass payment are grounds for account termination and potential legal action.</li>
+    <li><strong>Pricing:</strong> Our current tiers are Free (₦0), Pro (₦10,000), and Premium (₦15,000). Prices may change with notice.</li>
+              </ul>
+            <p style={{ marginTop: 12 }}>All payments are processed securely through Monnify. Prices are in Nigerian Naira (₦) and are subject to change with prior notice.</p>
           </Section>
 
           <Section title="5. Refund Policy">
