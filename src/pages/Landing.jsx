@@ -404,7 +404,7 @@ export default function Landing() {
           </button>
         </div>
         <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-          Chapter 1 free · Full project from ₦10,000 · No subscription required
+          Chapter 1 free · Full project from ₦10,000
         </p>
 
        {/* Hero card — Socratic Chat mockup (Responsive) */}

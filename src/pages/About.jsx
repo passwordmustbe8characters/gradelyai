@@ -155,7 +155,7 @@ export default function About() {
               </div>
               <div style={{ background: 'var(--bg-card)', padding: '16px 20px', borderRadius: 12, border: '1px solid var(--border)' }}>
                 <h4 style={{ fontWeight: 600, marginBottom: 4, color: 'var(--text)' }}>💰 Affordable for Students</h4>
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>We know student budgets are tight. That's why we offer a free tier and keep our Pro plan starting at ₦7,000 — less than the cost of printing and binding your project.</p>
+                <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0 }}>We know student budgets are tight. That's why we offer a free tier and keep our Pro plans starting at ₦10,000 and ₦15,000  — less than the cost of printing and binding your project.</p>
               </div>
             </div>
           </Section>
