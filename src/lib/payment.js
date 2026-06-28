@@ -42,3 +42,14 @@ export const initMonnifyPayment = (user, amount, planName) => {
     });
   });
 };
+
+// 2. Add the exports your Results.jsx and Paywall.jsx are looking for
+export const initiatePayment = (user, amount, planName) => {
+    return initMonnifyPayment(user, amount, planName);
+};
+
+export const isPaid = (user) => {
+    // Basic logic: return true if status is 'active'
+    // Ensure 'user' object has this property
+    return user?.subscription_status === 'active';
+};
