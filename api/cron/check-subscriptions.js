@@ -1,21 +1,11 @@
 // api/cron/check-subscriptions.js
 export default async function handler(req, res) {
-  // 1. Verify the secret to prevent unauthorized access
-  const authHeader = req.headers.get('authorization');
-  const cronSecret = globalThis?.process?.env?.CRON_SECRET;
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-
-  try {
-    // 2. Logic: Run your Turso query and email logic here
-    console.log("Checking subscriptions...");
-    
-    // Example: await checkAndEmailExpiringUsers();
-
-    return res.status(200).json({ success: true, message: "Subscription check executed" });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Internal Server Error" });
-  }
+  // Hardcode the check for a second just to see if the function actually runs
+  console.log("Function started successfully");
+  
+  return res.status(200).json({ 
+    success: true, 
+    message: "Function executed successfully",
+    envCheck: typeof globalThis !== "undefined" && globalThis.process?.env?.CRON_SECRET ? "Secret found" : "Secret missing"
+  });
 }
