@@ -164,18 +164,13 @@ export default function Auth() {
         <div style={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', filter: 'blur(60px)', background: 'radial-gradient(circle, rgba(232,160,32,0.08) 0%, transparent 70%)', bottom: -100, left: -50 }} />
       </div>
 
-      {/* Logo */}
-      <div style={{ position: 'relative', zIndex: 1, marginBottom: 40, textAlign: 'center' }}>
-        <div onClick={() => navigate('/')} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 8 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: 'white' }}>G</div>
-          <span style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)' }}>GradelyAI</span>
-        </div>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
-          {location.state?.message || (mode === 'login' ? 'Sign in to your account' : 'Create your free account')}
+<p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
+          <span onClick={() => navigate('/')} style={{ color: 'var(--accent)', cursor: 'pointer' }}>
+            ← Back to home
+          </span>
         </p>
-      </div>
 
-      {/* Card */}
+          {/* Card */}
       <div className="container" style={{ maxWidth: 440 }}>
         <div className="card">
           {/* Mode tabs */}
@@ -384,12 +379,6 @@ export default function Auth() {
             </p>
           )}
         </div>
-
-        <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
-          <span onClick={() => navigate('/')} style={{ color: 'var(--accent)', cursor: 'pointer' }}>
-            ← Back to home
-          </span>
-        </p>
       </div>
     </div>
   )

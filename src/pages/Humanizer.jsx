@@ -46,6 +46,8 @@ export default function Humanizer() {
     updateStats(val)
   }
 
+
+  
   // File upload handler
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]
@@ -99,11 +101,11 @@ export default function Humanizer() {
 
       alert('Please upload a .txt, .docx, or .pdf file.')
       setLoading(false)
-    } catch (error) {
-      console.error('File parsing error:', error)
-      alert('Failed to read the file. Please try again.')
-      setLoading(false)
-    }
+    }  catch (error) {
+  console.error('Detailed File Parsing Error:', error); // Log the full object
+  alert(`Failed to read the file: ${error.message || 'Unknown error'}`); // Show the actual error message
+  setLoading(false);
+}
   }
 
   const handlePay = () => {
