@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { socraticChat, generateProjectStructure } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
-import logoSubmark from '../assets/submark.png'; // Import your Submark icon or image
+import logoSubmark from '../assets/submark-logo.png'; // Import your Submark icon or image
 
 
 // ─── WINDOW SIZE HOOK ─────────────────────────────────────────────────────────
