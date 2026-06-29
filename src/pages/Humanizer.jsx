@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import mammoth from 'mammoth'
 import * as PDFJS from 'pdfjs-dist'
+import logoPrimary from '../assets/primary-logo.png';
 
 PDFJS.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
@@ -142,10 +143,9 @@ export default function Humanizer() {
           justifyContent: 'space-between',
           width: '100%',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 0 : 10, cursor: 'pointer' }} onClick={() => navigate('/')}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'white' }}>G</div>
-            {!isMobile && <span style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>GradelyAI</span>}
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', zIndex: 60 }} onClick={() => navigate('/')}>
+          <img src={logoPrimary} alt="GradelyAI" style={{ height: '28px', width: 'auto' }} />
+        </div>
           
           {/* Back Button: Black Circle on Mobile, Text on Desktop */}
           {isMobile ? (

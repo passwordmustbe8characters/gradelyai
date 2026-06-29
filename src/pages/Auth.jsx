@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { register, login } from '../lib/auth'
 import { useAuth } from '../lib/AuthContext'
-import logoStacked from '../assets/secondary-logo.png';
+import logoPrimary from '../assets/primary-logo-b.png';
 
 function EyeIcon({ open }) {
   return open ? (
@@ -152,23 +152,23 @@ export default function Auth() {
 
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
   <img 
-    src={logoStacked} 
+    src={logoPrimary} 
     alt="GradelyAI" 
     style={{ height: '60px', width: 'auto', margin: '0 auto' }} 
   />
 </div>
-
+<p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
+          <span onClick={() => navigate('/')} style={{ color: 'var(--accent)', cursor: 'pointer' }}>
+            ← Back to home
+          </span>
+        </p>
       {/* Background glows */}
       <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
         <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', filter: 'blur(80px)', background: 'radial-gradient(circle, rgba(0,126,167,0.12) 0%, transparent 70%)', top: -200, right: -100 }} />
         <div style={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', filter: 'blur(60px)', background: 'radial-gradient(circle, rgba(232,160,32,0.08) 0%, transparent 70%)', bottom: -100, left: -50 }} />
       </div>
 
-<p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
-          <span onClick={() => navigate('/')} style={{ color: 'var(--accent)', cursor: 'pointer' }}>
-            ← Back to home
-          </span>
-        </p>
+
 
           {/* Card */}
       <div className="container" style={{ maxWidth: 440 }}>

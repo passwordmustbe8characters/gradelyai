@@ -22,6 +22,8 @@ dotenv.config()
 
 console.log('GROQ_API_KEY loaded:', process.env.GROQ_API_KEY ? 'YES (length: ' + process.env.GROQ_API_KEY.length + ')' : 'NO - KEY MISSING!');
 
+
+
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 
@@ -30,11 +32,7 @@ app.use(express.json());
 app.set('trust proxy', 1)
 
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://gradelyai-chi.vercel.app',
-    /\.vercel\.app$/
-  ],
+ origin: 'https://getgradely.xyz',
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
