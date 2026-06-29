@@ -153,7 +153,6 @@ const handlePurchase = async (amount, planName) => {
           <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
             <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <img src={logoPrimary} alt="GradelyAI" style={{ width: 32, height: 32 }} />
-              <span style={{ fontFamily: 'Melodrama, serif', fontSize: 20, color: 'var(--text)' }}>GradelyAI</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button className="btn-ghost" onClick={handleLogout} style={{ fontSize: 13, transition: 'all 0.2s' }}

@@ -597,45 +597,23 @@ const showFullLogo = sidebarOpen && !isMobile;
   }
 
   // ─── QUICK REPLY HANDLER ────────────────────────────────────────────────────
-  const handleQuickReply = (e, type, msgIndex) => {
-    e.stopPropagation(); // Prevents the click from hitting the parent bubble/input
+ const onLooksGoodClick = (e, index) => {
+  e.preventDefault();
+  e.stopPropagation();
+  handleLooksGood(index);
+};
 
-    if (type === 'yes') {
-      handleLooksGood(e, msgIndex)
-      // Find the assistant message index if not provided
-      let index = msgIndex
-      if (index === null) {
-        for (let i = messages.length - 1; i >= 0; i--) {
-          if (messages[i].role === 'assistant') {
-            index = i
-            break
-          }
-        }
-      }
-      if (index !== null && messages[index] && messages[index].role === 'assistant') {
-        handleLooksGood(index)
-      } else {
-        alert('No draft message to confirm.')
-      }
-    } else if (type === 'edit') {
-      let index = msgIndex
-      if (index === null) {
-        for (let i = messages.length - 1; i >= 0; i--) {
-          if (messages[i].role === 'assistant') {
-            index = i
-            break
-          }
-        }
-      }
-      if (index !== null && messages[index] && messages[index].role === 'assistant') {
-        startEditing(index, messages[index].content)
-      } else {
-        alert('No draft message to edit.')
-      }
-    } else if (type === 'regenerate') {
-      handleRegenerate()
-    }
-  }
+const onEditClick = (e, index) => {
+  e.preventDefault();
+  e.stopPropagation();
+  startEditing(index, messages[index].content);
+};
+
+const onRegenerateClick = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  handleRegenerate();
+};
 
   // ─── SEARCH ──────────────────────────────────────────────────────────────────
   const handleSearch = (query) => {
@@ -997,22 +975,36 @@ if (clean.includes('[HINTS]')) {
                       {msg.role === 'assistant' ? (
                         <>
                           {formatMessage(msg.content)}
-                          {showQuickReplies && (
-                            <div className="sb-quick-replies">
-                              <button className="sb-quick-reply-btn success" onClick={(e) => handleQuickReply(e, 'yes', idx)}>
-                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7L5.5 10.5L12 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                Looks good
-                              </button>
-                              <button className="sb-quick-reply-btn" onClick={(e) => handleQuickReply(e, 'edit', idx)}>
-                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                Edit
-                              </button>
-                              <button className="sb-quick-reply-btn" onClick={(e) => handleQuickReply(e, 'regenerate')}>
-                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 3C9.8 1.8 8.1 1 6.2 1C2.8 1 0 3.8 0 7.2C0 10.6 2.8 13.4 6.2 13.4C9 13.4 11.4 11.5 12.1 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M13 1V4H10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                Regenerate
-                              </button>
-                            </div>
-                          )}
+                         {showQuickReplies && (
+  <div className="sb-quick-replies">
+    <button 
+      type="button" 
+      className="sb-quick-reply-btn success" 
+      onClick={(e) => onLooksGoodClick(e, idx)}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7L5.5 10.5L12 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      Looks good
+    </button>
+
+    <button 
+      type="button" 
+      className="sb-quick-reply-btn" 
+      onClick={(e) => onEditClick(e, idx)}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      Edit
+    </button>
+
+    <button 
+      type="button" 
+      className="sb-quick-reply-btn" 
+      onClick={(e) => onRegenerateClick(e)}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 3C9.8 1.8 8.1 1 6.2 1C2.8 1 0 3.8 0 7.2C0 10.6 2.8 13.4 6.2 13.4C9 13.4 11.4 11.5 12.1 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M13 1V4H10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      Regenerate
+    </button>
+  </div>
+)}
                           {isDraft && (
                             <button className="sb-edit-pencil" onClick={() => startEditing(idx, msg.content)} title="Edit this section">
                               <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
