@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { socraticChat, generateProjectStructure } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
+import logoSubmark from '../assets/submark.png'; // Import your Submark icon or image
+
 
 // ─── WINDOW SIZE HOOK ─────────────────────────────────────────────────────────
 function useWindowSize() {
@@ -54,6 +56,8 @@ const ProgressList = ({ chapters, completedSections, sectionIndexMap, onSectionC
   </>
 )
 
+
+
 // ─── STYLES (unchanged – keep your existing CSS) ────────────────────────────
 const styles = `
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -81,8 +85,6 @@ const styles = `
   .sb-sidebar-header .sb-logo { display:flex; align-items:center; gap:8px; cursor:pointer; font-family:'Melodrama',serif; font-size:18px; color:var(--text); text-decoration:none; white-space:nowrap; overflow:hidden; }
   .sb-sidebar-header .sb-logo .sb-logo-icon { width:32px; height:32px; border-radius:8px; background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; color:white; flex-shrink:0; }
   .sb-sidebar-header .sb-logo .sb-logo-text { transition:opacity 0.2s; }
-  .sb-sidebar.collapsed .sb-logo-text { opacity:0; width:0; margin:0; overflow:hidden; }
-  .sb-sidebar.collapsed .sb-sidebar-header { justify-content:space-evenly; }
   .sb-sidebar-header .sb-header-actions { display:flex; gap:6px; flex-shrink:0; }
   .sb-sidebar-header .sb-header-actions button { width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.5); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.2s; }
   .sb-sidebar-header .sb-header-actions button:hover { background:var(--bg-card); border-color:var(--text-dim); color:var(--text); }
@@ -279,6 +281,9 @@ export default function SocraticBuilder() {
   const textareaRef = useRef(null)
 
   const isMobile = width < 768
+
+  // Calculate if we should show the full logo
+const showFullLogo = sidebarOpen && !isMobile;
 
   let savedResult = null
   let savedProjectInfo = null
@@ -866,9 +871,15 @@ export default function SocraticBuilder() {
           <div className={`sb-sidebar mobile${mobileSidebarOpen ? ' open' : ''}`}>
             <div className="sb-sidebar-header">
               <div className="sb-logo" onClick={() => navigate('/')}>
-                <div className="sb-logo-icon">G</div>
-                <span className="sb-logo-text">Gradely</span>
-              </div>
+  {showFullLogo ? (
+    <>
+      <div className="sb-logo-icon">G</div>
+      <span className="sb-logo-text">Gradely</span>
+    </>
+  ) : (
+    <div className="sb-logo-icon"> <img src={logoSubmark} alt="GradelyAI" /> </div> // REPLACE 'S' with your Submark Icon or Image
+  )}
+</div>
               <div className="sb-header-actions">
                 <button onClick={() => { setSearchOpen(true); setMobileSidebarOpen(false) }} title="Search messages">
                   <SearchIcon />
@@ -890,10 +901,10 @@ export default function SocraticBuilder() {
         ) : (
           <div className={`sb-sidebar${sidebarOpen ? '' : ' collapsed'}`}>
             <div className="sb-sidebar-header">
-              <div className="sb-logo" onClick={() => navigate('/')}>
-                <div className="sb-logo-icon">G</div>
-                <span className="sb-logo-text">Gradely</span>
-              </div>
+              <div className="sb-logo" onClick={() => { navigate('/'); setMobileSidebarOpen(false); }}>
+  {/* Mobile always uses the Submark */}
+  <div className="sb-logo-icon"> <img src={logoSubmark} alt="GradelyAI" /> </div> // REPLACE 'S' with your Submark Icon or Image
+</div>
               <div className="sb-header-actions">
                 <button onClick={() => setSearchOpen(true)} title="Search messages"><SearchIcon /></button>
                 <button

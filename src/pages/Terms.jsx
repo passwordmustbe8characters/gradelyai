@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import logoPrimary from '../assets/primary-logo.png';
+import logoPrimaryW from '../assets/primary-logo-w.png';
 
 // Custom hook for window size
 function useWindowSize() {
@@ -214,7 +215,7 @@ export default function Terms() {
           <Section title="15. Contact Information">
             <p>If you have any questions or concerns about these Terms, please contact us at:</p>
             <ul style={{ paddingLeft: 24, lineHeight: 1.8, color: 'var(--text-muted)' }}>
-              <li><strong>Email:</strong> <a href="mailto:support@gradelyai.com" style={{ color: 'var(--accent)' }}>support@gradelyai.com</a></li>
+              <li><strong>Email:</strong> <a href="mailto:support@getgradely.xyz" style={{ color: 'var(--accent)' }}>support@getgradely.xyz</a></li>
             </ul>
           </Section>
         </div>
@@ -228,8 +229,9 @@ export default function Terms() {
       <footer style={{ background: '#001E2E', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '32px 40px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: '#007EA7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
-            <span style={{ fontFamily: 'Melodrama, serif', fontSize: 16, color: 'white' }}>GradelyAI</span>
+           <div style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => navigate('/')}>
+            <img src={logoPrimaryW} alt="GradelyAI" style={{ height: '28px', width: 'auto' }} />
+          </div>
           </div>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>© 2026 GradelyAI · Built for Nigerian students</p>
           <div style={{ display: 'flex', gap: 24 }}>
