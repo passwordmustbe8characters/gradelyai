@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import mammoth from 'mammoth'
 import * as PDFJS from 'pdfjs-dist'
 
-PDFJS.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS.version}/pdf.worker.min.js`
+PDFJS.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 // Custom hook to get window size
 function useWindowSize() {
