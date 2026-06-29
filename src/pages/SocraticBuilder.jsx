@@ -685,8 +685,15 @@ const showFullLogo = sidebarOpen && !isMobile;
   }
 
   // ─── SAVE & EXIT ────────────────────────────────────────────────────────────
+  useEffect(() => {
+  // If user is logged in but the DB says they aren't onboarded, send them to onboarding
+  if (user && user.onboarded === false) {
+    navigate('/onboarding'); 
+  }
+}, [user, navigate]);
+
   const handleSaveAndExit = async () => {
-    if (user && user.onboarded === false) {
+    if (user && user.onboarded) {
       try {
         await markOnboarded()
       } catch (err) { console.error('Failed to mark onboarded:', err) }
@@ -793,6 +800,20 @@ const showFullLogo = sidebarOpen && !isMobile;
       .replace(/\|/g, '')
       .trim()
     clean = clean.replace(/Does it capture your main point correctly\?[\s\S]*?(?=\n\n|$)/i, '').trim()
+
+if (clean.includes('[HINTS]')) {
+    const [mainText, hintBlock] = clean.split('[HINTS]');
+    const hints = hintBlock.split('[/HINTS]')[0].split('|').map(h => h.trim());
+    return (
+      <>
+        <p style={{ whiteSpace: 'pre-wrap' }}>{mainText}</p>
+        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+          {hints.map((h, i) => <button key={i} className="sb-quick-reply-btn">{h}</button>)}
+        </div>
+      </>
+    );
+  }
+
 
     if (!clean.includes('[SECTION_DRAFT]')) {
       return <span style={{ whiteSpace: 'pre-wrap' }}>{clean}</span>
@@ -982,11 +1003,11 @@ const showFullLogo = sidebarOpen && !isMobile;
                                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7L5.5 10.5L12 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 Looks good
                               </button>
-                              <button className="sb-quick-reply-btn" onClick={() => handleQuickReply('edit', idx)}>
+                              <button className="sb-quick-reply-btn" onClick={(e) => handleQuickReply(e, 'edit', idx)}>
                                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 Edit
                               </button>
-                              <button className="sb-quick-reply-btn" onClick={() => handleQuickReply('regenerate')}>
+                              <button className="sb-quick-reply-btn" onClick={(e) => handleQuickReply(e, 'regenerate')}>
                                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 3C9.8 1.8 8.1 1 6.2 1C2.8 1 0 3.8 0 7.2C0 10.6 2.8 13.4 6.2 13.4C9 13.4 11.4 11.5 12.1 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M13 1V4H10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                 Regenerate
                               </button>
