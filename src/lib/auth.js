@@ -111,6 +111,23 @@ export async function updateProject(id, projectData) {
   return data.project
 }
 
+export async function createProject(projectData) {
+  const BASE_URL = import.meta.env.VITE_API_URL || ''
+const res = await fetch(`${BASE_URL}/api/projects`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    ...authHeaders()
+  },
+  body: JSON.stringify(projectData)
+})
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || 'Failed to create project')
+  }
+  return res.json()
+}
+
 export async function fetchProjects() {
   const res = await fetch(`${BASE_URL}/api/projects`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders() }

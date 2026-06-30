@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { socraticChat, generateProjectStructure } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
+import { createProject } from '../lib/auth'
 import logoSubmark from '../assets/submark-logo.png'; // Import your Submark icon or image
 
 
@@ -321,6 +322,7 @@ export default function SocraticBuilder() {
   const chatEndRef = useRef(null)
   const messagesContainerRef = useRef(null)
   const textareaRef = useRef(null)
+  const projectCreatedRef = useRef(false)
 
   const isMobile = width < 768
 
@@ -437,10 +439,54 @@ const showFullLogo = sidebarOpen && !isMobile;
   const isChapter1Complete = messages.some(m => m.type === 'complete')
   const isAskingForTopic = () => lastMsg?.role === 'assistant' && lastMsg?.type === 'question'
 
+
+// ─── AUTO-SAVE PROJECT ON FIRST MESSAGE ──────────────────────────────────────
+  const autoSaveProject = async () => {
+    if (projectCreatedRef.current) return
+    projectCreatedRef.current = true
+
+    try {
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+
+      // Returning user — project already exists in DB, skip
+      if (currentResult.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')) return
+
+      const projInfo = savedProjectInfo || currentResult?.projectInfo || {}
+
+      const data = await createProject({
+        title: projInfo.topic || 'Untitled Project',
+        university: projInfo.university || '',
+        department: projInfo.department || '',
+        project_type: projInfo.project_type || projInfo.projectType || '',
+        status: 'in_progress',
+        project_info: projInfo,
+        structure: currentResult?.structure || {},
+        chapters: currentResult?.chapters || [],
+      })
+
+      const newId = data?.project?.id
+      if (newId) {
+        sessionStorage.setItem('gradelyProjectDbId', String(newId))
+        const updated = { ...currentResult, dbProjectId: newId, projectInfo: projInfo }
+        sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+      }
+    } catch (err) {
+      console.error('[Gradely] Auto-save failed silently:', err)
+      projectCreatedRef.current = false
+    }
+  }
+
+
   // ─── SEND MESSAGE (AI) ─────────────────────────────────────────────────────
-  const handleSend = async (overrideInput = null) => {
+const handleSend = async (overrideInput = null) => {
     const text = overrideInput || input
     if (!text.trim()) return
+
+    // ── Auto-save on first real user message (fire and forget — doesn't block chat)
+    const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
+    if (isFirstMessage) {
+      autoSaveProject()
+    }
 
     const userMsg = { role: 'user', content: text }
     setMessages(prev => [...prev, userMsg])
