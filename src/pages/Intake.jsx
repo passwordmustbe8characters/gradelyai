@@ -265,6 +265,9 @@ export default function Intake() {
 
       sessionStorage.removeItem('gradelyPaid')
       sessionStorage.removeItem('gradelyProjectDbId')
+      sessionStorage.removeItem('gradelyChatHistory')
+      sessionStorage.removeItem('gradelyCompletedSections')
+      sessionStorage.removeItem('gradelySectionIndex')
 
       // 5. Mark user as onboarded
       if (!isNewProject && user && user.onboarded === false) {
