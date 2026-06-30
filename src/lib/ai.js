@@ -606,7 +606,7 @@ export async function humanizeText(text) {
 }
 
 // ─── SOCRATIC CHAT ────────────────────────────────────────────────────────────
-export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage, existingReferences = []) {
+export async function socraticChat(projectInfo, chapterStructure, chatHistory, userMessage, existingReferences = [], options = {}) {
   const BASE_URL = import.meta.env.VITE_API_URL || '';
   const token = localStorage.getItem('gradelyToken');
   
@@ -630,19 +630,11 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory, u
       messages,
       projectInfo,
       chapterStructure,
-      existingReferences
+      existingReferences,
+      requestType: options.requestType || 'draft',
+      currentChapterNumber: options.currentChapterNumber || null
     })
   });
-  
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Chat failed');
-  }
-  
-  const data = await response.json();
-  return data.message;
-}
-
 // ─── REWRITE SELECTION ───────────────────────────────────────────────────────
 
 export async function rewriteSelection(selectedText, instruction) {

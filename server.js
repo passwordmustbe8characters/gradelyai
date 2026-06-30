@@ -474,11 +474,57 @@ app.get('/api/gallery', async (req, res) => {
   });
 });
 
-// ─── SOCRATIC GENERATE (FIXED – no word count, no button text in response) ──
+
+// ─── GITHUB REPO CONTEXT (for Chapters 3-5) ──────────────────────────────────
+async function fetchGithubContext(githubLink) {
+  if (!githubLink) return '';
+  try {
+    const match = githubLink.match(/github\.com\/([^/]+)\/([^/?#]+)/i);
+    if (!match) return '';
+    const owner = match[1];
+    const repo = match[2].replace(/\.git$/, '');
+
+    const headers = { 'User-Agent': 'GradelyAI', Accept: 'application/vnd.github.v3+json' };
+    if (process.env.GITHUB_TOKEN) headers.Authorization = `token ${process.env.GITHUB_TOKEN}`;
+
+    let readmeText = '';
+    try {
+      const readmeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, { headers });
+      if (readmeRes.ok) {
+        const readmeData = await readmeRes.json();
+        readmeText = Buffer.from(readmeData.content, 'base64').toString('utf-8').slice(0, 2000);
+      }
+    } catch { /* ignore readme fetch errors */ }
+
+    let fileList = '';
+    try {
+      const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+      const repoData = await repoRes.json();
+      const defaultBranch = repoData.default_branch || 'main';
+      const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`, { headers });
+      if (treeRes.ok) {
+        const treeData = await treeRes.json();
+        fileList = (treeData.tree || [])
+          .filter(f => f.type === 'blob')
+          .map(f => f.path)
+          .slice(0, 60)
+          .join('\n');
+      }
+    } catch { /* ignore file list fetch errors */ }
+
+    if (!readmeText && !fileList) return '';
+
+    return `\n\nSTUDENT'S ACTUAL CODE REPOSITORY (use this to write accurate, specific content):\nRepo: ${owner}/${repo}\n\nREADME:\n${readmeText}\n\nKEY FILES:\n${fileList}\n`;
+  } catch (err) {
+    console.error('GitHub context fetch failed:', err);
+    return '';
+  }
+}
+
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   console.log('🔥 SOCRATIC GENERATE CALLED');
 
-  const { messages, projectInfo, chapterStructure } = req.body;
+  const { messages, projectInfo, chapterStructure, requestType, currentChapterNumber } = req.body;
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
 
@@ -501,7 +547,51 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
     console.error('RAG fetch error:', err);
   }
 
-  // ─── OpenAI call ───────────────────────────────────────────────────────────
+  // ─── GitHub repo context for Chapters 3, 4, 5 ──────────────────────────────
+  if ([3, 4, 5].includes(Number(currentChapterNumber)) && projectInfo?.githubLink) {
+    const repoContext = await fetchGithubContext(projectInfo.githubLink);
+    guideContext += repoContext;
+  }
+
+  // ─── STUCK MODE: give a worked example, student must rephrase ─────────────
+  if (requestType === 'stuck') {
+    const currentSection = chapterStructure?.currentSection || { title: 'this section' };
+    const stuckSystemPrompt = `You are a Nigerian university project supervisor helping a student who is stuck on a section of their final year project. Write ONE short example sentence showing how a student MIGHT answer the question for this section. Keep it generic enough that the student still has to adapt it to their own project — do not write a full paragraph, just one model sentence.${guideContext}`;
+    const stuckUserPrompt = `Project Title: "${projectInfo?.topic || ''}"
+Department: ${projectInfo?.department || ''}
+Section: ${currentSection.title}
+
+Write ONE example sentence showing how a student could start answering this section's guiding question.`;
+
+    try {
+      const completion = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: stuckSystemPrompt },
+            { role: "user", content: stuckUserPrompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 200
+        })
+      });
+      const data = await completion.json();
+      if (!completion.ok) throw new Error(data.error?.message || 'OpenAI error');
+      const exampleText = data.choices[0].message.content.trim();
+      const wrapped = `[STUCK_EXAMPLE]${exampleText}[/STUCK_EXAMPLE]`;
+      return res.json({ success: true, message: wrapped });
+    } catch (error) {
+      console.error('Stuck-mode error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  // ─── OpenAI call (normal draft mode) ───────────────────────────────────────
   const systemPrompt = `You write 2-3 supporting paragraphs for a student's topic sentence. Do NOT repeat the topic sentence. Use simple language. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize.${guideContext}`;
 
   try {
@@ -526,13 +616,8 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
     if (!completion.ok) throw new Error(data.error?.message || 'OpenAI error');
     const rawSupportingText = data.choices[0].message.content;
 
-    // ─── NO HUMANIZATION – just pass the raw text ──────────────────────────
-    // (you can add simple cleaning if needed)
-
-    // Build final response with draft wrapper
     let finalResponse = `${studentTopicSentence}\n\n${rawSupportingText}\n\n---\n**Please review this section.** Does it capture your main point correctly?`;
 
-    // Clean any leftover button text
     finalResponse = finalResponse
       .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')
       .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|/gi, '')
@@ -543,7 +628,6 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
       .replace(/Regenerate\./gi, '')
       .trim();
 
-    // Wrap the draft so frontend can extract it
     finalResponse = `[SECTION_DRAFT]${finalResponse}[/SECTION_DRAFT]`;
 
     console.log('3. Sending final response (no humanization)');
@@ -952,13 +1036,13 @@ app.post('/api/projects', requireAuth, async (req, res) => {
 })
 
 app.put('/api/projects/:id', requireAuth, async (req, res) => {
-  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness } = req.body
+  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map } = req.body
   try {
     const existing = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
     const p = existing.rows[0]
     await db.execute({
-      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
       args: [
         title || p.title,
         status || p.status,
@@ -970,6 +1054,9 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
         project_info ? JSON.stringify(project_info) : p.project_info,
         flashcard_scores ? JSON.stringify(flashcard_scores) : p.flashcard_scores,
         defense_readiness || p.defense_readiness,
+        chat_history ? JSON.stringify(chat_history) : p.chat_history,
+        completed_sections ? JSON.stringify(completed_sections) : p.completed_sections,
+        section_index_map ? JSON.stringify(section_index_map) : p.section_index_map,
         req.params.id, req.user.id
       ]
     })
@@ -979,6 +1066,7 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
+
 
 app.get('/api/projects', requireAuth, async (req, res) => {
   try {

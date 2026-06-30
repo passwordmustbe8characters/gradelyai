@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { socraticChat, generateProjectStructure } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
-import { createProject } from '../lib/auth'
+import { createProject, updateProject, fetchProject } from '../lib/auth'
 import logoSubmark from '../assets/submark-logo.png'; // Import your Submark icon or image
 
 
@@ -280,6 +280,12 @@ function parseAIResponse(raw) {
     return { type: 'complete', content: clean.replace('[CHAPTER_1_COMPLETE]', '').trim() }
   }
 
+
+ if (clean.includes('[STUCK_EXAMPLE]')) {
+    const exampleText = clean.split('[STUCK_EXAMPLE]')[1].split('[/STUCK_EXAMPLE]')[0].trim()
+    return { type: 'stuck_example', content: '', exampleText }
+  }
+
   if (clean.includes('[SECTION_DRAFT]')) {
     const [intro, rest] = clean.split('[SECTION_DRAFT]')
     const [draftContent, outro = ''] = rest.split('[/SECTION_DRAFT]')
@@ -366,6 +372,30 @@ const showFullLogo = sidebarOpen && !isMobile;
     } catch { return {} }
   })
 
+  // ─── HYDRATE FROM DB IF LOCAL SESSION IS EMPTY ─────────────────────────────
+  useEffect(() => {
+    const hydrateFromDb = async () => {
+      if (messages.length > 0) return
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+      const dbProjectId = currentResult.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      if (!dbProjectId) return
+      try {
+        const proj = await fetchProject(dbProjectId)
+        if (proj?.chat_history) {
+          const restoredMessages = JSON.parse(proj.chat_history)
+          if (restoredMessages.length > 0) {
+            setMessages(restoredMessages)
+            setCompletedSections(proj.completed_sections ? JSON.parse(proj.completed_sections) : [])
+            setSectionIndexMap(proj.section_index_map ? JSON.parse(proj.section_index_map) : {})
+          }
+        }
+      } catch (err) {
+        console.error('[Gradely] Failed to hydrate chat from DB:', err)
+      }
+    }
+    hydrateFromDb()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── DERIVED: current section ──────────────────────────────────────────────
   const allSections = projectData.chapters.flatMap(ch =>
     (ch.subsections || []).map(sec => {
@@ -378,10 +408,27 @@ const showFullLogo = sidebarOpen && !isMobile;
   const currentSection = allSections.find(s => !completedSet.has(s.number)) || null
 
   // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
- useEffect(() => {
+ const syncTimerRef = useRef(null)
+
+  useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages))
     sessionStorage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(completedSections))
     sessionStorage.setItem(STORAGE_KEY_SECTION_INDEX, JSON.stringify(sectionIndexMap))
+
+    const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+    const dbProjectId = currentResult.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+    if (!dbProjectId || messages.length === 0) return
+
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(() => {
+      updateProject(dbProjectId, {
+        chat_history: messages,
+        completed_sections: completedSections,
+        section_index_map: sectionIndexMap,
+      }).catch(err => console.error('[Gradely] Chat sync failed:', err))
+    }, 2000)
+
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current) }
   }, [messages, completedSections, sectionIndexMap])
 
   useEffect(() => {
@@ -438,6 +485,7 @@ const showFullLogo = sidebarOpen && !isMobile;
   const lastMessageWasDraft = lastMsg?.role === 'assistant' && lastMsg?.type === 'draft'
   const isChapter1Complete = messages.some(m => m.type === 'complete')
   const isAskingForTopic = () => lastMsg?.role === 'assistant' && lastMsg?.type === 'question'
+  const showStuckButton = isAskingForTopic()
 
 
 // ─── AUTO-SAVE PROJECT ON FIRST MESSAGE ──────────────────────────────────────
@@ -611,6 +659,32 @@ const handleSend = async (overrideInput = null) => {
     })
     handleSend(lastWithTopic.topicSentence)
   }
+
+  // ─── I'M STUCK ──────────────────────────────────────────────────────────────
+  const handleStuck = async () => {
+    if (isTyping) return
+    setIsTyping(true)
+    try {
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
+      const chapterNum = currentSection?.number ? parseInt(currentSection.number.split('.')[0], 10) : 1
+      const aiReply = await socraticChat(
+        savedProjectInfo || currentResult?.projectInfo || {},
+        chapter1Structure,
+        messages,
+        '',
+        currentResult?.references || [],
+        { requestType: 'stuck', currentChapterNumber: chapterNum }
+      )
+      const parsed = parseAIResponse(aiReply)
+      setMessages(prev => [...prev, { role: 'assistant', type: parsed.type, exampleText: parsed.exampleText, content: parsed.content || '' }])
+    } catch (err) {
+      console.error('Stuck-mode error:', err)
+      setMessages(prev => [...prev, { role: 'assistant', type: 'info', content: "Couldn't load an example right now. Try your best attempt and I'll help refine it." }])
+    }
+    setIsTyping(false)
+  }
+
   // ─── QUICK REPLY HANDLER ────────────────────────────────────────────────────
  const onLooksGoodClick = (e, index) => {
   e.preventDefault();
@@ -776,13 +850,23 @@ const onRegenerateClick = (e) => {
         </>
       )
     }
+    if (msg.type === 'stuck_example') {
+      return (
+        <>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8, fontStyle: 'italic' }}>
+            Here's one way a student might start answering this — don't copy it, rewrite it in your own words below:
+          </p>
+          <div className="sb-draft-block" style={{ fontStyle: 'italic' }}>{msg.exampleText}</div>
+        </>
+      )
+    }
     if (msg.type === 'hints') {
       return (
         <>
           <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
           <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
             {(msg.hints || []).map((h, i) => (
-              <button key={i} className="sb-quick-reply-btn">{h}</button>
+              <button key={i} className="sb-quick-reply-btn" onClick={() => { setInput(h); textareaRef.current?.focus() }}>{h}</button>
             ))}
           </div>
         </>
@@ -1019,8 +1103,14 @@ const onRegenerateClick = (e) => {
             </div>
           </div>
 
-          <div className="sb-input-area">
+         <div className="sb-input-area">
             <div className="sb-input-inner">
+              {showStuckButton && (
+                <button className="sb-quick-reply-btn" onClick={handleStuck} disabled={isTyping}
+                  style={{ marginBottom: 8, alignSelf: 'flex-start' }}>
+                  🤔 I'm stuck — give me an example
+                </button>
+              )}
               <div className="sb-input-row">
                 <div className="sb-textarea-wrap">
                   <textarea
