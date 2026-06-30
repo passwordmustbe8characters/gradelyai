@@ -260,6 +260,49 @@ const MenuIcon = () => (
   </svg>
 )
 
+// ─── PARSE AI RESPONSE (single source of truth) ───────────────────────────────
+function parseAIResponse(raw) {
+  let clean = raw
+    .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|?/gi, '')
+    .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|?/gi, '')
+    .replace(/\*\*Regenerate\*\*/gi, '')
+    .replace(/Yes,\s*looks\s*good\./gi, '')
+    .replace(/No,\s*let\s*me\s*edit\./gi, '')
+    .replace(/Regenerate\./gi, '')
+    .replace(/\*\*Please review this section\.\*\*/gi, '')
+    .replace(/\|/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/Does it capture your main point correctly\?[\s\S]*?(?=\n\n|$)/i, '')
+    .trim()
+
+  if (clean.includes('[CHAPTER_1_COMPLETE]')) {
+    return { type: 'complete', content: clean.replace('[CHAPTER_1_COMPLETE]', '').trim() }
+  }
+
+  if (clean.includes('[SECTION_DRAFT]')) {
+    const [intro, rest] = clean.split('[SECTION_DRAFT]')
+    const [draftContent, outro = ''] = rest.split('[/SECTION_DRAFT]')
+    const trimmedIntro = intro.trim()
+    const trimmedDraft = draftContent.trim()
+    const sectionMatch = trimmedIntro.match(/(\d+\.\d+)/) || trimmedDraft.match(/(\d+\.\d+)/)
+    return {
+      type: 'draft',
+      content: trimmedIntro,
+      draftContent: trimmedDraft,
+      outro: outro.trim(),
+      sectionNumber: sectionMatch?.[1] || null,
+    }
+  }
+
+  if (clean.includes('[HINTS]')) {
+    const [mainText, hintBlock] = clean.split('[HINTS]')
+    const hints = hintBlock.split('[/HINTS]')[0].split('|').map(h => h.trim()).filter(Boolean)
+    return { type: 'hints', content: mainText.trim(), hints }
+  }
+
+  return { type: 'question', content: clean }
+}
+
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 export default function SocraticBuilder() {
   const navigate = useNavigate()
@@ -275,7 +318,6 @@ export default function SocraticBuilder() {
   const [searchResults, setSearchResults] = useState([])
   const [editingMessageIndex, setEditingMessageIndex] = useState(null)
   const [editContent, setEditContent] = useState('')
-  const [lastTopicSentence, setLastTopicSentence] = useState('')
   const chatEndRef = useRef(null)
   const messagesContainerRef = useRef(null)
   const textareaRef = useRef(null)
@@ -334,17 +376,11 @@ const showFullLogo = sidebarOpen && !isMobile;
   const currentSection = allSections.find(s => !completedSet.has(s.number)) || null
 
   // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
-  useEffect(() => {
+ useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages))
-  }, [messages])
-
-  useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(completedSections))
-  }, [completedSections])
-
-  useEffect(() => {
     sessionStorage.setItem(STORAGE_KEY_SECTION_INDEX, JSON.stringify(sectionIndexMap))
-  }, [sectionIndexMap])
+  }, [messages, completedSections, sectionIndexMap])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -396,30 +432,18 @@ const showFullLogo = sidebarOpen && !isMobile;
   }, []) // eslint-disable-line
 
   // ─── HELPERS ──────────────────────────────────────────────────────────────────
-  const lastMessageWasDraft = messages.length > 0 &&
-    messages[messages.length - 1].role === 'assistant' &&
-    messages[messages.length - 1].content.includes('[SECTION_DRAFT]')
-  const isChapter1Complete = messages.some(m => m.content.includes('[CHAPTER_1_COMPLETE]'))
-
-  const isAskingForTopic = () => {
-    const last = messages[messages.length - 1]
-    if (!last || last.role !== 'assistant') return false
-    const phrases = ['tell me in your own words', 'what is the main point', 'why is this topic important', 'what is the specific problem', 'what are your main objectives', 'what is the aim', 'significance', 'scope']
-    return phrases.some(p => last.content.toLowerCase().includes(p))
-  }
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
+  const lastMessageWasDraft = lastMsg?.role === 'assistant' && lastMsg?.type === 'draft'
+  const isChapter1Complete = messages.some(m => m.type === 'complete')
+  const isAskingForTopic = () => lastMsg?.role === 'assistant' && lastMsg?.type === 'question'
 
   // ─── SEND MESSAGE (AI) ─────────────────────────────────────────────────────
   const handleSend = async (overrideInput = null) => {
     const text = overrideInput || input
     if (!text.trim()) return
 
-    // Store the topic sentence for regeneration
-    if (!text.toLowerCase().includes('regenerate') && !text.toLowerCase().includes('looks good')) {
-      setLastTopicSentence(text)
-    }
-
-    // Add user message
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    const userMsg = { role: 'user', content: text }
+    setMessages(prev => [...prev, userMsg])
     setInput('')
     setIsTyping(true)
 
@@ -434,71 +458,34 @@ const showFullLogo = sidebarOpen && !isMobile;
         currentResult?.references || []
       )
 
-      let newMessages = [...messages, { role: 'user', content: text }]
+      const parsed = parseAIResponse(aiReply)
+      const assistantMsg = { role: 'assistant', topicSentence: text, ...parsed }
+      const newMessages = [...messages, userMsg]
 
-      // If the AI response contains a draft, extract the section number and store
-      if (aiReply.includes('[SECTION_DRAFT]')) {
-        // The backend wraps the entire response in [SECTION_DRAFT]...[/SECTION_DRAFT]
-        // We'll extract the section number from the "review" part.
-        const reviewText = aiReply.split('[/SECTION_DRAFT]')[0] || ''
-        const sectionMatch = reviewText.match(/(\d+\.\d+)/)
-        if (sectionMatch) {
-          const secNum = sectionMatch[1]
-          // Only add if not already completed
-          if (!completedSections.includes(secNum)) {
-            setCompletedSections(prev => [...prev, secNum])
-            const newIndex = newMessages.length // index where assistant will be added
-            setSectionIndexMap(prev => ({ ...prev, [secNum]: newIndex }))
-          }
+      if (parsed.type === 'draft' && parsed.sectionNumber) {
+        const secNum = parsed.sectionNumber
+        if (!completedSections.includes(secNum)) {
+          setCompletedSections(prev => [...prev, secNum])
+          setSectionIndexMap(prev => ({ ...prev, [secNum]: newMessages.length }))
         }
-
-        // Extract draft content and store in project data
-        const parts = aiReply.split('[SECTION_DRAFT]')
-        if (parts.length > 1) {
-          const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim()
-          if (draftContent) {
-            const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-            if (cur.chapters && cur.chapters[0]) {
-              const updatedChapters = cur.chapters.map((chapter, index) =>
-                index === 0
-                  ? { ...chapter, content: (chapter.content || '') + '\n\n' + draftContent }
-                  : chapter
-              )
-              const updatedResult = { ...cur, chapters: updatedChapters }
-              sessionStorage.setItem('gradelyResult', JSON.stringify(updatedResult))
-            }
+        if (parsed.draftContent) {
+          const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+          if (cur.chapters?.[0]) {
+            cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + parsed.draftContent
+            sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
           }
         }
       }
 
-      // Clean the AI reply from any leftover button text (already done in backend)
-      let cleanedReply = aiReply
-        .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')
-        .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|/gi, '')
-        .replace(/\*\*Regenerate\*\*/gi, '')
-        .replace(/\|/g, '')
-        .replace(/Yes,\s*looks\s*good\./gi, '')
-        .replace(/No,\s*let\s*me\s*edit\./gi, '')
-        .replace(/Regenerate\./gi, '')
-        .trim()
-
-      // Store the topic sentence in the assistant message for later regeneration
-      const assistantMsg = { 
-        role: 'assistant', 
-        content: cleanedReply,
-        topicSentence: text // store the user's topic sentence that generated this
-      }
       newMessages.push(assistantMsg)
       setMessages(newMessages)
     } catch (err) {
       console.error('AI generation error:', err)
-      const lastMsg = messages[messages.length - 1]
-      if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content.includes('trouble generating')) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: "I had trouble generating that. Could you rephrase and try again?"
-        }])
-      }
+      setMessages(prev => {
+        const last = prev[prev.length - 1]
+        if (last?.role === 'assistant' && last?.content?.includes('trouble generating')) return prev
+        return [...prev, { role: 'assistant', type: 'info', content: "I had trouble generating that. Could you rephrase and try again?" }]
+      })
     }
     setIsTyping(false)
   }
@@ -527,75 +514,57 @@ const showFullLogo = sidebarOpen && !isMobile;
 
   // ─── LOOKS GOOD ─────────────────────────────────────────────────────────────
   const handleLooksGood = (messageIndex) => {
-    // 1. Get the message content
     const msg = messages[messageIndex]
-    if (!msg || msg.role !== 'assistant') {
-      console.warn('Invalid message for "Looks good"')
-      return
-    }
+    if (!msg || msg.role !== 'assistant' || msg.type !== 'draft') return
 
-    // 2. Extract section number from the message content
-    const sectionMatch = msg.content.match(/(\d+\.\d+)/)
-    if (!sectionMatch) {
-      console.warn('No section number found in message')
-      return
-    }
-    const sectionNumber = sectionMatch[1]
+    const sectionNumber = msg.sectionNumber
+    if (!sectionNumber) return
 
-    // 3. Check if this section is already completed
     if (completedSections.includes(sectionNumber)) {
-      // Already complete – ignore or notify
       alert(`Section ${sectionNumber} is already completed.`)
       return
     }
 
-    // 4. Check if this is the current active section
-    if (currentSection && currentSection.number === sectionNumber) {
-      // Proceed to mark complete and advance
-      // Mark as complete
-      setCompletedSections(prev => [...prev, sectionNumber])
+    if (currentSection?.number !== sectionNumber) {
+      alert(`Please use the "Looks good" button on the current section draft.`)
+      return
+    }
 
-      // Add user confirmation message
-      setMessages(prev => [...prev, { role: 'user', content: '✅ Looks good, moving on.' }])
+    setCompletedSections(prev => [...prev, sectionNumber])
+    const nextSection = allSections.find(
+      s => !completedSections.includes(s.number) && s.number !== sectionNumber
+    )
 
-      // Find the next section (excluding the one just completed)
-      const nextSection = allSections.find(s => !completedSections.includes(s.number) && s.number !== sectionNumber)
-      if (nextSection) {
-        const prompt = getSectionPrompt(nextSection.title)
-        const message = `Let's move to the next section: **${nextSection.title}**. ${prompt}`
-        setMessages(prev => [...prev, { role: 'assistant', content: message }])
-      } else {
-        // All sections complete
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: '🎉 Congratulations! You have completed all sections of Chapter 1. You can now review your project or proceed to the next steps.'
-        }])
-        setMessages(prev => [...prev, { role: 'assistant', content: '[CHAPTER_1_COMPLETE]' }])
-      }
+    if (nextSection) {
+      const prompt = getSectionPrompt(nextSection.title)
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: '✅ Looks good, moving on.' },
+        { role: 'assistant', type: 'question', content: `Let's move to the next section: **${nextSection.title}**. ${prompt}` }
+      ])
     } else {
-      // The message is not for the current section – ignore or warn
-      alert(`This message is for section ${sectionNumber}, but you are currently on section ${currentSection?.number || 'none'}. Please use the "Looks good" button on the latest draft.`)
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: '✅ Looks good, moving on.' },
+        { role: 'assistant', type: 'complete', content: '🎉 Congratulations! You have completed all sections of Chapter 1. You can now review your project or proceed to the next steps.' }
+      ])
     }
   }
 
-  // ─── REGENERATE ─────────────────────────────────────────────────────────────
+// ─── REGENERATE ─────────────────────────────────────────────────────────────
   const handleRegenerate = () => {
-    if (!lastTopicSentence) {
+    const lastWithTopic = [...messages].reverse().find(m => m.role === 'assistant' && m.topicSentence)
+    if (!lastWithTopic?.topicSentence) {
       alert('No topic sentence to regenerate.')
       return
     }
-    // Remove the last assistant message (the draft we want to replace)
     setMessages(prev => {
-      const newMessages = [...prev]
-      if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
-        newMessages.pop()
-      }
-      return newMessages
+      const copy = [...prev]
+      if (copy[copy.length - 1]?.role === 'assistant') copy.pop()
+      return copy
     })
-    // Send the last topic sentence again
-    handleSend(lastTopicSentence)
+    handleSend(lastWithTopic.topicSentence)
   }
-
   // ─── QUICK REPLY HANDLER ────────────────────────────────────────────────────
  const onLooksGoodClick = (e, index) => {
   e.preventDefault();
@@ -704,9 +673,11 @@ const onRegenerateClick = (e) => {
     const msg = messages[index]
     if (!msg || msg.role !== 'assistant') return
 
-    let topicSentence = msg.topicSentence || lastTopicSentence
+    const topicSentence = msg.topicSentence
+      || messages.slice(0, index).reverse().find(m => m.topicSentence)?.topicSentence
+
     if (!topicSentence) {
-      alert('No topic sentence found for this message. Please type your main point again.')
+      alert('No topic sentence found. Please type your main point again.')
       return
     }
 
@@ -722,38 +693,19 @@ const onRegenerateClick = (e) => {
         currentResult?.references || []
       )
 
-      let cleanedReply = aiReply
-        .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')
-        .replace(/\*\*No,\s*let\s*me\s*edit\*\*\s*\|/gi, '')
-        .replace(/\*\*Regenerate\*\*/gi, '')
-        .replace(/\|/g, '')
-        .replace(/Yes,\s*looks\s*good\./gi, '')
-        .replace(/No,\s*let\s*me\s*edit\./gi, '')
-        .replace(/Regenerate\./gi, '')
-        .trim()
+      const parsed = parseAIResponse(aiReply)
 
       setMessages(prev => {
-        const newMessages = [...prev]
-        if (newMessages[index]) {
-          newMessages[index].content = cleanedReply
-          newMessages[index].topicSentence = topicSentence
-        }
-        return newMessages
+        const copy = [...prev]
+        if (copy[index]) copy[index] = { ...copy[index], ...parsed, topicSentence }
+        return copy
       })
 
-      if (cleanedReply.includes('[SECTION_DRAFT]')) {
-        const parts = cleanedReply.split('[SECTION_DRAFT]')
-        if (parts.length > 1) {
-          const draftContent = parts[1].split('[/SECTION_DRAFT]')[0].trim()
-          if (draftContent) {
-            let cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-            if (cur.chapters && cur.chapters[0]) {
-              const existingContent = cur.chapters[0].content || ''
-              const updatedContent = existingContent + '\n\n' + draftContent
-              cur.chapters[0].content = updatedContent
-              sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
-            }
-          }
+      if (parsed.type === 'draft' && parsed.draftContent) {
+        const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+        if (cur.chapters?.[0]) {
+          cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + parsed.draftContent
+          sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
         }
       }
 
@@ -767,47 +719,31 @@ const onRegenerateClick = (e) => {
     }
   }
 
-  // ─── FORMAT MESSAGE ─────────────────────────────────────────────────────────
-  const formatMessage = (content) => {
-    let clean = content
-      .replace(/✅\s*Yes,\s*looks\s*good!/gi, '')
-      .replace(/✅\s*No,\s*let\s*me\s*edit!/gi, '')
-      .replace(/🔄\s*Regenerate/gi, '')
-      .replace(/\*\*Please review this section\.\*\*/gi, '')
-      .replace(/\*\*/g, '')
-      .replace(/\|/g, '')
-      .trim()
-    clean = clean.replace(/Does it capture your main point correctly\?[\s\S]*?(?=\n\n|$)/i, '').trim()
-
-if (clean.includes('[HINTS]')) {
-    const [mainText, hintBlock] = clean.split('[HINTS]');
-    const hints = hintBlock.split('[/HINTS]')[0].split('|').map(h => h.trim());
-    return (
-      <>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{mainText}</p>
-        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-          {hints.map((h, i) => <button key={i} className="sb-quick-reply-btn">{h}</button>)}
-        </div>
-      </>
-    );
-  }
-
-
-    if (!clean.includes('[SECTION_DRAFT]')) {
-      return <span style={{ whiteSpace: 'pre-wrap' }}>{clean}</span>
+ // ─── FORMAT MESSAGE ─────────────────────────────────────────────────────────
+  const formatMessage = (msg) => {
+    if (msg.type === 'draft') {
+      return (
+        <>
+          {msg.content && <p style={{ marginBottom: 12, whiteSpace: 'pre-wrap' }}>{msg.content}</p>}
+          <div className="sb-draft-block">{msg.draftContent}</div>
+          {msg.outro && <p className="sb-draft-outro">{msg.outro}</p>}
+        </>
+      )
     }
-    const parts = clean.split('[SECTION_DRAFT]')
-    const intro = parts[0]
-    const [draft, outro = ''] = parts[1].split('[/SECTION_DRAFT]')
-    return (
-      <>
-        {intro && <p style={{ marginBottom: 12, whiteSpace: 'pre-wrap' }}>{intro}</p>}
-        <div className="sb-draft-block">{draft}</div>
-        {outro && <p className="sb-draft-outro">{outro}</p>}
-      </>
-    )
+    if (msg.type === 'hints') {
+      return (
+        <>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+          <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
+            {(msg.hints || []).map((h, i) => (
+              <button key={i} className="sb-quick-reply-btn">{h}</button>
+            ))}
+          </div>
+        </>
+      )
+    }
+    return <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
   }
-
   // ─── PLACEHOLDER ────────────────────────────────────────────────────────────
   const getPlaceholder = () => {
     if (isChapter1Complete) return "Type 'pay' to unlock chapters 2-5..."
@@ -963,18 +899,16 @@ if (clean.includes('[HINTS]')) {
 
               {messages.map((msg, idx) => {
                 const isEditing = editingMessageIndex === idx
-                const isDraft = msg.content.includes('[SECTION_DRAFT]')
-                const isConfirmation = msg.content.toLowerCase().includes('capture your main point') ||
-                                       msg.content.toLowerCase().includes('review this section')
+                const isDraft = msg.type === 'draft'
                 const isAssistant = msg.role === 'assistant'
-                const showQuickReplies = isAssistant && (isDraft || isConfirmation)
+                const showQuickReplies = isAssistant && isDraft
 
                 return (
                   <div key={idx} className={`sb-msg-row ${msg.role}`}>
                     <div className={`sb-bubble ${msg.role}${isEditing ? ' editing' : ''}`} data-msg-index={idx}>
                       {msg.role === 'assistant' ? (
                         <>
-                          {formatMessage(msg.content)}
+                          {formatMessage(msg)}
                          {showQuickReplies && (
   <div className="sb-quick-replies">
     <button 
