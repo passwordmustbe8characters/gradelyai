@@ -74,8 +74,8 @@ const styles = `
 
   .sb-sidebar { display:flex; flex-direction:column; flex-shrink:0; background:rgba(240,237,232,0.65); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border-right:1px solid var(--border-light); transition:width 0.3s ease,padding 0.3s ease,transform 0.3s ease; overflow:hidden; position:relative; z-index:1; width:280px; }
   .sb-sidebar.collapsed { width:140px; }
-  .sb-sidebar.mobile { position:fixed; left:0; top:0; bottom:0; z-index:60; transform:translateX(-100%); transition:transform 0.3s ease; border-right:1px solid var(--border); box-shadow:4px 0 30px rgba(0,0,0,0.1); width:280px !important; }
-  .sb-sidebar.mobile.open { transform:translateX(0); }
+ .sb-sidebar.mobile { position:fixed; left:0; top:0; bottom:0; z-index:60; transform:translateX(-100%); transition:transform 0.3s ease; border-right:1px solid var(--border); box-shadow:4px 0 30px rgba(0,0,0,0.1); width:280px !important; pointer-events:none; }
+.sb-sidebar.mobile.open { transform:translateX(0); pointer-events:all; }
   .sb-sidebar.mobile .sb-sidebar-body { display:block !important; }
   .sb-sidebar.mobile .sb-sidebar-header { justify-content:space-between !important; }
 
@@ -84,7 +84,8 @@ const styles = `
 
   .sb-sidebar-header { display:flex; align-items:center; height:64px; padding:0 16px; flex-shrink:0; border-bottom:1px solid var(--border-light); background:rgba(247,245,240,0.82); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
   .sb-sidebar-header .sb-logo { display:flex; align-items:center; gap:8px; cursor:pointer; font-family:'Melodrama',serif; font-size:18px; color:var(--text); text-decoration:none; white-space:nowrap; overflow:hidden; }
-  .sb-sidebar-header .sb-logo .sb-logo-icon { width:32px; height:32px; border-radius:8px;  display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; flex-shrink:0; }
+.sb-sidebar-header .sb-logo .sb-logo-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; flex-shrink:0; overflow:hidden; }
+.sb-sidebar-header .sb-logo .sb-logo-icon img { width:100%; height:100%; object-fit:contain; display:block; }
   .sb-sidebar-header .sb-logo .sb-logo-text { transition:opacity 0.2s; }
   .sb-sidebar-header .sb-header-actions { display:flex; gap:6px; flex-shrink:0; }
   .sb-sidebar-header .sb-header-actions button { width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.5); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.2s; }
@@ -121,7 +122,7 @@ const styles = `
   .sb-header-actions .sb-menu-btn { display:none; width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.5); cursor:pointer; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.2s; flex-shrink:0; }
   .sb-header-actions .sb-menu-btn:hover { background:var(--bg-card); border-color:var(--text-dim); color:var(--text); }
 
-  .sb-messages-wrapper { flex:1; overflow-y:auto; padding:20px 24px 16px; display:flex; flex-direction:column; align-items:center; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+ .sb-messages-wrapper { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:20px 24px 16px; display:flex; flex-direction:column; align-items:center; scrollbar-width:thin; scrollbar-color:var(--border) transparent; overscroll-behavior:contain; }
   .sb-messages-wrapper::-webkit-scrollbar { width:4px; }
   .sb-messages-wrapper::-webkit-scrollbar-track { background:transparent; }
   .sb-messages-wrapper::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
@@ -218,7 +219,7 @@ const styles = `
     .sb-header-topic { font-size:13px; max-width:140px; flex-shrink:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .sb-header-type { font-size:10px; flex-shrink:0; white-space:nowrap; }
     .sb-header-actions .sb-save-exit-btn { padding:6px 14px; font-size:12px; }
-    .sb-messages-wrapper { padding:12px 12px 8px; }
+    .sb-messages-wrapper { padding:12px 12px 8px; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
     .sb-bubble { max-width:88%; padding:12px 15px; font-size:14px; }
     .sb-input-area { padding:10px 12px 14px; }
     .sb-textarea { font-size:13px; padding:12px 48px 12px 14px; min-height:50px; }
