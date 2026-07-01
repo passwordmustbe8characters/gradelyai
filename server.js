@@ -534,9 +534,56 @@ async function fetchGithubContext(githubLink) {
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   console.log('🔥 SOCRATIC GENERATE CALLED');
 
-  const { messages, projectInfo, chapterStructure, requestType, currentChapterNumber } = req.body;
+ const { messages, projectInfo, chapterStructure, requestType, currentChapterNumber } = req.body;
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
+
+  // ── Detect if student is asking Grad to generate autonomously ────────────────
+  const autonomousPatterns = [
+    /generate.*(?:on your own|yourself|for me|it yourself)/i,
+    /(?:can you|please|just)\s+(?:write|generate|create|do|make)\s+(?:it|this|the|a)/i,
+    /write.*(?:for me|yourself|on your own)/i,
+    /do it (for me|yourself)/i,
+    /(?:definition of terms|definitions)\s*(?:on your own|yourself|for me)?/i,
+    /you can generate/i,
+    /generate the/i,
+  ]
+  const isAutonomousRequest = autonomousPatterns.some(p => p.test(studentTopicSentence))
+
+  if (isAutonomousRequest && requestType !== 'stuck') {
+    const currentSection = chapterStructure?.currentSection || { title: 'this section' }
+    const autoSystemPrompt = `You are Grad, an AI writing assistant helping a Nigerian university student complete their final year project. The student has asked you to generate content for a section autonomously. Write complete, academically appropriate content for the section based on the project details provided. Use simple, clear language. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize.${guideContext}`
+    const autoUserPrompt = `Project Title: "${projectInfo?.topic || ''}"
+Department: ${projectInfo?.department || ''}
+University: ${projectInfo?.university || ''}
+Section to write: ${currentSection.title}
+
+Write complete content for this section. Be specific to the project topic.`
+
+    try {
+      const completion = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: autoSystemPrompt },
+            { role: 'user', content: autoUserPrompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        })
+      })
+      const data = await completion.json()
+      if (!completion.ok) throw new Error(data.error?.message || 'OpenAI error')
+      const autoContent = data.choices[0].message.content.trim()
+      let finalResponse = `[SECTION_DRAFT]${autoContent}[/SECTION_DRAFT]`
+      return res.json({ success: true, message: finalResponse })
+    } catch (error) {
+      console.error('Autonomous generation error:', error)
+      return res.status(500).json({ success: false, error: error.message })
+    }
+  }
 
   // ─── RAG: retrieve guide content ──────────────────────────────────────────
   let guideContext = '';

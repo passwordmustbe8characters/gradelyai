@@ -606,24 +606,46 @@ const handleSend = async (overrideInput = null) => {
   }
 
   // ─── GENERATE SECTION PROMPT ──────────────────────────────────────────────
-  const getSectionPrompt = (sectionTitle) => {
+const getSectionPrompt = (sectionTitle) => {
     const title = sectionTitle.toLowerCase()
     if (title.includes('background')) {
-      return 'Why is this topic important right now?'
-    } else if (title.includes('problem') || title.includes('statement')) {
-      return 'What is the specific problem you are addressing?'
+      return 'In your own words — why is this topic important right now? What is happening in the world or in your field that makes this worth studying?'
+    } else if (title.includes('statement') || title.includes('problem')) {
+      return 'What is the specific problem you are solving? What gap or challenge does your project address?'
     } else if (title.includes('aim') || title.includes('objective')) {
-      return 'What is the main aim and what are the specific objectives of your project?'
-    } else if (title.includes('significance')) {
+      return 'What is the main aim of your project? What specific objectives will help you achieve that aim?'
+    } else if (title.includes('significance') || title.includes('justification')) {
       return 'Why does this project matter? Who benefits from it and how?'
-    } else if (title.includes('scope') || title.includes('limitation')) {
-      return 'What is the scope of your study? What are the limitations?'
-    } else if (title.includes('definition')) {
-      return 'What are the key terms that need to be defined in your project?'
-    } else if (title.includes('organization')) {
-      return 'How will you organize the remaining chapters of your project?'
+    } else if (title.includes('scope')) {
+      return 'What does your project cover and what does it not cover? What are the boundaries of your study?'
+    } else if (title.includes('limitation')) {
+      return 'What are the limitations of your study? What factors were outside your control?'
+    } else if (title.includes('definition') || title.includes('terms')) {
+      return 'List the key technical terms in your project that need to be defined. Or type "generate on your own" and Grad will write the definitions for you based on your project topic.'
+    } else if (title.includes('organisation') || title.includes('organization') || title.includes('structure of')) {
+      return 'Briefly describe how your project report is organised chapter by chapter. Or type "generate on your own" and Grad will write this for you.'
+    } else if (title.includes('introduction')) {
+      return 'Give a brief introduction to this chapter. What will the reader find here?'
+    } else if (title.includes('literature') || title.includes('review')) {
+      return 'What existing works or research are most relevant to your topic? What have other researchers found?'
+    } else if (title.includes('methodology') || title.includes('method')) {
+      return 'How did you carry out your project? What approach, tools, or techniques did you use?'
+    } else if (title.includes('design') || title.includes('system')) {
+      return 'How is your system or solution designed? Describe the architecture or key components.'
+    } else if (title.includes('implementation')) {
+      return 'How did you build or implement your project? What technologies, languages, or tools did you use?'
+    } else if (title.includes('result') || title.includes('finding') || title.includes('testing')) {
+      return 'What were the results of your work? What did your tests or experiments show?'
+    } else if (title.includes('conclusion')) {
+      return 'What conclusions can you draw from your project? Did you achieve your objectives?'
+    } else if (title.includes('recommendation')) {
+      return 'What do you recommend for future work or improvement based on your findings?'
+    } else if (title.includes('summary')) {
+      return 'Summarise what was accomplished in this chapter or the overall project.'
+    } else if (title.includes('reference') || title.includes('bibliography')) {
+      return 'Type "generate on your own" and Grad will compile your references from the project context.'
     } else {
-      return 'Tell me in your own words: what is the main point of this section?'
+      return `Tell me in your own words what you want to say in the **${sectionTitle}** section. Or type "generate on your own" and Grad will write it for you.`
     }
   }
 
@@ -771,12 +793,23 @@ const onRegenerateClick = (e) => {
     navigate('/onboarding'); 
   }
 }, [user, navigate]);
+const handleSaveAndExit = async () => {
+    try {
+      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+      const dbId = currentResult.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      if (dbId) {
+        await updateProject(dbId, {
+          chapters: currentResult.chapters || [],
+          chat_history: messages,
+          completed_sections: completedSections,
+          section_index_map: sectionIndexMap,
+          status: isChapter1Complete ? 'complete' : 'in_progress',
+        })
+      }
+    } catch (err) { console.error('Save & Exit sync failed:', err) }
 
-  const handleSaveAndExit = async () => {
-    if (user && user.onboarded) {
-      try {
-        await markOnboarded()
-      } catch (err) { console.error('Failed to mark onboarded:', err) }
+    if (user && !user.onboarded) {
+      try { await markOnboarded() } catch (err) { console.error('markOnboarded failed:', err) }
     }
     navigate('/dashboard')
   }

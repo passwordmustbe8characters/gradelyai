@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { fetchProjects, deleteProject, fetchProject } from '../lib/auth'
-import logoPrimary from '../assets/primary-logo.png'
+import logoSubmark from '../assets/submark-logo.png'
 import { initMonnifyPayment } from '../lib/payment';
 
 export default function Dashboard() {
@@ -152,7 +152,7 @@ const handlePurchase = async (amount, planName) => {
         }}>
           <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
             <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <img src={logoPrimary} alt="GradelyAI" style={{ width: 32, height: 32 }} />
+              <img src={logoSubmark} alt="GradelyAI" style={{ width: 32, height: 32 }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button className="btn-ghost" onClick={handleLogout} style={{ fontSize: 13, transition: 'all 0.2s' }}
@@ -314,16 +314,28 @@ const handlePurchase = async (amount, planName) => {
                         } catch (err) { alert('Failed to load project: ' + err.message) }
                       }} style={{ fontSize: 12, padding: '6px 14px' }}>View</button>
                       
-                      {project.status === 'complete' && (
-                        <button onClick={() => handlePublish(project.id)} className="btn-accent" style={{ fontSize: 12, padding: '6px 14px' }}>
-                          Publish
-                        </button>
-                      )}
-                      <button onClick={() => handleDelete(project.id)} disabled={deleting === project.id} style={{
+                      {(() => {
+                        const isComplete = project.status === 'complete'
+                        return (
+                          <button
+                            onClick={() => isComplete ? handlePublish(project.id) : null}
+                            className="btn-accent"
+                            disabled={!isComplete}
+                            title={isComplete ? 'Publish to gallery' : 'Complete all chapters to publish'}
+                            style={{
+                              fontSize: 12, padding: '6px 14px',
+                              opacity: isComplete ? 1 : 0.4,
+                              cursor: isComplete ? 'pointer' : 'not-allowed',
+                            }}>
+                            Publish
+                          </button>
+                        )
+                      })()}
+                    <button onClick={() => handleDelete(project.id)} disabled={deleting === project.id} style={{
                         padding: '6px 12px',
                         borderRadius: 100,
-                        border: '1.5px solid rgba(217,79,79,0.2)',
-                        background: 'transparent',
+                        border: '1.5px solid var(--danger)',
+                        background: 'rgba(217,79,79,0.08)',
                         color: 'var(--danger)',
                         cursor: 'pointer',
                         fontSize: 12,

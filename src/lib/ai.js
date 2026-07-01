@@ -534,39 +534,42 @@ export async function generateReferences(projectInfo, realPapers = []) {
     return { references: [], noSourcesFound: true }
   }
 
-  const system = `You are a Nigerian academic librarian expert in citation formatting.
-Format the provided real academic papers into proper APA 7th edition references.
-Return only valid JSON. No markdown. No preamble.`
+  // ── Deterministic APA 7th formatter — NO AI, zero hallucination risk ─────────
+  const references = realPapers.map((p, i) => {
+    // Authors: Last, F. M., & Last, F. M.
+    const authors = p.authors?.length
+      ? p.authors.map(a => {
+          const parts = (a.name || '').trim().split(' ')
+          if (parts.length === 1) return parts[0]
+          const last = parts[parts.length - 1]
+          const initials = parts.slice(0, -1).map(n => n[0] + '.').join(' ')
+          return `${last}, ${initials}`
+        }).join(', ').replace(/, ([^,]+)$/, ', & $1')
+      : 'Unknown Author'
 
-  const papersText = realPapers.map((p, i) => {
-    const authors = p.authors?.map(a => a.name).join(', ') || 'Unknown Author'
     const year = p.year || 'n.d.'
     const title = p.title || 'Untitled'
     const journal = p.journal?.name || p.publicationVenue?.name || ''
-    const url = p.openAccessPdf?.url || ''
-    return `${i + 1}. Authors: ${authors} | Year: ${year} | Title: ${title} | Journal: ${journal} | URL: ${url}`
-  }).join('\n')
+    const doi = p.externalIds?.DOI || ''
+    const url = p.openAccessPdf?.url || (doi ? `https://doi.org/${doi}` : '')
 
-  const user = `Format these real academic papers into proper APA 7th edition references.
+    // Build APA string from only what we actually have — no invented fields
+    let citation = `${authors} (${year}). ${title}.`
+    if (journal) citation += ` *${journal}*.`
+    if (doi) citation += ` https://doi.org/${doi}`
+    else if (url) citation += ` ${url}`
 
-PAPERS:
-${papersText}
-
-Return ONLY this JSON:
-{
-  "references": [
-    {
-      "id": 1,
-      "citation": "Full APA 7th edition formatted reference",
-      "source": "journal|book|website|conference",
-      "url": "url if available or empty string"
+    return {
+      id: i + 1,
+      citation: citation.trim(),
+      source: journal ? 'journal' : url ? 'website' : 'other',
+      url: url || ''
     }
-  ]
-}`
+  })
 
-  const raw = await callAI(system, user, 1500)
-  return safeParseJSON(raw)
+  return { references }
 }
+
 
 /// ─── HUMANIZATION ROUTE CONNECTORS ───────────────────────────────────────────
 
