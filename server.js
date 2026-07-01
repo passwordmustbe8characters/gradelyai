@@ -1077,13 +1077,13 @@ app.post('/api/upload/photos', requireAuth, memoryUpload.array('photos', 5), asy
 })
 
 app.put('/api/projects/:id', requireAuth, async (req, res) => {
-  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map, photos, video_link } = req.body
+  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map, photos } = req.body
   try {
     const existing = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
     const p = existing.rows[0]
     await db.execute({
-      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, photos = ?, video_link = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, photos = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
       args: [
         title || p.title,
         status || p.status,
@@ -1099,7 +1099,6 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
         completed_sections ? JSON.stringify(completed_sections) : p.completed_sections,
         section_index_map ? JSON.stringify(section_index_map) : p.section_index_map,
         photos ? JSON.stringify(photos) : p.photos,
-        video_link || p.video_link,
         req.params.id, req.user.id
       ]
     })

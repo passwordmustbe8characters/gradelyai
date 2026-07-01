@@ -635,8 +635,16 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory, u
       currentChapterNumber: options.currentChapterNumber || null
     })
   });
-// ─── REWRITE SELECTION ───────────────────────────────────────────────────────
 
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || 'Socratic generate failed')
+  }
+
+  const data = await response.json()
+  return data.message || ''
+}
+// ─── REWRITE SELECTION ───────────────────────────────────────────────────────
 export async function rewriteSelection(selectedText, instruction) {
   const system = `You are an academic writing assistant helping a Nigerian university student edit their final year project.
 The student has selected a specific passage and given you an instruction to improve it.
