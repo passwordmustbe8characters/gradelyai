@@ -544,12 +544,14 @@ const handleSend = async (overrideInput = null) => {
     try {
       const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
       const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
+       const chapterNum = currentSection?.number ? parseInt(currentSection.number.split('.')[0], 10) : 1
       const aiReply = await socraticChat(
         savedProjectInfo || currentResult?.projectInfo || {},
         chapter1Structure,
-        messages,
+        [...messages, userMsg],
         text,
-        currentResult?.references || []
+        currentResult?.references || [],
+        { requestType: 'draft', currentChapterNumber: chapterNum }
       )
 
       const parsed = parseAIResponse(aiReply)
@@ -661,7 +663,7 @@ const handleSend = async (overrideInput = null) => {
   }
 
   // ─── I'M STUCK ──────────────────────────────────────────────────────────────
-  const handleStuck = async () => {
+ const handleStuck = async () => {
     if (isTyping) return
     setIsTyping(true)
     try {
@@ -684,7 +686,6 @@ const handleSend = async (overrideInput = null) => {
     }
     setIsTyping(false)
   }
-
   // ─── QUICK REPLY HANDLER ────────────────────────────────────────────────────
  const onLooksGoodClick = (e, index) => {
   e.preventDefault();
