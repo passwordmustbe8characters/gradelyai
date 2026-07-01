@@ -5,6 +5,7 @@ import { useAuth } from '../lib/AuthContext'
 import { NIGERIAN_UNIVERSITIES, DEPARTMENTS_BY_FACULTY } from '../lib/universities'
 import SearchableSelect from '../components/SearchableSelect'
 import logoPrimary from '../assets/primary-logo.png';
+import { getToken } from '../lib/auth'
 
 export default function Intake() {
   const navigate = useNavigate()
@@ -19,6 +20,9 @@ export default function Intake() {
   const [skipToTopic, setSkipToTopic] = useState(mode === 'new_project')
   const [dynamicAreas, setDynamicAreas] = useState([])
   const [areasLoading, setAreasLoading] = useState(false)
+  const [projectPhotos, setProjectPhotos] = useState([])
+const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
+const [projectVideoLink, setProjectVideoLink] = useState('')
 
   const [form, setForm] = useState({
     name: '',
@@ -199,6 +203,17 @@ export default function Intake() {
   }
 
   // ─── UPDATED: Generate Project with Loading Screen ───────────────────────
+  const handlePhotoSelect = (e) => {
+  const files = Array.from(e.target.files).slice(0, 5)
+  setProjectPhotos(files)
+  const previews = files.map(f => URL.createObjectURL(f))
+  setPhotoPreviewUrls(previews)
+}
+
+const removePhoto = (index) => {
+  setProjectPhotos(prev => prev.filter((_, i) => i !== index))
+  setPhotoPreviewUrls(prev => prev.filter((_, i) => i !== index))
+}
   const handleContinue = async () => {
     if (!form.supervisorName.trim()) {
       setError('Please enter your supervisor\'s full name.')
@@ -261,8 +276,29 @@ export default function Intake() {
         dbProjectId: dbProject?.id || null,
         isPaidUser: false,
       }
-      sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+      // Upload hardware photos to Cloudinary if any were selected
+      let uploadedPhotoUrls = []
+      if (projectPhotos.length > 0) {
+        try {
+          const formData = new FormData()
+          projectPhotos.forEach(f => formData.append('photos', f))
+          const uploadRes = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/upload/photos`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${getToken()}` },
+            body: formData
+          })
+          const uploadData = await uploadRes.json()
+          if (uploadData.success) uploadedPhotoUrls = uploadData.urls
+        } catch (err) {
+          console.error('Photo upload failed, continuing without photos:', err)
+        }
+      }
 
+      // Merge photos + video link into result data
+      resultData.photos = uploadedPhotoUrls
+      resultData.videoLink = projectVideoLink.trim() || null
+
+      sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
       sessionStorage.removeItem('gradelyPaid')
       sessionStorage.removeItem('gradelyProjectDbId')
       sessionStorage.removeItem('gradelyChatHistory')
@@ -575,6 +611,80 @@ export default function Intake() {
             {error && !error.includes('supervisor') && (
               <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 12 }}>{error}</p>
             )}
+
+            {/* ── Hardware Project Media Upload ─────────────────────────── */}
+<div style={{
+  marginTop: 24,
+  padding: '20px',
+  background: 'rgba(0,126,167,0.06)',
+  borderRadius: 12,
+  border: '1px dashed rgba(0,126,167,0.3)'
+}}>
+  <p style={{ fontWeight: 600, marginBottom: 4, fontSize: 15 }}>
+    📷 Hardware / Physical Project?
+  </p>
+  <p style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
+    Upload up to 5 photos of your project so Grad can write accurate chapters 3–5.
+    You can also paste a video link (YouTube, Drive) for your supervisor's reference.
+  </p>
+
+  {/* Photo upload */}
+  <input
+    type="file"
+    id="hw-photos"
+    accept="image/*"
+    multiple
+    style={{ display: 'none' }}
+    onChange={handlePhotoSelect}
+  />
+  <label htmlFor="hw-photos" style={{
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    padding: '10px 18px', borderRadius: 8, cursor: 'pointer',
+    background: '#007EA7', color: '#fff', fontSize: 14, fontWeight: 500,
+    marginBottom: 16
+  }}>
+    📎 Choose Photos ({projectPhotos.length}/5)
+  </label>
+
+  {/* Photo previews — wraps on mobile */}
+  {photoPreviewUrls.length > 0 && (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16
+    }}>
+      {photoPreviewUrls.map((url, i) => (
+        <div key={i} style={{ position: 'relative' }}>
+          <img src={url} alt={`preview ${i + 1}`} style={{
+            width: 80, height: 80, objectFit: 'cover',
+            borderRadius: 8, border: '1px solid #ddd'
+          }} />
+          <button onClick={() => removePhoto(i)} style={{
+            position: 'absolute', top: -6, right: -6,
+            background: '#e53e3e', color: '#fff', border: 'none',
+            borderRadius: '50%', width: 20, height: 20,
+            cursor: 'pointer', fontSize: 11, lineHeight: '20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>✕</button>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {/* Video link */}
+  <input
+    type="url"
+    placeholder="Video link (YouTube, Google Drive) — optional"
+    value={projectVideoLink}
+    onChange={e => setProjectVideoLink(e.target.value)}
+    style={{
+      width: '100%', padding: '10px 14px', borderRadius: 8,
+      border: '1px solid #ddd', fontSize: 14,
+      boxSizing: 'border-box', outline: 'none'
+    }}
+  />
+  <p style={{ fontSize: 12, color: '#999', marginTop: 6 }}>
+    Note: Grad reads your photos to understand your build. The video link is stored for your supervisor — Grad doesn't watch videos.
+  </p>
+</div>
 
             <button className="btn-primary" onClick={handleContinue}
               disabled={!form.supervisorName.trim() || generatingProject}

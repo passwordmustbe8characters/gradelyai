@@ -26,6 +26,14 @@ console.log('GROQ_API_KEY loaded:', process.env.GROQ_API_KEY ? 'YES (length: ' +
 
 const app = express()
 const upload = multer({ dest: 'uploads/' })
+const memoryUpload = multer({ storage: multer.memoryStorage() })
+
+import { v2 as cloudinary } from 'cloudinary'
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
 
 app.use(express.json());
 
@@ -398,6 +406,8 @@ async function getRelevantGuideContent(university, department, sectionTitle) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports.getRelevantGuideContent = getRelevantGuideContent;
 }
+
+
 
 // ─── GALLERY ──────────────────────────────────────────────────────────────────
 app.post('/api/projects/:id/publish', requireAuth, async (req, res) => {
@@ -1035,14 +1045,45 @@ app.post('/api/projects', requireAuth, async (req, res) => {
   }
 })
 
+
+// ─── PHOTO UPLOAD ─────────────────────────────────────────────────────────────
+app.post('/api/upload/photos', requireAuth, memoryUpload.array('photos', 5), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' })
+    }
+
+    const uploadPromises = req.files.map(file => new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: `gradely/projects/${req.user.id}`,
+          resource_type: 'image',
+          transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto' }]
+        },
+        (error, result) => {
+          if (error) reject(error)
+          else resolve(result.secure_url)
+        }
+      )
+      stream.end(file.buffer)
+    }))
+
+    const urls = await Promise.all(uploadPromises)
+    res.json({ success: true, urls })
+  } catch (err) {
+    console.error('Photo upload error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.put('/api/projects/:id', requireAuth, async (req, res) => {
-  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map } = req.body
+  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map, photos, video_link } = req.body
   try {
     const existing = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
     const p = existing.rows[0]
     await db.execute({
-      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, photos = ?, video_link = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
       args: [
         title || p.title,
         status || p.status,
@@ -1057,6 +1098,8 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
         chat_history ? JSON.stringify(chat_history) : p.chat_history,
         completed_sections ? JSON.stringify(completed_sections) : p.completed_sections,
         section_index_map ? JSON.stringify(section_index_map) : p.section_index_map,
+        photos ? JSON.stringify(photos) : p.photos,
+        video_link || p.video_link,
         req.params.id, req.user.id
       ]
     })
