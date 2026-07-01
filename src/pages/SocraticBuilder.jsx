@@ -108,8 +108,7 @@ const styles = `
   .sb-section-text.pending { color:var(--text-muted); }
   .sb-section-check { font-size:12px; color:var(--success); }
 
-  .sb-chat-panel { flex:1; display:flex; flex-direction:column; position:relative; z-index:1; min-width:0; background:var(--bg); }
-
+ .sb-chat-panel { flex:1; display:flex; flex-direction:column; position:relative; z-index:1; min-width:0; overflow:hidden; background:var(--bg); }
   .sb-header { height:64px; padding:0 24px; border-bottom:1px solid var(--border-light); background:rgba(247,245,240,0.82); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); display:flex; justify-content:space-between; align-items:center; gap:16px; flex-shrink:0; }
   .sb-header-left { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
   .sb-header-text-wrapper { display:flex; flex-direction:column; min-width:0; flex:1; }
@@ -122,7 +121,7 @@ const styles = `
   .sb-header-actions .sb-menu-btn { display:none; width:36px; height:36px; border-radius:8px; border:1px solid var(--border); background:rgba(255,255,255,0.5); cursor:pointer; align-items:center; justify-content:center; color:var(--text-muted); transition:all 0.2s; flex-shrink:0; }
   .sb-header-actions .sb-menu-btn:hover { background:var(--bg-card); border-color:var(--text-dim); color:var(--text); }
 
- .sb-messages-wrapper { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:20px 24px 16px; display:flex; flex-direction:column; align-items:center; scrollbar-width:thin; scrollbar-color:var(--border) transparent; overscroll-behavior:contain; }
+ .sb-messages-wrapper { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; padding:20px 24px 16px; display:flex; flex-direction:column; align-items:center; scrollbar-width:thin; scrollbar-color:var(--border) transparent; overscroll-behavior:contain; }
   .sb-messages-wrapper::-webkit-scrollbar { width:4px; }
   .sb-messages-wrapper::-webkit-scrollbar-track { background:transparent; }
   .sb-messages-wrapper::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
@@ -584,6 +583,11 @@ const handleSend = async (overrideInput = null) => {
           if (cur.chapters?.[0]) {
             cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + parsed.draftContent
             sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+            const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+            if (dbId) {
+              updateProject(dbId, { chapters: cur.chapters })
+                .catch(err => console.error('[Gradely] Chapter sync failed:', err))
+            }
           }
         }
       }
@@ -837,6 +841,11 @@ const onRegenerateClick = (e) => {
         if (cur.chapters?.[0]) {
           cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + parsed.draftContent
           sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+          const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+          if (dbId) {
+            updateProject(dbId, { chapters: cur.chapters })
+              .catch(err => console.error('[Gradely] Chapter sync failed:', err))
+          }
         }
       }
 

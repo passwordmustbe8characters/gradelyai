@@ -542,8 +542,37 @@ export default function Results() {
   useEffect(() => {
     const saved = sessionStorage.getItem('gradelyResult')
     if (!saved) { navigate('/start'); return }
+
+    const parsed = JSON.parse(saved)
+    const hasContent = parsed?.chapters?.some(c => c.content && c.content.trim().length > 0)
+
+    if (!hasContent) {
+      const dbId = parsed.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      if (dbId) {
+        const BASE_URL = import.meta.env.VITE_API_URL || ''
+        const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+        fetch(`${BASE_URL}/api/projects/${dbId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data?.project) {
+              const proj = data.project
+              const merged = {
+                ...parsed,
+                chapters: proj.chapters ? JSON.parse(proj.chapters) : parsed.chapters,
+                structure: proj.structure ? JSON.parse(proj.structure) : parsed.structure,
+                projectInfo: proj.project_info ? JSON.parse(proj.project_info) : parsed.projectInfo,
+              }
+              sessionStorage.setItem('gradelyResult', JSON.stringify(merged))
+              setTimeout(() => setResult(merged), 0)
+            }
+          })
+          .catch(err => console.error('[Gradely] Results hydration failed:', err))
+      }
+    }
+
     setTimeout(() => {
-      const parsed = JSON.parse(saved)
       setResult(parsed)
       setPaid(isPaid())
       setExpandedChapters({ 0: true })
