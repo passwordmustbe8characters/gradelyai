@@ -22,7 +22,6 @@ export default function Intake() {
   const [areasLoading, setAreasLoading] = useState(false)
   const [projectPhotos, setProjectPhotos] = useState([])
 const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
-const [projectVideoLink, setProjectVideoLink] = useState('')
 
   const [form, setForm] = useState({
     name: '',
@@ -296,7 +295,6 @@ const removePhoto = (index) => {
 
       // Merge photos + video link into result data
       resultData.photos = uploadedPhotoUrls
-      resultData.videoLink = projectVideoLink.trim() || null
 
       sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
       sessionStorage.removeItem('gradelyPaid')
@@ -669,22 +667,7 @@ const removePhoto = (index) => {
     </div>
   )}
 
-  {/* Video link */}
-  <input
-    type="url"
-    placeholder="Video link (YouTube, Google Drive) — optional"
-    value={projectVideoLink}
-    onChange={e => setProjectVideoLink(e.target.value)}
-    style={{
-      width: '100%', padding: '10px 14px', borderRadius: 8,
-      border: '1px solid #ddd', fontSize: 14,
-      boxSizing: 'border-box', outline: 'none'
-    }}
-  />
-  <p style={{ fontSize: 12, color: '#999', marginTop: 6 }}>
-    Note: Grad reads your photos to understand your build. The video link is stored for your supervisor — Grad doesn't watch videos.
-  </p>
-</div>
+  </div>
 
             <button className="btn-primary" onClick={handleContinue}
               disabled={!form.supervisorName.trim() || generatingProject}
