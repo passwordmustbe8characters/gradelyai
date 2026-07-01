@@ -531,9 +531,23 @@ const handleSend = async (overrideInput = null) => {
     if (!text.trim()) return
 
     // ── Auto-save on first real user message (fire and forget — doesn't block chat)
-    const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
+   const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
     if (isFirstMessage) {
       autoSaveProject()
+    }
+
+    // ── Intercept approval phrases — advance section instead of calling AI
+    if (lastMessageWasDraft) {
+      const approvalPhrases = ['yes', 'ok', 'okay', 'looks good', 'next', 'move on', 'approved', 'continue', 'it looks good']
+      const isApproval = approvalPhrases.some(p => text.toLowerCase().trim().includes(p))
+      if (isApproval) {
+        const lastDraftIdx = [...messages].map((m, i) => ({ ...m, i })).reverse().find(m => m.type === 'draft')?.i
+        if (lastDraftIdx !== undefined) {
+          setInput('')
+          handleLooksGood(lastDraftIdx)
+          return
+        }
+      }
     }
 
     const userMsg = { role: 'user', content: text }
@@ -613,18 +627,11 @@ const handleSend = async (overrideInput = null) => {
     const msg = messages[messageIndex]
     if (!msg || msg.role !== 'assistant' || msg.type !== 'draft') return
 
-    const sectionNumber = msg.sectionNumber
-    if (!sectionNumber) return
+    // Derive current section from state — don't rely on parsed sectionNumber
+    const inProgressSection = allSections?.find(s => !completedSections.includes(s.number))
+    if (!inProgressSection) return
 
-    if (completedSections.includes(sectionNumber)) {
-      alert(`Section ${sectionNumber} is already completed.`)
-      return
-    }
-
-    if (currentSection?.number !== sectionNumber) {
-      alert(`Please use the "Looks good" button on the current section draft.`)
-      return
-    }
+    const sectionNumber = inProgressSection.number
 
     setCompletedSections(prev => [...prev, sectionNumber])
     const nextSection = allSections.find(
@@ -696,7 +703,7 @@ const handleSend = async (overrideInput = null) => {
 const onEditClick = (e, index) => {
   e.preventDefault();
   e.stopPropagation();
-  startEditing(index, messages[index].content);
+  startEditing(index, messages[index].draftContent || messages[index].content);
 };
 
 const onRegenerateClick = (e) => {
@@ -794,7 +801,9 @@ const onRegenerateClick = (e) => {
     const msg = messages[index]
     if (!msg || msg.role !== 'assistant') return
 
-    const topicSentence = msg.topicSentence
+    // Use whatever the student typed in the edit box as the new topic sentence
+    const topicSentence = editContent.trim()
+      || msg.topicSentence
       || messages.slice(0, index).reverse().find(m => m.topicSentence)?.topicSentence
 
     if (!topicSentence) {
@@ -1069,19 +1078,32 @@ const onRegenerateClick = (e) => {
       Regenerate
     </button>
   </div>
-)}
-                          {isDraft && (
-                            <button className="sb-edit-pencil" onClick={() => startEditing(idx, msg.content)} title="Edit this section">
+)}{isDraft && !isEditing && (
+                            <button className="sb-edit-pencil" onClick={(e) => onEditClick(e, idx)} title="Edit this section">
                               <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M9.5 1.5L12.5 4.5L4 13H1V10L9.5 1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </button>
+                          )}
+                          {isDraft && isEditing && (
+                            <button
+                              className="sb-edit-pencil"
+                              style={{ opacity: 1, background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)', width: 'auto', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}
+                              onClick={() => handleEditGenerate(idx)}
+                              disabled={isTyping}
+                            >
+                              ✨ Ask AI
                             </button>
                           )}
                           {isEditing && (
                             <div className="sb-edit-area">
-                              <textarea value={editContent} onChange={e => setEditContent(e.target.value)} rows={4} />
+                              <textarea
+                                value={editContent}
+                                onChange={e => setEditContent(e.target.value)}
+                                rows={6}
+                                placeholder="Edit the draft directly, then click Ask AI to regenerate supporting paragraphs, or Save to keep your edits as-is."
+                              />
                               <div className="sb-edit-actions">
-                                <button className="sb-edit-save" onClick={() => saveEdit(idx)}>Save</button>
+                                <button className="sb-edit-save" onClick={() => saveEdit(idx)}>Save as-is</button>
                                 <button className="sb-edit-cancel" onClick={cancelEditing}>Cancel</button>
-                                <button className="sb-edit-generate" onClick={() => handleEditGenerate(idx)}>🔄 Regenerate</button>
                               </div>
                             </div>
                           )}
