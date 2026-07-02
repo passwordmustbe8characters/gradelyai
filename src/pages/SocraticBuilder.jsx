@@ -580,14 +580,26 @@ const handleSend = async (overrideInput = null) => {
         }
         if (parsed.draftContent) {
           const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-          if (cur.chapters?.[0]) {
-            cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + parsed.draftContent
-            sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
-            const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
-            if (dbId) {
-              updateProject(dbId, { chapters: cur.chapters })
-                .catch(err => console.error('[Gradely] Chapter sync failed:', err))
-            }
+          if (!cur.chapters) cur.chapters = []
+
+          // Find the chapter matching current section, default to chapter 1
+          const chapterNum = currentSection?.number
+            ? parseInt(currentSection.number.split('.')[0], 10) : 1
+          let targetChapter = cur.chapters.find(c => c.number === chapterNum)
+
+          if (!targetChapter) {
+            // Chapter slot doesn't exist yet — create it
+            targetChapter = { number: chapterNum, title: `Chapter ${chapterNum}`, content: '' }
+            cur.chapters.push(targetChapter)
+          }
+
+          targetChapter.content = (targetChapter.content || '') + '\n\n' + parsed.draftContent
+          sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+
+          const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+          if (dbId) {
+            updateProject(dbId, { chapters: cur.chapters })
+              .catch(err => console.error('[Gradely] Chapter sync failed:', err))
           }
         }
       }
@@ -813,7 +825,7 @@ const handleSectionClick = (secNum, messageIndex) => {
   useEffect(() => {
   // If user is logged in but the DB says they aren't onboarded, send them to onboarding
   if (user && user.onboarded === false) {
-    navigate('/onboarding'); 
+    navigate('/start'); 
   }
 }, [user, navigate]);
 const handleSaveAndExit = async () => {
@@ -892,18 +904,30 @@ const handleSaveAndExit = async () => {
         return copy
       })
 
-      if (parsed.type === 'draft' && parsed.draftContent) {
-        const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-        if (cur.chapters?.[0]) {
-          cur.chapters[0].content = (cur.chapters[0].content || '') + '\n\n' + parsed.draftContent
+    if (parsed.draftContent) {
+          const cur = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+          if (!cur.chapters) cur.chapters = []
+
+          // Find the chapter matching current section, default to chapter 1
+          const chapterNum = currentSection?.number
+            ? parseInt(currentSection.number.split('.')[0], 10) : 1
+          let targetChapter = cur.chapters.find(c => c.number === chapterNum)
+
+          if (!targetChapter) {
+            // Chapter slot doesn't exist yet — create it
+            targetChapter = { number: chapterNum, title: `Chapter ${chapterNum}`, content: '' }
+            cur.chapters.push(targetChapter)
+          }
+
+          targetChapter.content = (targetChapter.content || '') + '\n\n' + parsed.draftContent
           sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+
           const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
           if (dbId) {
             updateProject(dbId, { chapters: cur.chapters })
               .catch(err => console.error('[Gradely] Chapter sync failed:', err))
           }
         }
-      }
 
       setEditingMessageIndex(null)
       setEditContent('')

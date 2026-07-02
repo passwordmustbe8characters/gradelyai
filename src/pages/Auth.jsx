@@ -120,20 +120,21 @@ export default function Auth() {
         ? await register(form.name, form.email, form.password)
         : await login(form.email, form.password)
 
-      setUser(data.user)
+     setUser(data.user)
 
-      // ---------- REDIRECT FIX ----------
-      let redirectTo = location.state?.redirect
-      if (!redirectTo) {
-        if (mode === 'register') {
-          // New users go to onboarding (which is at /start)
-          redirectTo = '/start'
-        } else {
-          redirectTo = '/dashboard'
-        }
+      // Explicit redirect takes priority (e.g. ProtectedRoute sent them here)
+      const explicitRedirect = location.state?.redirect
+      if (explicitRedirect && explicitRedirect !== '/auth') {
+        navigate(explicitRedirect)
+        return
       }
-      navigate(redirectTo)
-      // --------------------------------
+
+      // Use DB onboarded flag — not the form mode — to decide where to send them
+      if (data.user?.onboarded) {
+        navigate('/dashboard')
+      } else {
+        navigate('/start')
+      }
     } catch (err) {
       setError(err.message)
     }

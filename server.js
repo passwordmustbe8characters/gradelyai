@@ -613,7 +613,12 @@ Write complete content for this section. Be specific to the project topic.`
   // ─── STUCK MODE: give a worked example, student must rephrase ─────────────
   if (requestType === 'stuck') {
     const currentSection = chapterStructure?.currentSection || { title: 'this section' };
-    const stuckSystemPrompt = `You are a Nigerian university project supervisor helping a student who is stuck on a section of their final year project. Write ONE short example sentence showing how a student MIGHT answer the question for this section. Keep it generic enough that the student still has to adapt it to their own project — do not write a full paragraph, just one model sentence.${guideContext}`;
+    const stuckSystemPrompt = `You are a Nigerian university project supervisor helping a student who is stuck writing their final year project.
+The student is currently working on the "${currentSection.title}" section.
+Write ONE short, specific example sentence that directly addresses what this section requires — not a general academic sentence.
+The sentence must be clearly about "${currentSection.title}" and relate to the student's project topic.
+Keep it generic enough that the student still has to rewrite it in their own words.
+Do NOT write a full paragraph. Just one model sentence.${guideContext}`;
     const stuckUserPrompt = `Project Title: "${projectInfo?.topic || ''}"
 Department: ${projectInfo?.department || ''}
 Section: ${currentSection.title}
@@ -1008,8 +1013,8 @@ app.post('/api/auth/register', async (req, res) => {
       sql: 'INSERT INTO users (name, email, password, onboarded, is_admin) VALUES (?, ?, ?, 0, 0)',
       args: [name, email.toLowerCase().trim(), hashed]
     })
-    const userResult = await db.execute({ sql: 'SELECT id, name, email, created_at FROM users WHERE id = ?', args: [result.lastInsertRowid] })
-    const user = userResult.rows[0]
+   const userResult = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded FROM users WHERE id = ?', args: [result.lastInsertRowid] })
+    const user = { ...userResult.rows[0], onboarded: false }
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
     res.json({ user, token })
   } catch (err) {
