@@ -659,8 +659,15 @@ const getSectionPrompt = (sectionTitle) => {
     if (!inProgressSection) return
 
     const sectionNumber = inProgressSection.number
+    const draftMessageIndex = messages.map((m, i) => ({ ...m, i }))
+      .filter(m => m.role === 'assistant' && m.type === 'draft')
+      .pop()?.i
 
-    setCompletedSections(prev => [...prev, sectionNumber])
+
+   setCompletedSections(prev => [...prev, sectionNumber])
+    if (draftMessageIndex !== undefined) {
+      setSectionIndexMap(prev => ({ ...prev, [sectionNumber]: draftMessageIndex }))
+    }
     const nextSection = allSections.find(
       s => !completedSections.includes(s.number) && s.number !== sectionNumber
     )
@@ -771,19 +778,37 @@ const onRegenerateClick = (e) => {
 
 const handleSectionClick = (secNum, messageIndex) => {
     if (messageIndex !== undefined) {
-      // Section has a known message — scroll to it
       scrollToMessage(messageIndex)
+      if (isMobile) setMobileSidebarOpen(false)
       return
     }
-    // No messageIndex means this section hasn't been started in chat yet
-    // Check if it's in progress (current section) and scroll to bottom
+
     if (currentSection?.number === secNum) {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      if (isMobile) setMobileSidebarOpen(false)
       return
     }
-    // Section not reached yet — do nothing
-  }
 
+    const section = allSections.find(s => s.number === secNum)
+    if (!section) return
+
+    const chapterNum = secNum.split('.')[0]
+    const titleWords = section.title.replace(/^\d+\.\d+\s+/, '').toLowerCase().split(' ').slice(0, 3).join(' ')
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+      if (msg.role !== 'assistant') continue
+      const content = (msg.content || msg.draftContent || '').toLowerCase()
+      if (content.includes(titleWords)) {
+        const msgChapter = parseInt(msg.sectionNumber?.split('.')?.[0] || chapterNum, 10)
+        if (msgChapter === parseInt(chapterNum, 10)) {
+          scrollToMessage(i)
+          if (isMobile) setMobileSidebarOpen(false)
+          return
+        }
+      }
+    }
+  }
   // ─── SAVE & EXIT ────────────────────────────────────────────────────────────
   useEffect(() => {
   // If user is logged in but the DB says they aren't onboarded, send them to onboarding
