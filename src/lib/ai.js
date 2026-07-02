@@ -534,9 +534,8 @@ export async function generateReferences(projectInfo, realPapers = []) {
     return { references: [], noSourcesFound: true }
   }
 
-  // ── Deterministic APA 7th formatter — NO AI, zero hallucination risk ─────────
+  // ── Deterministic APA 7th formatter — no AI, zero hallucination ───────────
   const references = realPapers.map((p, i) => {
-    // Authors: Last, F. M., & Last, F. M.
     const authors = p.authors?.length
       ? p.authors.map(a => {
           const parts = (a.name || '').trim().split(' ')
@@ -553,7 +552,6 @@ export async function generateReferences(projectInfo, realPapers = []) {
     const doi = p.externalIds?.DOI || ''
     const url = p.openAccessPdf?.url || (doi ? `https://doi.org/${doi}` : '')
 
-    // Build APA string from only what we actually have — no invented fields
     let citation = `${authors} (${year}). ${title}.`
     if (journal) citation += ` *${journal}*.`
     if (doi) citation += ` https://doi.org/${doi}`
@@ -635,7 +633,8 @@ export async function socraticChat(projectInfo, chapterStructure, chatHistory, u
       chapterStructure,
       existingReferences,
       requestType: options.requestType || 'draft',
-      currentChapterNumber: options.currentChapterNumber || null
+      currentChapterNumber: options.currentChapterNumber || null,
+      currentSectionTitle: options.currentSectionTitle || null
     })
   });
 

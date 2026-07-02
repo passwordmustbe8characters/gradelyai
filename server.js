@@ -534,7 +534,7 @@ async function fetchGithubContext(githubLink) {
 app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   console.log('🔥 SOCRATIC GENERATE CALLED');
 
- const { messages, projectInfo, chapterStructure, requestType, currentChapterNumber } = req.body;
+const { messages, projectInfo, chapterStructure, requestType, currentChapterNumber, currentSectionTitle } = req.body;
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
 
@@ -551,7 +551,7 @@ app.post('/api/socratic-generate', requireAuth, async (req, res) => {
   const isAutonomousRequest = autonomousPatterns.some(p => p.test(studentTopicSentence))
 
   if (isAutonomousRequest && requestType !== 'stuck') {
-    const currentSection = chapterStructure?.currentSection || { title: 'this section' }
+    const currentSection = { title: currentSectionTitle || chapterStructure?.currentSection?.title || 'this section' }
     const autoSystemPrompt = `You are Grad, an AI writing assistant helping a Nigerian university student complete their final year project. The student has asked you to generate content for a section autonomously. Write complete, academically appropriate content for the section based on the project details provided. Use simple, clear language. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize.${guideContext}`
     const autoUserPrompt = `Project Title: "${projectInfo?.topic || ''}"
 Department: ${projectInfo?.department || ''}

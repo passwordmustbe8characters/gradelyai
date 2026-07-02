@@ -299,15 +299,21 @@ const handlePurchase = async (amount, planName) => {
                       <button className="btn-ghost" onClick={async () => {
                         try {
                           const proj = await fetchProject(project.id)
-                          const resultData = {
-                            projectInfo: proj.project_info,
-                            structure: proj.structure,
-                            chapters: proj.chapters,
-                            abstract: proj.abstract,
-                            references: proj.refs || [],
-                            dbProjectId: proj.id,
-                            isPaidUser: proj.is_paid === 1,
-                          }
+                          const safeParseJSON = (val, fallback) => {
+  if (!val) return fallback
+  if (typeof val === 'object') return val
+  try { return JSON.parse(val) } catch { return fallback }
+}
+
+const resultData = {
+  projectInfo: safeParseJSON(proj.project_info, {}),
+  structure: safeParseJSON(proj.structure, {}),
+  chapters: safeParseJSON(proj.chapters, []),
+  abstract: proj.abstract || '',
+  references: safeParseJSON(proj.refs, []),
+  dbProjectId: proj.id,
+  isPaidUser: proj.is_paid === 1,
+}
                           sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
                           if (proj.is_paid) sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true }))
                           navigate('/results')

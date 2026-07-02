@@ -609,7 +609,7 @@ const handleSend = async (overrideInput = null) => {
 const getSectionPrompt = (sectionTitle) => {
     const title = sectionTitle.toLowerCase()
     if (title.includes('background')) {
-      return 'In your own words — why is this topic important right now? What is happening in the world or in your field that makes this worth studying?'
+      return 'In your own words — why is this topic important right now? What is happening in your field that makes this worth studying?'
     } else if (title.includes('statement') || title.includes('problem')) {
       return 'What is the specific problem you are solving? What gap or challenge does your project address?'
     } else if (title.includes('aim') || title.includes('objective')) {
@@ -621,11 +621,11 @@ const getSectionPrompt = (sectionTitle) => {
     } else if (title.includes('limitation')) {
       return 'What are the limitations of your study? What factors were outside your control?'
     } else if (title.includes('definition') || title.includes('terms')) {
-      return 'List the key technical terms in your project that need to be defined. Or type "generate on your own" and Grad will write the definitions for you based on your project topic.'
+      return 'List the key technical terms in your project. Or type "generate on your own" and Grad will write the definitions based on your project topic.'
     } else if (title.includes('organisation') || title.includes('organization') || title.includes('structure of')) {
       return 'Briefly describe how your project report is organised chapter by chapter. Or type "generate on your own" and Grad will write this for you.'
     } else if (title.includes('introduction')) {
-      return 'Give a brief introduction to this chapter. What will the reader find here?'
+      return 'Give a brief introduction to this chapter. What will the reader find here? Or type "generate on your own" and Grad will write it.'
     } else if (title.includes('literature') || title.includes('review')) {
       return 'What existing works or research are most relevant to your topic? What have other researchers found?'
     } else if (title.includes('methodology') || title.includes('method')) {
@@ -633,13 +633,13 @@ const getSectionPrompt = (sectionTitle) => {
     } else if (title.includes('design') || title.includes('system')) {
       return 'How is your system or solution designed? Describe the architecture or key components.'
     } else if (title.includes('implementation')) {
-      return 'How did you build or implement your project? What technologies, languages, or tools did you use?'
+      return 'How did you build or implement your project? What technologies or tools did you use?'
     } else if (title.includes('result') || title.includes('finding') || title.includes('testing')) {
       return 'What were the results of your work? What did your tests or experiments show?'
     } else if (title.includes('conclusion')) {
       return 'What conclusions can you draw from your project? Did you achieve your objectives?'
     } else if (title.includes('recommendation')) {
-      return 'What do you recommend for future work or improvement based on your findings?'
+      return 'What do you recommend for future work based on your findings?'
     } else if (title.includes('summary')) {
       return 'Summarise what was accomplished in this chapter or the overall project.'
     } else if (title.includes('reference') || title.includes('bibliography')) {
@@ -710,7 +710,7 @@ const getSectionPrompt = (sectionTitle) => {
         messages,
         '',
         currentResult?.references || [],
-        { requestType: 'stuck', currentChapterNumber: chapterNum }
+        { requestType: 'stuck', currentChapterNumber: chapterNum, currentSectionTitle: currentSection?.title || '' }
       )
       const parsed = parseAIResponse(aiReply)
       setMessages(prev => [...prev, { role: 'assistant', type: parsed.type, exampleText: parsed.exampleText, content: parsed.content || '' }])
@@ -769,21 +769,19 @@ const onRegenerateClick = (e) => {
     }
   }
 
-  const handleSectionClick = (secNum, messageIndex) => {
+const handleSectionClick = (secNum, messageIndex) => {
     if (messageIndex !== undefined) {
+      // Section has a known message — scroll to it
       scrollToMessage(messageIndex)
-    } else {
-      const section = allSections.find(s => s.number === secNum)
-      if (section) {
-        const title = section.title
-        for (let i = 0; i < messages.length; i++) {
-          if (messages[i].role === 'assistant' && messages[i].content.includes(title)) {
-            scrollToMessage(i)
-            break
-          }
-        }
-      }
+      return
     }
+    // No messageIndex means this section hasn't been started in chat yet
+    // Check if it's in progress (current section) and scroll to bottom
+    if (currentSection?.number === secNum) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      return
+    }
+    // Section not reached yet — do nothing
   }
 
   // ─── SAVE & EXIT ────────────────────────────────────────────────────────────
