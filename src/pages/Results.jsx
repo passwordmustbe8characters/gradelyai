@@ -1037,19 +1037,29 @@ export default function Results() {
                           </div>
                         ) : hasContent ? (
                           <>
-                            {subsections.length > 0 ? (
-                              subsections.map((sub, subIdx) => {
-                                const subRegex = new RegExp(`(?:^|\\n)\\s*${sub.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?(?=\\n\\s*(?:${subsections.slice(subIdx + 1).join('|')})|$)`, 'i')
-                                const match = ch.content.match(subRegex)
-                                const subContent = match ? match[0] : ''
-                                if (!subContent) return null
-                                return (
-                                  <div key={subIdx} id={`subsection-${idx}-${sub}`} className="res-subsection-anchor">
-                                    <h3 className="res-subsection-heading">{sub}</h3>
-                                    {renderContentWithSources(subContent)}
-                                  </div>
-                                )
-                              })
+                              {subsections.length > 0 ? (
+                              (() => {
+                                // Split content by double newlines into paragraphs
+                                const paragraphs = (ch.content || '')
+                                  .split(/\n\n+/)
+                                  .map(p => p.trim())
+                                  .filter(Boolean)
+
+                                // Assign paragraphs to subsections by order
+                                const perSection = Math.ceil(paragraphs.length / subsections.length)
+
+                                return subsections.map((sub, subIdx) => {
+                                  const start = subIdx * perSection
+                                  const chunk = paragraphs.slice(start, start + perSection).join('\n\n')
+                                  if (!chunk) return null
+                                  return (
+                                    <div key={subIdx} id={`subsection-${idx}-${sub}`} className="res-subsection-anchor">
+                                      <h3 className="res-subsection-heading">{sub}</h3>
+                                      {renderContentWithSources(chunk)}
+                                    </div>
+                                  )
+                                })
+                              })()
                             ) : (
                               renderContentWithSources(ch.content)
                             )}
