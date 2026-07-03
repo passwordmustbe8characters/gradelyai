@@ -123,8 +123,8 @@ export default function Auth() {
      setUser(data.user)
 
       // Explicit redirect takes priority (e.g. ProtectedRoute sent them here)
-      const explicitRedirect = location.state?.redirect
-      if (explicitRedirect && explicitRedirect !== '/auth') {
+     const explicitRedirect = location.state?.redirect
+      if (explicitRedirect && explicitRedirect !== '/auth' && explicitRedirect !== '/') {
         navigate(explicitRedirect)
         return
       }

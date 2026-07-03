@@ -6,7 +6,14 @@ import logoPrimaryW from '../assets/primary-logo-w.png';
 
 export default function Landing() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+ const { user, loading } = useAuth()
+
+  useEffect(() => {
+    if (!loading && user?.onboarded) {
+      navigate('/dashboard')
+    }
+  }, [user, loading, navigate])
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [stats, setStats] = useState({
     projects: 0,
