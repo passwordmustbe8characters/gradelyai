@@ -26,6 +26,7 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
   const [form, setForm] = useState({
     name: '',
     guideFound: '',
+    ragGuideContent: '',
     university: '',
     department: '',
     hasTopic: null,
@@ -230,7 +231,8 @@ const removePhoto = (index) => {
         university: form.university,
         department: form.department,
         hasGuide: form.hasGuide,
-        guideContent: form.guideContent || ''
+        guideContent: form.guideContent || '',
+        ragGuideContent: form.ragGuideContent || ''
       })
 
       const projectData = {
@@ -529,10 +531,11 @@ const removePhoto = (index) => {
                 onClick={async () => {
                   update('hasGuide', false)
                   setLoading(true)
-                  const guide = await fetchGuideFromDB(form.university, form.department)
+                 const guide = await fetchGuideFromDB(form.university, form.department)
                   if (guide) {
                     update('guideContent', guide.structure)
                     update('guideFound', guide.label)
+                    update('ragGuideContent', guide.structure)
                   }
                   setLoading(false)
                   setStep(9)

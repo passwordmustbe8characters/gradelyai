@@ -678,7 +678,7 @@ Write ONE example sentence showing how a student could start answering this sect
     if (!completion.ok) throw new Error(data.error?.message || 'OpenAI error');
     const rawSupportingText = data.choices[0].message.content;
 
-    let finalResponse = `${studentTopicSentence}\n\n${rawSupportingText}\n\n---\n**Please review this section.** Does it capture your main point correctly?`;
+  let finalResponse = `${studentTopicSentence}\n\n${rawSupportingText}`;
 
     finalResponse = finalResponse
       .replace(/\*\*Yes,\s*looks\s*good\*\*\s*\|/gi, '')

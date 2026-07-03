@@ -343,7 +343,9 @@ Always respond with valid JSON only. No markdown. No preamble. Keep it concise.`
 - Topic: ${projectInfo.topic}
 - Project Type: ${projectInfo.projectType}
 - Has project guide: ${projectInfo.hasGuide ? 'Yes' : 'No'}
-${projectInfo.guideContent ? `\nProject Guide Content:\n${projectInfo.guideContent.substring(0, 1500)}` : ''}
+${projectInfo.guideContent ? `\nProject Guide Content (use this to determine exact chapter and subsection structure):\n${projectInfo.guideContent.substring(0, 2000)}` : ''}
+${projectInfo.ragGuideContent ? `\nDepartmental Guide from Database (use this if no guide uploaded):\n${projectInfo.ragGuideContent.substring(0, 1500)}` : ''}
+- IMPORTANT: If any guide content is provided above, use it to determine the exact subsection titles and structure. Do not use generic defaults.
 
 Rules:
 - Return exactly 5 chapters
