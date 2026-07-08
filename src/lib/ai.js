@@ -172,7 +172,7 @@ function getStaticAreas(department) {
 
 // ─── TOPIC GENERATION (Ultra-strict) ────────────────────────────────────────
 
-export async function generateTopics(department, university, areaOfInterest) {
+export async function generateTopics(department, university, areaOfInterest, topicImagination = '') {
   // Department-specific example topics to guide the AI
   const examplesByDept = {
     'Computer Science': `
@@ -227,6 +227,7 @@ Return valid JSON only. No markdown, no preamble.`
 - University: ${university}
 - Department: ${department}
 - Area of interest: ${areaOfInterest || 'any'}
+${topicImagination ? `\nStudent's own idea or interest: "${topicImagination}" — use this to make the topics more personally relevant to them.` : ''}
 
 The topics MUST be specific to ${department}. For each topic, provide:
 1. id (auto-increment)

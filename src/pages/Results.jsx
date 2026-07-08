@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { exportToWord } from '../lib/export'
-import { isPaid } from '../lib/payment'
+// isPaid replaced by direct check on parsed.isPaidUser
 import { updateProject } from '../lib/auth'
+import { fetchRealPapers, generateReferences } from '../lib/ai'
 import Paywall from '../components/Paywall'
 import logoPrimary from '../assets/primary-logo.png' 
 import logoSubmark from '../assets/submark-logo.png'
@@ -517,6 +518,115 @@ const pageStyles = `
     .floating-icon-btn svg { width: 22px; height: 22px; }
   }
 `
+// ─── UNDERSTAND PANEL COMPONENT ───────────────────────────────────────────────
+function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
+  const [open, setOpen] = useState(false)
+  const [data, setData] = useState(null)
+  const [answer, setAnswer] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [updated, setUpdated] = useState(false)
+
+  const BASE_URL = import.meta.env.VITE_API_URL || ''
+
+  const load = async () => {
+    if (data) { setOpen(o => !o); return }
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      const res = await fetch(`${BASE_URL}/api/understand-section`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ sectionTitle, sectionContent })
+      })
+      const d = await res.json()
+      setData(d)
+      setOpen(true)
+    } catch (err) {
+      console.error('Understand panel error:', err)
+    }
+    setLoading(false)
+  }
+
+  const submit = async () => {
+    if (!answer.trim()) return
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      const res = await fetch(`${BASE_URL}/api/understand-section`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ sectionTitle, sectionContent, studentAnswer: answer })
+      })
+      const d = await res.json()
+      if (d.updatedParagraph && onUpdateParagraph) {
+        onUpdateParagraph(d.updatedParagraph)
+        setUpdated(true)
+        setOpen(false)
+        setAnswer('')
+      }
+    } catch (err) {
+      console.error('Update paragraph error:', err)
+    }
+    setLoading(false)
+  }
+
+  if (updated) {
+    return (
+      <div style={{ margin: '8px 0 16px', padding: '8px 14px', background: 'rgba(45,155,111,0.08)', borderRadius: 8, border: '1px solid rgba(45,155,111,0.2)', fontSize: 13, color: 'var(--success)' }}>
+        ✓ Your personal context has been added to this section.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ margin: '8px 0 20px' }}>
+      <button
+        onClick={load}
+        disabled={loading}
+        style={{ background: 'none', border: '1px solid rgba(0,126,167,0.2)', padding: '6px 14px', borderRadius: 20, color: 'var(--accent)', cursor: loading ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'Geist, sans-serif', transition: 'all 0.2s' }}
+      >
+        {loading ? '...' : open ? '▾ Hide Grad\'s explanation' : '▸ Understand this section with Grad'}
+      </button>
+
+      {open && data && (
+        <div style={{ marginTop: 12, padding: '16px 18px', background: 'rgba(0,126,167,0.04)', borderRadius: 10, border: '1px solid rgba(0,126,167,0.12)' }}>
+          <p style={{ fontSize: 13, marginBottom: 10, lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--accent)' }}>What this section says:</strong>{' '}
+            <span style={{ color: 'var(--text-muted)' }}>{data.plainExplanation}</span>
+          </p>
+          <p style={{ fontSize: 13, marginBottom: 6, color: 'var(--text)' }}>
+            <strong>Grad asks:</strong> {data.localQuestion}
+          </p>
+          <p style={{ fontSize: 13, marginBottom: 14, color: 'var(--text)' }}>
+            <strong>Your panel might ask:</strong> {data.expertQuestion}
+          </p>
+          <textarea
+            value={answer}
+            onChange={e => setAnswer(e.target.value)}
+            placeholder="Type your answer here — your response will be woven into this section to personalise it (optional)"
+            rows={3}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+            <button
+              onClick={submit}
+              disabled={!answer.trim() || loading}
+              style={{ padding: '8px 18px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: answer.trim() ? 'pointer' : 'not-allowed', opacity: answer.trim() ? 1 : 0.5 }}
+            >
+              {loading ? 'Updating...' : 'Add to my project →'}
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Results() {
   const navigate = useNavigate()
@@ -533,6 +643,8 @@ export default function Results() {
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
   const [loadingWeaknesses, setLoadingWeaknesses] = useState(false)
   const [loadingFlashcards, setLoadingFlashcards] = useState(false)
+  const [loadingRefs, setLoadingRefs] = useState(false)
+  const [defenseError, setDefenseError] = useState('')
   const [exporting, setExporting] = useState(false)
   const [paid, setPaid] = useState(false)
   const [showPaywall, setShowPaywall] = useState(false)
@@ -574,7 +686,7 @@ export default function Results() {
 
     setTimeout(() => {
       setResult(parsed)
-      setPaid(isPaid())
+      setPaid(!!(parsed.isPaidUser || parsed.is_paid === 1 || parsed.is_paid === true))
       setExpandedChapters({ 0: true })
     }, 0)
   }, [])
@@ -624,16 +736,43 @@ export default function Results() {
       })
       const resData = await response.json()
       if (resData.success) {
-        setBreakdown(resData.data.breakdown)
+       setBreakdown(resData.data.breakdown)
         setWeaknesses(resData.data.weaknesses)
         sessionStorage.setItem('gradelyFlashcards', JSON.stringify(resData.data.flashcards))
+        // Calculate and save defense readiness score
+        const weaknessCount = resData.data.weaknesses?.weaknesses?.length || 0
+        const readinessScore = Math.max(20, 100 - (weaknessCount * 12))
+        const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+        if (projectId) updateProject(projectId, { defense_readiness: readinessScore }).catch(() => {})
       } else throw new Error(resData.error)
     } catch (err) {
       console.error("Defense synchronization failure:", err)
-      alert("Could not load defense preparation data. Please verify your payment or account status.")
+      setDefenseError("Could not load defense data. Please try again.")
     } finally {
       setLoadingBreakdown(false); setLoadingWeaknesses(false)
     }
+  }
+
+  const loadReferences = async () => {
+    if (result.references && result.references.length > 0) return
+    if (loadingRefs) return
+    setLoadingRefs(true)
+    try {
+      const topic = result.projectInfo?.topic || ''
+      const department = result.projectInfo?.department || ''
+      const realPapers = await fetchRealPapers(topic, department)
+      const data = await generateReferences(result.projectInfo, realPapers)
+      if (data?.references?.length > 0) {
+        const updated = { ...result, references: data.references }
+        setResult(updated)
+        sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+        const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+        if (projectId) updateProject(projectId, { references: data.references }).catch(() => {})
+      }
+    } catch (err) {
+      console.error('References generation failed:', err)
+    }
+    setLoadingRefs(false)
   }
 
   const handleFlashcards = async () => {
@@ -678,7 +817,9 @@ export default function Results() {
   }
 
   const handleUnlock = async () => {
-    setPaid(true); setShowPaywall(false)
+   setPaid(true); setShowPaywall(false)
+    const curResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+    sessionStorage.setItem('gradelyResult', JSON.stringify({ ...curResult, isPaidUser: true }))
     sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true, timestamp: Date.now() }))
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
     if (projectId && user) {
@@ -901,7 +1042,8 @@ export default function Results() {
                   className={`res-nav-item${activeTab === t.key ? ' active' : ''}`}
                   onClick={() => {
                     setActiveTab(t.key)
-                    if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData()
+                   if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData()
+                    if (t.key === 'references') loadReferences()
                     setMobileMenuOpen(false)
                   }}>
                   {t.icon}
@@ -1052,10 +1194,25 @@ export default function Results() {
                                   const start = subIdx * perSection
                                   const chunk = paragraphs.slice(start, start + perSection).join('\n\n')
                                   if (!chunk) return null
-                                  return (
+                                 return (
                                     <div key={subIdx} id={`subsection-${idx}-${sub}`} className="res-subsection-anchor">
                                       <h3 className="res-subsection-heading">{sub}</h3>
                                       {renderContentWithSources(chunk)}
+                                      {!isLocked && (
+                                        <UnderstandPanel
+                                          sectionTitle={sub}
+                                          sectionContent={chunk}
+                                          onUpdateParagraph={(newPara) => {
+                                            const updatedChapters = result.chapters.map((c, ci) => {
+                                              if (ci !== idx) return c
+                                              return { ...c, content: c.content.replace(chunk, chunk + '\n\n' + newPara) }
+                                            })
+                                            const updated = { ...result, chapters: updatedChapters }
+                                            setResult(updated)
+                                            sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+                                          }}
+                                        />
+                                      )}
                                     </div>
                                   )
                                 })
@@ -1123,6 +1280,9 @@ export default function Results() {
                 <h1 className="res-tab-title">Student Breakdown</h1>
                 <p className="res-tab-sub">Read this the night before your defense. This is your confidence builder.</p>
                 <div className="res-tab-divider" />
+                {defenseError && (
+                  <p style={{ color: 'var(--danger)', fontSize: 14, marginBottom: 16 }}>{defenseError}</p>
+                )}
                 {loadingBreakdown ? (
                   <div style={{ textAlign: 'center', padding: 48 }}>
                     <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
@@ -1208,7 +1368,11 @@ export default function Results() {
                 <h1 className="res-tab-title">References</h1>
                 <p className="res-tab-sub">Academic sources cited in your project.</p>
                 <div className="res-tab-divider" />
-                {result.references && result.references.length > 0 ? (
+                {loadingRefs ? (
+                  <div style={{ textAlign: 'center', padding: 48 }}>
+                    <p style={{ color: 'var(--text-muted)' }}>Finding academic sources for your project...</p>
+                  </div>
+                ) : result.references && result.references.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {result.references.map((ref, i) => (
                       <div key={i} style={{ display: 'flex', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--border-light)' }}>
@@ -1223,8 +1387,6 @@ export default function Results() {
                         </div>
                       </div>
                     ))}
-                    <div style={{ marginTop: 32, padding: '20px 0', borderTop: '1px solid var(--border)' }}>
-                      <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 6, color: 'var(--text)' }}>Need the version with source notes?</p>
                       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
                         The working copy includes inline source markers so you can see where each claim came from.
                       </p>
@@ -1232,7 +1394,6 @@ export default function Results() {
                         style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <DownloadIcon /> Download Working Copy
                       </SpinningButton>
-                    </div>
                   </div>
                 ) : (
                   <div style={{ padding: '24px 0' }}>

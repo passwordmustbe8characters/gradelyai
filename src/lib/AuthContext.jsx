@@ -1,11 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect } from 'react'
-import { getUser, getToken, logout as logoutFn, fetchMe } from './auth'
+import { getToken, logout as logoutFn, fetchMe } from './auth'
 
 export const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(getUser())
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -16,10 +16,16 @@ export function AuthProvider({ children }) {
       return
     }
 
-    fetchMe()
+   fetchMe()
       .then(u => {
         setUser(u)
         localStorage.setItem('user', JSON.stringify(u))
+        setLoading(false)
+      })
+      .catch(() => {
+        // Token invalid — clear everything
+        logoutFn()
+        setUser(null)
         setLoading(false)
       })
       .catch(() => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { generateTopics, generateAreas, generateProjectStructure } from '../lib/ai'
+import { generateTopics, generateAreas } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
 import { NIGERIAN_UNIVERSITIES, DEPARTMENTS_BY_FACULTY } from '../lib/universities'
 import SearchableSelect from '../components/SearchableSelect'
@@ -16,7 +16,7 @@ export default function Intake() {
   const [loading, setLoading] = useState(false)
   const [generatingProject, setGeneratingProject] = useState(false) // New: for final generation loading
   const [error, setError] = useState('')
-  const [isNewProject, setIsNewProject] = useState(mode === 'new_project')
+  // const [isNewProject, setIsNewProject] = useState(mode === 'new_project')
   const [skipToTopic, setSkipToTopic] = useState(mode === 'new_project')
   const [dynamicAreas, setDynamicAreas] = useState([])
   const [areasLoading, setAreasLoading] = useState(false)
@@ -32,6 +32,7 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
     hasTopic: null,
     topicInput: '',
     areaOfInterest: '',
+    topicImagination: '',
     topics: [],
     selectedTopic: null,
     hasGuide: null,
@@ -60,59 +61,59 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
     }
   }
 
-  // ─── SAVE PROJECT TO DATABASE ─────────────────────────────────────────────
-  const saveProjectToDb = async (projectData) => {
-    try {
-      const token = localStorage.getItem('gradelyToken')
-      if (!token) {
-        console.warn('No token found, skipping DB save')
-        return null
-      }
+  // // ─── SAVE PROJECT TO DATABASE ─────────────────────────────────────────────
+  // const saveProjectToDb = async (projectData) => {
+  //   try {
+  //     const token = localStorage.getItem('gradelyToken')
+  //     if (!token) {
+  //       console.warn('No token found, skipping DB save')
+  //       return null
+  //     }
 
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: projectData.topic || 'Untitled Project',
-          university: projectData.university || '',
-          department: projectData.department || '',
-          project_type: projectData.projectType || 'research',
-          status: 'in_progress',
-          is_paid: false,
-          chapters: [],
-          abstract: '',
-          references: [],
-          structure: projectData.structure || {},
-          project_info: {
-            topic: projectData.topic || '',
-            supervisorName: projectData.supervisorName || '',
-            supervisorNotes: projectData.supervisorNotes || '',
-            projectType: projectData.projectType || 'research',
-            university: projectData.university || '',
-            department: projectData.department || '',
-            builtContext: projectData.builtContext || '',
-            githubLink: projectData.githubLink || '',
-            guideContent: projectData.guideContent || '',
-          }
-        })
-      })
+  //     const res = await fetch('/api/projects', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'Authorization': `Bearer ${token}`
+  //       },
+  //       body: JSON.stringify({
+  //         title: projectData.topic || 'Untitled Project',
+  //         university: projectData.university || '',
+  //         department: projectData.department || '',
+  //         project_type: projectData.projectType || 'research',
+  //         status: 'in_progress',
+  //         is_paid: false,
+  //         chapters: [],
+  //         abstract: '',
+  //         references: [],
+  //         structure: projectData.structure || {},
+  //         project_info: {
+  //           topic: projectData.topic || '',
+  //           supervisorName: projectData.supervisorName || '',
+  //           supervisorNotes: projectData.supervisorNotes || '',
+  //           projectType: projectData.projectType || 'research',
+  //           university: projectData.university || '',
+  //           department: projectData.department || '',
+  //           builtContext: projectData.builtContext || '',
+  //           githubLink: projectData.githubLink || '',
+  //           guideContent: projectData.guideContent || '',
+  //         }
+  //       })
+  //     })
 
-      const data = await res.json()
-      if (res.ok) {
-        console.log('✅ Project saved to database with ID:', data.project?.id)
-        return data.project
-      } else {
-        console.warn('Failed to save project:', data.error)
-        return null
-      }
-    } catch (err) {
-      console.error('Error saving project:', err)
-      return null
-    }
-  }
+  //     const data = await res.json()
+  //     if (res.ok) {
+  //       console.log('✅ Project saved to database with ID:', data.project?.id)
+  //       return data.project
+  //     } else {
+  //       console.warn('Failed to save project:', data.error)
+  //       return null
+  //     }
+  //   } catch (err) {
+  //     console.error('Error saving project:', err)
+  //     return null
+  //   }
+  // }
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -120,7 +121,7 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
       const mode = params.get('mode')
       
       if (mode === 'new_project') {
-        setIsNewProject(true)
+        // setIsNewProject(true)
         setSkipToTopic(true)
         
         if (user) {
@@ -185,7 +186,12 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
     setLoading(true)
     setError('')
     try {
-      const result = await generateTopics(form.department, form.university, form.areaOfInterest)
+      const result = await generateTopics(
+        form.department,
+        form.university,
+        form.areaOfInterest,
+        form.topicImagination  // ← new param
+      )
       update('topics', result.topics)
       setStep(6)
     } catch {
@@ -214,72 +220,39 @@ const removePhoto = (index) => {
   setProjectPhotos(prev => prev.filter((_, i) => i !== index))
   setPhotoPreviewUrls(prev => prev.filter((_, i) => i !== index))
 }
-  const handleContinue = async () => {
+ const handleContinue = async () => {
     if (!form.supervisorName.trim()) {
       setError('Please enter your supervisor\'s full name.')
       return
     }
-
     setGeneratingProject(true)
     setError('')
 
     try {
-      // 1. Generate structure
-      const structure = await generateProjectStructure({
-        topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
+      const topic = form.hasTopic ? form.topicInput : form.selectedTopic?.title
+      if (!topic) {
+        setError('Please select or enter a topic before continuing.')
+        setGeneratingProject(false)
+        return
+      }
+
+      const projectInfo = {
+        topic,
         projectType: form.selectedTopic?.type || form.projectType || 'research',
         university: form.university,
         department: form.department,
+        supervisorName: form.supervisorName,
+        supervisorNotes: form.supervisorNotes || '',
+        githubLink: form.githubLink || '',
+        builtContext: form.builtContext || '',
+        guideContent: form.guideContent || '',
+        ragGuideContent: form.ragGuideContent || '',
         hasGuide: form.hasGuide,
-        guideContent: form.guideContent || '',
-        ragGuideContent: form.ragGuideContent || ''
-      })
-
-      const projectData = {
-        ...form,
-        topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
-        projectType: form.selectedTopic?.type || form.projectType || 'research',
-        supervisorName: form.supervisorName,
-        structure: structure,
-        guideContent: form.guideContent || '',
-        chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
+        studentName: user?.name || form.name || '',
       }
 
-      // 2. Save to session storage
-      sessionStorage.setItem('gradelyProject', JSON.stringify({
-        ...form,
-        supervisorName: form.supervisorName,
-        topic: form.hasTopic ? form.topicInput : form.selectedTopic?.title,
-        projectType: form.selectedTopic?.type || form.projectType || 'research',
-        guideContent: form.guideContent || ''
-      }))
-
-      // 3. Save to database IMMEDIATELY
-      const dbProject = await saveProjectToDb(projectData)
-
-      // 4. Prepare result for SocraticBuilder
-      const resultData = {
-        projectInfo: {
-          topic: projectData.topic,
-          supervisorName: projectData.supervisorName,
-          supervisorNotes: projectData.supervisorNotes,
-          projectType: projectData.projectType,
-          university: projectData.university,
-          department: projectData.department,
-          builtContext: projectData.builtContext,
-          githubLink: projectData.githubLink,
-          guideContent: projectData.guideContent,
-        },
-        structure: structure,
-        chapters: structure.chapters.map(ch => ({ ...ch, content: '' })),
-        abstract: '',
-        references: [],
-        dbProjectId: dbProject?.id || null,
-        isPaidUser: false,
-      }
       // Upload hardware photos to Cloudinary if any were selected
-      let uploadedPhotoUrls = []
-      if (projectPhotos.length > 0) {
+      if (projectPhotos && projectPhotos.length > 0) {
         try {
           const formData = new FormData()
           projectPhotos.forEach(f => formData.append('photos', f))
@@ -289,32 +262,31 @@ const removePhoto = (index) => {
             body: formData
           })
           const uploadData = await uploadRes.json()
-          if (uploadData.success) uploadedPhotoUrls = uploadData.urls
+          if (uploadData.success) projectInfo.photos = uploadData.urls
         } catch (err) {
           console.error('Photo upload failed, continuing without photos:', err)
         }
       }
 
-      // Merge photos + video link into result data
-      resultData.photos = uploadedPhotoUrls
+      // Save to sessionStorage — generate page reads this
+      sessionStorage.setItem('gradelyProject', JSON.stringify(projectInfo))
 
-      sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
-      sessionStorage.removeItem('gradelyPaid')
+      // Clear any stale session data from previous projects
+      sessionStorage.removeItem('gradelyResult')
       sessionStorage.removeItem('gradelyProjectDbId')
       sessionStorage.removeItem('gradelyChatHistory')
       sessionStorage.removeItem('gradelyCompletedSections')
       sessionStorage.removeItem('gradelySectionIndex')
 
-      // 5. Mark user as onboarded
-      if (!isNewProject && user && user.onboarded === false) {
-        await markOnboarded()
+      if (!user?.onboarded) {
+        try { await markOnboarded() } catch (e) { console.error(e) }
       }
 
-      // 6. Navigate to build
-      navigate('/build')
+      navigate('/generate')
+
     } catch (err) {
-      console.error('Failed to generate project:', err)
-      setError('Failed to generate your project. Please try again.')
+      console.error('Failed to start project generation:', err)
+      setError('Something went wrong. Please try again.')
     } finally {
       setGeneratingProject(false)
     }
@@ -467,28 +439,67 @@ const removePhoto = (index) => {
           </StepCard>
         )}
 
-        {/* Step 5b — No topic: pick area (using dynamicAreas) */}
+        {/* Step 5b — No topic: pick area + imagination */}
         {step === 5 && form.hasTopic === false && (
-          <StepCard title="What area interests you?" subtitle="Pick an area and we'll generate topic ideas for you">
-            <label className="label">Area of interest</label>
+          <StepCard title="What area interests you?" subtitle="Pick an area and we'll suggest great topics for you">
+
+            {/* Free text imagination field */}
+            <label className="label">What kind of project do you have in mind? (optional)</label>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="e.g. I want to build something that helps farmers track their harvest, or I'm interested in cybersecurity and mobile apps..."
+              value={form.topicImagination}
+              onChange={e => update('topicImagination', e.target.value)}
+              style={{ resize: 'vertical', minHeight: 80, fontFamily: 'Geist, sans-serif' }}
+            />
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6, marginBottom: 20 }}>
+              Even a rough idea helps Grad suggest more relevant topics.
+            </p>
+
+            {/* Area chips */}
+            <label className="label">Then pick your area of interest</label>
             {areasLoading ? (
-              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>Loading areas for {form.department}...</p>
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>
+                Loading areas for {form.department}...
+              </p>
             ) : dynamicAreas.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>
                 No areas available. Please go back and select a department.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                 {dynamicAreas.map(a => (
-                  <ChoiceButton key={a} active={form.areaOfInterest === a} onClick={() => update('areaOfInterest', a)}>
+                  <button
+                    key={a}
+                    onClick={() => update('areaOfInterest', a)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 20,
+                      border: `1.5px solid ${form.areaOfInterest === a ? 'var(--accent)' : 'var(--border)'}`,
+                      background: form.areaOfInterest === a ? 'rgba(0,126,167,0.08)' : 'var(--bg-card)',
+                      color: form.areaOfInterest === a ? 'var(--accent)' : 'var(--text-muted)',
+                      fontSize: 13,
+                      fontWeight: form.areaOfInterest === a ? 600 : 400,
+                      cursor: 'pointer',
+                      fontFamily: 'Geist, sans-serif',
+                      transition: 'all 0.15s'
+                    }}
+                  >
                     {a}
-                  </ChoiceButton>
+                  </button>
                 ))}
               </div>
             )}
+
             {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 12 }}>{error}</p>}
-            <StepNav onBack={() => setStep(4)} onNext={handleGenerateTopics}
-              disabled={!form.areaOfInterest || areasLoading} loading={loading || areasLoading} nextLabel="Generate Topics →" />
+            <StepNav
+              onBack={() => setStep(4)}
+              onNext={handleGenerateTopics}
+              disabled={!form.areaOfInterest || areasLoading}
+              loading={loading || areasLoading}
+              nextLabel="Generate Topics →"
+            />
           </StepCard>
         )}
 
@@ -679,7 +690,7 @@ const removePhoto = (index) => {
                 opacity: (form.supervisorName.trim() && !generatingProject) ? 1 : 0.6,
                 cursor: (form.supervisorName.trim() && !generatingProject) ? 'pointer' : 'not-allowed',
               }}>
-              {generatingProject ? 'Building your project...' : 'Generate My Project →'}
+              {generatingProject ? 'Starting...' : 'Generate My Project →'}
             </button>
             <button className="btn-ghost" onClick={() => setStep(8)}
               style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>

@@ -281,7 +281,7 @@ const handlePurchase = async (amount, planName) => {
                         background: project.status === 'complete' ? 'rgba(45,155,111,0.1)' : 'rgba(0,126,167,0.1)',
                         color: getStatusColor(project.status),
                       }}>{getStatusLabel(project.status)}</span>
-                      {project.is_paid && (
+                      {!!project.is_paid && (
                         <span style={{
                           fontSize: 11,
                           padding: '2px 10px',

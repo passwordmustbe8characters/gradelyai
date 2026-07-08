@@ -23,6 +23,32 @@ dotenv.config()
 console.log('GROQ_API_KEY loaded:', process.env.GROQ_API_KEY ? 'YES (length: ' + process.env.GROQ_API_KEY.length + ')' : 'NO - KEY MISSING!');
 
 
+// ─── OPENAI HELPER ────────────────────────────────────────────────────────────
+async function callOpenAI(system, user, maxTokens = 1500) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      temperature: 0.7,
+      max_tokens: maxTokens
+    })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message || 'OpenAI error')
+  return data.choices[0].message.content
+}
+
+function serverSafeParseJSON(raw, fallback = null) {
+  try {
+    const clean = raw.replace(/```json|```/g, '').trim()
+    return JSON.parse(clean)
+  } catch { return fallback }
+}
 
 const app = express()
 const upload = multer({ dest: 'uploads/' })
@@ -538,16 +564,42 @@ const { messages, projectInfo, chapterStructure, requestType, currentChapterNumb
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   let studentTopicSentence = lastUserMessage?.content || '';
 
-  // ── Detect if student is asking Grad to generate autonomously ────────────────
+  // ─── RAG: retrieve guide content (must be before autonomous check) ──────────
+  let guideContext = '';
+  try {
+    const currentSection = { title: currentSectionTitle || chapterStructure?.currentSection?.title || 'Introduction' }
+    const guideData = await getRelevantGuideContent(
+      projectInfo?.university || '',
+      projectInfo?.department || '',
+      currentSection.title
+    );
+    if (guideData) {
+      guideContext = `\n\nIMPORTANT - Follow this exact departmental guide structure for this section:\n${guideData.structure}\n\n`;
+      if (guideData.expectations) guideContext += `Writing expectations: ${guideData.expectations}\n`;
+    }
+  } catch (err) { console.error('RAG fetch error:', err); }
+
+  // ─── GitHub repo context for Chapters 3, 4, 5 ────────────────────────────
+  if ([3, 4, 5].includes(Number(currentChapterNumber)) && projectInfo?.githubLink) {
+    const repoContext = await fetchGithubContext(projectInfo.githubLink);
+    guideContext += repoContext;
+  }
+
+  // ── Detect if student is asking Grad to generate autonomously
   const autonomousPatterns = [
-    /generate.*(?:on your own|yourself|for me|it yourself)/i,
-    /(?:can you|please|just)\s+(?:write|generate|create|do|make)\s+(?:it|this|the|a)/i,
-    /write.*(?:for me|yourself|on your own)/i,
-    /do it (for me|yourself)/i,
-    /(?:definition of terms|definitions)\s*(?:on your own|yourself|for me)?/i,
-    /you can generate/i,
-    /generate the/i,
-  ]
+  /generate.*(?:on your own|yourself|for me|it yourself)/i,
+  /(?:can you|please|just)\s+(?:write|generate|create|do|make)\s+(?:it|this|the|a)/i,
+  /write.*(?:for me|yourself|on your own)/i,
+  /do it (for me|yourself)/i,
+  /(?:definition of terms|definitions)\s*(?:on your own|yourself|for me)?/i,
+  /you can generate/i,
+  /generate the/i,
+  /figure.*(?:this|it).*out\s*(?:yourself|on your own)?/i,
+  /do this (on your own|yourself|for me)/i,
+  /(?:i don't know|i dont know)\s+(?:what to do|how to)/i,
+  /(?:just|please)?\s*do\s+(?:it|this)\s*(?:for me|please|yourself)?/i,
+  /(?:write|generate|create)\s+(?:it|this|the section|the definitions?|the terms?)\s*(?:for me|yourself|on your own|please)?/i,
+]
   const isAutonomousRequest = autonomousPatterns.some(p => p.test(studentTopicSentence))
 
   if (isAutonomousRequest && requestType !== 'stuck') {
@@ -577,40 +629,15 @@ Write complete content for this section. Be specific to the project topic.`
       const data = await completion.json()
       if (!completion.ok) throw new Error(data.error?.message || 'OpenAI error')
       const autoContent = data.choices[0].message.content.trim()
-      let finalResponse = `[SECTION_DRAFT]${autoContent}[/SECTION_DRAFT]`
-      return res.json({ success: true, message: finalResponse })
+let finalResponse = `[SECTION_DRAFT]${autoContent}[/SECTION_DRAFT]`
+return res.json({ success: true, message: finalResponse })
     } catch (error) {
       console.error('Autonomous generation error:', error)
       return res.status(500).json({ success: false, error: error.message })
     }
   }
 
-  // ─── RAG: retrieve guide content ──────────────────────────────────────────
-  let guideContext = '';
-  try {
-    const currentSection = chapterStructure?.currentSection || { title: 'Introduction' };
-    const guideData = await getRelevantGuideContent(
-      projectInfo?.university || '',
-      projectInfo?.department || '',
-      currentSection.title || 'Introduction'
-    );
-    if (guideData) {
-      guideContext = `\n\nIMPORTANT - Follow this exact departmental guide structure for this section:\n${guideData.structure}\n\n`;
-      if (guideData.expectations) {
-        guideContext += `Writing expectations: ${guideData.expectations}\n`;
-      }
-    }
-  } catch (err) {
-    console.error('RAG fetch error:', err);
-  }
-
-  // ─── GitHub repo context for Chapters 3, 4, 5 ──────────────────────────────
-  if ([3, 4, 5].includes(Number(currentChapterNumber)) && projectInfo?.githubLink) {
-    const repoContext = await fetchGithubContext(projectInfo.githubLink);
-    guideContext += repoContext;
-  }
-
-  // ─── STUCK MODE: give a worked example, student must rephrase ─────────────
+    // ─── STUCK MODE: give a worked example, student must rephrase ─────────────
   if (requestType === 'stuck') {
     const currentSection = chapterStructure?.currentSection || { title: 'this section' };
     const stuckSystemPrompt = `You are a Nigerian university project supervisor helping a student who is stuck writing their final year project.
@@ -654,7 +681,11 @@ Write ONE example sentence showing how a student could start answering this sect
   }
 
   // ─── OpenAI call (normal draft mode) ───────────────────────────────────────
-  const systemPrompt = `You write 2-3 supporting paragraphs for a student's topic sentence. Do NOT repeat the topic sentence. Use simple language. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize.${guideContext}`;
+ const isLaterChapter = [3, 4, 5].includes(Number(currentChapterNumber))
+  const githubInstruction = isLaterChapter && projectInfo?.githubLink
+    ? `\n\nIMPORTANT: The student's actual project repository is provided above in the guide context. Write technically specific paragraphs that reference the real technologies, file structure, and implementation details from that repository. Do not write generic content.`
+    : ''
+  const systemPrompt = `You write 2-3 supporting paragraphs for a student's topic sentence. Do NOT repeat the topic sentence. Use simple language. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize.${githubInstruction}${guideContext}`;
 
   try {
     const completion = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -700,6 +731,289 @@ Write ONE example sentence showing how a student could start answering this sect
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// ─── FULL PROJECT GENERATION (SSE) ───────────────────────────────────────────
+app.post('/api/generate-full-project', requireAuth, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+
+  try {
+    const { projectInfo } = req.body
+    if (!projectInfo?.topic) {
+      send('error', { message: 'Project topic is required' })
+      return res.end()
+    }
+
+    // ── Step 1: Fetch real papers ──────────────────────────────────────────────
+    send('status', { message: 'Finding real academic papers on your topic...', progress: 5 })
+    let realPapers = []
+    try {
+      const queries = [
+        projectInfo.topic.split(' ').slice(0, 4).join(' '),
+        `${projectInfo.department} ${projectInfo.topic.split(' ').slice(0, 3).join(' ')}`,
+        projectInfo.topic
+      ]
+      for (const q of queries) {
+        const paperRes = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=15&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`)
+        if (paperRes.ok) {
+          const paperData = await paperRes.json()
+          if (paperData.data?.length > 0) {
+            realPapers = paperData.data
+            break
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Paper fetch failed, continuing without:', err.message)
+    }
+    send('status', { message: `Found ${realPapers.length} real papers. Reading them...`, progress: 15 })
+
+    // ── Step 2: Get guide from RAG ─────────────────────────────────────────────
+    send('status', { message: 'Studying your department guide...', progress: 20 })
+    let guideContext = ''
+    try {
+      const guideData = await getRelevantGuideContent(
+        projectInfo.university || '',
+        projectInfo.department || '',
+        'Introduction'
+      )
+      if (guideData?.structure) {
+        guideContext = `\n\nFOLLOW THIS DEPARTMENT GUIDE STRUCTURE EXACTLY:\n${guideData.structure}\n`
+        if (guideData.expectations) guideContext += `Writing expectations: ${guideData.expectations}\n`
+      }
+    } catch (err) {
+      console.error('Guide fetch failed:', err.message)
+    }
+
+    // ── Step 3: Generate project structure ────────────────────────────────────
+    send('status', { message: 'Planning your chapter structure...', progress: 25 })
+    const structureSystem = `You are a Nigerian university academic expert. Generate final year project chapter structures. Always respond with valid JSON only. No markdown. No preamble.${guideContext}`
+    const structureUser = `Create a chapter structure for:
+- University: ${projectInfo.university}
+- Department: ${projectInfo.department}
+- Topic: ${projectInfo.topic}
+- Project Type: ${projectInfo.projectType || 'software'}
+
+Return ONLY this JSON:
+{
+  "chapters": [
+    {
+      "number": 1,
+      "title": "INTRODUCTION",
+      "subsections": [
+        { "number": "1.1", "title": "Background to the Study" },
+        { "number": "1.2", "title": "Statement of the Problem" },
+        { "number": "1.3", "title": "Aim and Objectives of the Study" },
+        { "number": "1.4", "title": "Significance of the Study" },
+        { "number": "1.5", "title": "Scope of the Study" },
+        { "number": "1.6", "title": "Limitations of the Study" },
+        { "number": "1.7", "title": "Definition of Terms" }
+      ]
+    }
+  ],
+  "referenceStyle": "APA",
+  "estimatedPages": 80
+}`
+
+    const structureRaw = await callOpenAI(structureSystem, structureUser, 2000)
+    const structure = serverSafeParseJSON(structureRaw, {
+      chapters: [
+        { number: 1, title: 'INTRODUCTION', subsections: [
+          { number: '1.1', title: 'Background to the Study' },
+          { number: '1.2', title: 'Statement of the Problem' },
+          { number: '1.3', title: 'Aim and Objectives of the Study' },
+          { number: '1.4', title: 'Significance of the Study' },
+          { number: '1.5', title: 'Scope of the Study' },
+          { number: '1.6', title: 'Limitations of the Study' },
+          { number: '1.7', title: 'Definition of Terms' }
+        ]},
+        { number: 2, title: 'LITERATURE REVIEW', subsections: [] },
+        { number: 3, title: 'SYSTEM ANALYSIS AND DESIGN', subsections: [] },
+        { number: 4, title: 'SYSTEM IMPLEMENTATION', subsections: [] },
+        { number: 5, title: 'SUMMARY, CONCLUSION AND RECOMMENDATIONS', subsections: [] }
+      ],
+      referenceStyle: 'APA',
+      estimatedPages: 80
+    })
+
+    // ── Step 4: Build paper context string ────────────────────────────────────
+    const paperContext = realPapers.slice(0, 8).map((p, i) => {
+      const authors = p.authors?.map(a => a.name).join(', ') || 'Unknown Author'
+      const year = p.year || 'n.d.'
+      const journal = p.journal?.name || p.publicationVenue?.name || ''
+      return `[${i + 1}] ${authors} (${year}). "${p.title}". ${journal}.`
+    }).join('\n')
+
+    // ── Step 5: Generate each chapter ─────────────────────────────────────────
+    const generatedChapters = []
+    const totalChapters = structure.chapters.length
+
+    for (const chapter of structure.chapters) {
+      const progressBase = 25 + ((chapter.number / totalChapters) * 55)
+      send('status', { message: `Writing Chapter ${chapter.number}: ${chapter.title}...`, progress: Math.round(progressBase) })
+
+      const subsectionList = chapter.subsections?.map(s =>
+        `${s.number} ${typeof s === 'string' ? s : s.title}`
+      ).join('\n') || ''
+
+      const isImplementation = chapter.number >= 3 && projectInfo.projectType !== 'research'
+      const githubContext = isImplementation && projectInfo.githubLink
+        ? `\n\nStudent's GitHub repository: ${projectInfo.githubLink}. Reference the real technologies and implementation details.`
+        : ''
+
+      const chapterSystem = `You are an academic writer producing a Nigerian university final year project chapter. Write formal, specific, well-structured academic content. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize. Write in full paragraphs. Be specific to the project topic and Nigerian context.${githubContext}`
+
+      const chapterUser = `Write Chapter ${chapter.number}: ${chapter.title} for this project:
+
+Project Title: "${projectInfo.topic}"
+Student University: ${projectInfo.university}
+Department: ${projectInfo.department}
+Project Type: ${projectInfo.projectType || 'software'}
+
+${subsectionList ? `Required subsections:\n${subsectionList}\n` : ''}
+${paperContext ? `\nReal academic papers to cite (use these, do not invent any):\n${paperContext}\n` : ''}
+${projectInfo.supervisorNotes ? `\nSupervisor notes: ${projectInfo.supervisorNotes}\n` : ''}
+
+Write each subsection in full. Use in-text citations from the papers provided above in APA format (Author, Year). Minimum 3 paragraphs per subsection. Be specific to "${projectInfo.topic}" throughout. Do not use placeholders or say "to be completed".`
+
+      let chapterContent = ''
+      try {
+        chapterContent = await callOpenAI(chapterSystem, chapterUser, 3000)
+        // Clean up any leaked formatting
+        chapterContent = chapterContent
+          .replace(/```[a-z]*/gi, '')
+          .replace(/```/g, '')
+          .trim()
+      } catch (err) {
+        console.error(`Chapter ${chapter.number} generation failed:`, err.message)
+        chapterContent = `Chapter ${chapter.number}: ${chapter.title}\n\nContent generation failed. Please regenerate this chapter.`
+      }
+
+      generatedChapters.push({
+        number: chapter.number,
+        title: chapter.title,
+        subsections: chapter.subsections || [],
+        content: chapterContent
+      })
+    }
+
+    // ── Step 6: Generate references deterministically ─────────────────────────
+    send('status', { message: 'Formatting your real references...', progress: 82 })
+    const references = realPapers.map((p, i) => {
+      const authors = p.authors?.length
+        ? p.authors.map(a => {
+            const parts = (a.name || '').trim().split(' ')
+            if (parts.length === 1) return parts[0]
+            const last = parts[parts.length - 1]
+            const initials = parts.slice(0, -1).map(n => (n[0] || '') + '.').join(' ')
+            return `${last}, ${initials}`
+          }).join(', ').replace(/, ([^,]+)$/, ', & $1')
+        : 'Unknown Author'
+      const year = p.year || 'n.d.'
+      const title = p.title || 'Untitled'
+      const journal = p.journal?.name || p.publicationVenue?.name || ''
+      const doi = p.externalIds?.DOI || ''
+      const url = p.openAccessPdf?.url || (doi ? `https://doi.org/${doi}` : '')
+      let citation = `${authors} (${year}). ${title}.`
+      if (journal) citation += ` ${journal}.`
+      if (doi) citation += ` https://doi.org/${doi}`
+      else if (url) citation += ` ${url}`
+      return { id: i + 1, citation: citation.trim(), url: url || '' }
+    })
+
+    // ── Step 7: Save to DB ────────────────────────────────────────────────────
+    send('status', { message: 'Saving your project...', progress: 90 })
+    const dbResult = await db.execute({
+      sql: `INSERT INTO projects 
+        (user_id, title, university, department, project_type, status, is_paid, chapters, abstract, refs, structure, project_info, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      args: [
+        req.user.id,
+        projectInfo.topic || 'Untitled Project',
+        projectInfo.university || '',
+        projectInfo.department || '',
+        projectInfo.projectType || 'software',
+        'in_progress',
+        0,
+        JSON.stringify(generatedChapters),
+        '',
+        JSON.stringify(references),
+        JSON.stringify(structure),
+        JSON.stringify(projectInfo)
+      ]
+    })
+
+    const projectId = Number(dbResult.lastInsertRowid)
+
+    send('status', { message: 'Your project is ready!', progress: 100 })
+    send('done', {
+      projectId,
+      chapters: generatedChapters,
+      references,
+      structure,
+      projectInfo
+    })
+    res.end()
+
+  } catch (err) {
+    console.error('Generation error:', err)
+    send('error', { message: err.message || 'Generation failed. Please try again.' })
+    res.end()
+  }
+})
+
+// ─── UNDERSTAND SECTION ───────────────────────────────────────────────────────
+app.post('/api/understand-section', requireAuth, async (req, res) => {
+  const { sectionTitle, sectionContent, studentAnswer } = req.body
+  if (!sectionTitle || !sectionContent) {
+    return res.status(400).json({ error: 'sectionTitle and sectionContent are required' })
+  }
+
+  try {
+    const system = `You are Grad, a warm and direct academic mentor helping a Nigerian university student understand their own final year project. Be concise and specific. Never be generic. Always refer to the actual content of the section provided.`
+
+    if (studentAnswer && studentAnswer.trim().length > 5) {
+      // Student answered — return a paragraph update
+      const user = `Section: "${sectionTitle}"
+Original section content: ${sectionContent.slice(0, 1000)}
+Student's personal context they want to add: "${studentAnswer}"
+
+Rewrite ONE paragraph from this section to naturally incorporate the student's specific detail or personal experience. Keep the academic tone. Return only the rewritten paragraph — no preamble, no explanation.`
+
+      const updatedParagraph = await callOpenAI(system, user, 400)
+      return res.json({ type: 'update', updatedParagraph: updatedParagraph.trim() })
+    }
+
+    // No answer — return comprehension questions
+    const user = `Section: "${sectionTitle}"
+Content: ${sectionContent.slice(0, 800)}
+
+Return ONLY this JSON (no markdown, no preamble):
+{
+  "plainExplanation": "One sentence explaining what this section argues in plain language a student can understand",
+  "localQuestion": "One specific question connecting this section's content to the student's personal experience at their Nigerian university",
+  "expertQuestion": "One specific question a final year project panel examiner would ask about this exact section"
+}`
+
+    const raw = await callOpenAI(system, user, 350)
+    const data = serverSafeParseJSON(raw, {
+      plainExplanation: 'This section explains the context and importance of your project topic.',
+      localQuestion: 'Have you personally experienced the problem this section describes? Can you give a specific example from your university?',
+      expertQuestion: 'How does the background you presented directly motivate the specific research problem you are solving?'
+    })
+    res.json({ type: 'questions', ...data })
+
+  } catch (err) {
+    console.error('Understand section error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
 
 // ─── PERSIST CHAPTERS ────────────────────────────────────────────────────────
 app.post('/api/projects/:id/persist-chapters', requireAuth, async (req, res) => {

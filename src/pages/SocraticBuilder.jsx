@@ -484,6 +484,8 @@ const showFullLogo = sidebarOpen && !isMobile;
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
   const lastMessageWasDraft = lastMsg?.role === 'assistant' && lastMsg?.type === 'draft'
   const isChapter1Complete = messages.some(m => m.type === 'complete')
+  const isPaidUser = savedResult?.isPaidUser || sessionStorage.getItem('gradelyPaid')
+  const isBlockedByPaywall = isChapter1Complete && !isPaidUser
   const isAskingForTopic = () => lastMsg?.role === 'assistant' && lastMsg?.type === 'question'
   const showStuckButton = isAskingForTopic()
 
@@ -671,31 +673,31 @@ const getSectionPrompt = (sectionTitle) => {
     if (!inProgressSection) return
 
     const sectionNumber = inProgressSection.number
-    const draftMessageIndex = messages.map((m, i) => ({ ...m, i }))
-      .filter(m => m.role === 'assistant' && m.type === 'draft')
-      .pop()?.i
-
-
-   setCompletedSections(prev => [...prev, sectionNumber])
-    if (draftMessageIndex !== undefined) {
-      setSectionIndexMap(prev => ({ ...prev, [sectionNumber]: draftMessageIndex }))
-    }
+    setCompletedSections(prev => [...prev, sectionNumber])
+    setSectionIndexMap(prev => ({ ...prev, [sectionNumber]: messageIndex }))
     const nextSection = allSections.find(
       s => !completedSections.includes(s.number) && s.number !== sectionNumber
     )
 
+    const currentChapterNum = parseInt(sectionNumber.split('.')[0], 10)
+
     if (nextSection) {
       const prompt = getSectionPrompt(nextSection.title)
+      const nextChapterNum = nextSection.number.split('.')[0]
+      const isNewChapter = nextChapterNum !== String(currentChapterNum)
+      const transitionPrefix = isNewChapter
+        ? `✅ Chapter ${currentChapterNum} complete! Let's move on to **Chapter ${nextChapterNum}**.\n\n`
+        : ''
       setMessages(prev => [
         ...prev,
         { role: 'user', content: '✅ Looks good, moving on.' },
-        { role: 'assistant', type: 'question', content: `Let's move to the next section: **${nextSection.title}**. ${prompt}` }
+        { role: 'assistant', type: 'question', content: `${transitionPrefix}Let's move to the next section: **${nextSection.title}**. ${prompt}` }
       ])
     } else {
       setMessages(prev => [
         ...prev,
         { role: 'user', content: '✅ Looks good, moving on.' },
-        { role: 'assistant', type: 'complete', content: '🎉 Congratulations! You have completed all sections of Chapter 1. You can now review your project or proceed to the next steps.' }
+        { role: 'assistant', type: 'complete', content: `🎉 Congratulations! You have completed all sections of Chapter ${currentChapterNum}. ${currentChapterNum < 5 ? "Let's move to the next chapter." : "You have completed your entire project!"}` }
       ])
     }
   }
@@ -720,16 +722,16 @@ const getSectionPrompt = (sectionTitle) => {
     if (isTyping) return
     setIsTyping(true)
     try {
-      const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
-      const chapterNum = currentSection?.number ? parseInt(currentSection.number.split('.')[0], 10) : 1
+   const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+      const editChapterNum = currentSection?.number ? parseInt(currentSection.number.split('.')[0], 10) : 1
+      const currentChapterStructure = currentResult?.structure?.chapters?.find(c => c.number === editChapterNum) || { subsections: [] }
       const aiReply = await socraticChat(
         savedProjectInfo || currentResult?.projectInfo || {},
-        chapter1Structure,
-        messages,
-        '',
+        currentChapterStructure,
+        messages.slice(0, index),
+        text,
         currentResult?.references || [],
-        { requestType: 'stuck', currentChapterNumber: chapterNum, currentSectionTitle: currentSection?.title || '' }
+        { requestType: 'draft', currentChapterNumber: editChapterNum, currentSectionTitle: currentSection?.title || '' }
       )
       const parsed = parseAIResponse(aiReply)
       setMessages(prev => [...prev, { role: 'assistant', type: parsed.type, exampleText: parsed.exampleText, content: parsed.content || '' }])
@@ -838,7 +840,12 @@ const handleSaveAndExit = async () => {
           chat_history: messages,
           completed_sections: completedSections,
           section_index_map: sectionIndexMap,
-          status: isChapter1Complete ? 'complete' : 'in_progress',
+          status: (() => {
+            const r = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
+            const allDone = (r.chapters || []).length > 0 &&
+              (r.chapters || []).every(ch => ch.content && ch.content.trim().length > 0)
+            return allDone ? 'complete' : 'in_progress'
+          })(),
         })
       }
     } catch (err) { console.error('Save & Exit sync failed:', err) }
@@ -887,10 +894,11 @@ const handleSaveAndExit = async () => {
     setIsTyping(true)
     try {
       const currentResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-      const chapter1Structure = currentResult?.structure?.chapters?.find(c => c.number === 1) || { subsections: [] }
+      const editChapterNum = currentSection?.number ? parseInt(currentSection.number.split('.')[0], 10) : 1
+      const currentChapterStructure = currentResult?.structure?.chapters?.find(c => c.number === editChapterNum) || { subsections: [] }
       const aiReply = await socraticChat(
         savedProjectInfo || currentResult?.projectInfo || {},
-        chapter1Structure,
+        currentChapterStructure,
         messages.slice(0, index),
         topicSentence,
         currentResult?.references || []
@@ -1216,8 +1224,31 @@ const handleSaveAndExit = async () => {
             </div>
           </div>
 
-         <div className="sb-input-area">
+        <div className="sb-input-area">
             <div className="sb-input-inner">
+             {isBlockedByPaywall ? (
+                <div style={{
+                  padding: '20px 24px', textAlign: 'center',
+                  background: 'rgba(0,126,167,0.04)',
+                  borderRadius: 12, border: '1px solid rgba(0,126,167,0.15)'
+                }}>
+                  <p style={{ fontWeight: 600, marginBottom: 8, fontFamily: 'Geist, sans-serif' }}>
+                    🎉 Chapter 1 Complete!
+                  </p>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.6 }}>
+                    Unlock the full project to continue building Chapters 2–5,
+                    humanize your content, and download your Word document.
+                  </p>
+                  <button
+                    className="sb-save-exit-btn"
+                    style={{ background: 'var(--accent)', cursor: 'pointer' }}
+                    onClick={() => navigate('/results')}
+                  >
+                    Unlock Full Project — ₦10,000 →
+                  </button>
+                </div>
+              ) : (
+              <>
               {showStuckButton && (
                 <button className="sb-quick-reply-btn" onClick={handleStuck} disabled={isTyping}
                   style={{ marginBottom: 8, alignSelf: 'flex-start' }}>
@@ -1242,7 +1273,9 @@ const handleSaveAndExit = async () => {
                 <button className={`sb-send-btn sb-send-btn-desktop ${input.trim() && !isTyping ? 'active' : 'inactive'}`} onClick={() => handleSend()} disabled={!input.trim() || isTyping}>
                   Submit →
                 </button>
-              </div>
+             </div>
+            </>
+            )}
             </div>
           </div>
         </div>
