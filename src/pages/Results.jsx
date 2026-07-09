@@ -601,8 +601,7 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
   const [data, setData] = useState(null)
   const [answer, setAnswer] = useState('')
   const [loading, setLoading] = useState(false)
-  const [updated, setUpdated] = useState(false)
-
+  const [updates, setUpdates] = useState([]) // track all updates, not just one
   const BASE_URL = import.meta.env.VITE_API_URL || ''
 
   const load = async () => {
@@ -637,9 +636,9 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
       const d = await res.json()
       if (d.updatedParagraph && onUpdateParagraph) {
         onUpdateParagraph(d.updatedParagraph)
-        setUpdated(true)
-        setOpen(false)
-        setAnswer('')
+        setUpdates(prev => [...prev, answer]) // log this update
+        setAnswer('') // clear input — allow another answer
+        // Don't close panel — let them keep adding context
       }
     } catch (err) {
       console.error('Update paragraph error:', err)
@@ -647,22 +646,19 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
     setLoading(false)
   }
 
-  if (updated) {
-    return (
-      <div style={{ margin: '8px 0 16px', padding: '8px 14px', background: 'rgba(45,155,111,0.08)', borderRadius: 8, border: '1px solid rgba(45,155,111,0.2)', fontSize: 13, color: 'var(--success)' }}>
-        ✓ Your personal context has been added to this section.
-      </div>
-    )
-  }
-
   return (
     <div style={{ margin: '8px 0 20px' }}>
+      {updates.length > 0 && (
+        <div style={{ marginBottom: 8, padding: '6px 12px', background: 'rgba(45,155,111,0.08)', borderRadius: 8, border: '1px solid rgba(45,155,111,0.15)', fontSize: 12, color: 'var(--success)' }}>
+          ✓ {updates.length} personal context{updates.length > 1 ? 's' : ''} added to this section.
+        </div>
+      )}
       <button
         onClick={load}
         disabled={loading}
         style={{ background: 'none', border: '1px solid rgba(0,126,167,0.2)', padding: '6px 14px', borderRadius: 20, color: 'var(--accent)', cursor: loading ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'Geist, sans-serif', transition: 'all 0.2s' }}
       >
-        {loading ? '...' : open ? '▾ Hide Grad\'s explanation' : '▸ Understand this section with Grad'}
+        {loading ? '...' : open ? '▾ Hide explanation' : updates.length > 0 ? '▸ Add more context' : '▸ Understand this section with Grad'}
       </button>
 
       {open && data && (
@@ -677,10 +673,15 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
           <p style={{ fontSize: 13, marginBottom: 14, color: 'var(--text)' }}>
             <strong>Your panel might ask:</strong> {data.expertQuestion}
           </p>
+          {updates.length > 0 && (
+            <p style={{ fontSize: 12, color: 'var(--success)', marginBottom: 10 }}>
+              You've already added {updates.length} response{updates.length > 1 ? 's' : ''} — you can keep adding more context below.
+            </p>
+          )}
           <textarea
             value={answer}
             onChange={e => setAnswer(e.target.value)}
-            placeholder="Type your answer here — your response will be woven into this section to personalise it (optional)"
+            placeholder={updates.length > 0 ? "Add another detail or personal experience to strengthen this section further..." : "Type your answer here — your response will be woven into this section to personalise it (optional)"}
             rows={3}
             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
           />
@@ -690,13 +691,13 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
               disabled={!answer.trim() || loading}
               style={{ padding: '8px 18px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: answer.trim() ? 'pointer' : 'not-allowed', opacity: answer.trim() ? 1 : 0.5 }}
             >
-              {loading ? 'Updating...' : 'Add to my project →'}
+              {loading ? 'Updating...' : updates.length > 0 ? 'Add more context →' : 'Add to my project →'}
             </button>
             <button
               onClick={() => setOpen(false)}
               style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}
             >
-              Skip
+              Close
             </button>
           </div>
         </div>

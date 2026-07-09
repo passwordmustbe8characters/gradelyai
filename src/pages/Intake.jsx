@@ -492,11 +492,47 @@ const removePhoto = (index) => {
               </div>
             )}
 
+            {/* Project type — shown after area is selected */}
+            {form.areaOfInterest && (
+              <div style={{ marginTop: 20 }}>
+                <label className="label">What type of project do you want to do?</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
+                  {[
+                    { value: 'software', label: '💻 Software', desc: 'App, system, or platform' },
+                    { value: 'hardware', label: '🔧 Hardware', desc: 'Physical device or circuit' },
+                    { value: 'research', label: '📄 Research', desc: 'Survey, analysis, or study' },
+                    { value: 'mixed', label: '⚡ Mixed', desc: 'Software + Hardware' },
+                  ].map(({ value, label, desc }) => (
+                    <button
+                      key={value}
+                      onClick={() => update('projectType', value)}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: 12,
+                        border: `1.5px solid ${form.projectType === value ? 'var(--accent)' : 'var(--border)'}`,
+                        background: form.projectType === value ? 'rgba(0,126,167,0.08)' : 'var(--bg-card)',
+                        color: form.projectType === value ? 'var(--accent)' : 'var(--text-muted)',
+                        fontSize: 13,
+                        fontWeight: form.projectType === value ? 600 : 400,
+                        cursor: 'pointer',
+                        fontFamily: 'Geist, sans-serif',
+                        textAlign: 'left',
+                        minWidth: 120,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{label}</div>
+                      <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 12 }}>{error}</p>}
             <StepNav
               onBack={() => setStep(4)}
               onNext={handleGenerateTopics}
-              disabled={!form.areaOfInterest || areasLoading}
+              disabled={!form.areaOfInterest || !form.projectType || areasLoading}
               loading={loading || areasLoading}
               nextLabel="Generate Topics →"
             />
