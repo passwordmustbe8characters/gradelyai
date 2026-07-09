@@ -518,6 +518,83 @@ const pageStyles = `
     .floating-icon-btn svg { width: 22px; height: 22px; }
   }
 `
+
+// ─── CORRECTIONS PANEL ────────────────────────────────────────────────────────
+function CorrectionsPanel({ chapterTitle, chapterContent, onApply }) {
+  const [open, setOpen] = useState(false)
+  const [corrections, setCorrections] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
+  const BASE_URL = import.meta.env.VITE_API_URL || ''
+
+  const apply = async () => {
+    if (!corrections.trim()) return
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      const res = await fetch(`${BASE_URL}/api/apply-corrections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ chapterTitle, chapterContent, corrections })
+      })
+      const data = await res.json()
+      if (data.revisedContent) {
+        onApply(data.revisedContent)
+        setDone(true)
+        setOpen(false)
+        setCorrections('')
+      }
+    } catch (err) {
+      console.error('Corrections error:', err)
+    }
+    setLoading(false)
+  }
+
+  if (done) return (
+    <div style={{ margin: '8px 0 16px', padding: '8px 14px', background: 'rgba(45,155,111,0.08)', borderRadius: 8, border: '1px solid rgba(45,155,111,0.2)', fontSize: 13, color: 'var(--success)' }}>
+      ✓ Supervisor corrections applied successfully.
+    </div>
+  )
+
+  return (
+    <div style={{ margin: '8px 0 20px' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ background: 'none', border: '1px solid rgba(217,79,79,0.3)', padding: '6px 14px', borderRadius: 20, color: 'var(--danger)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'Geist, sans-serif' }}
+      >
+        {open ? '✕ Cancel' : '📝 Apply supervisor corrections'}
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 12, padding: '16px 18px', background: 'rgba(217,79,79,0.03)', borderRadius: 10, border: '1px solid rgba(217,79,79,0.15)' }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+            Paste your supervisor's comments or corrections below. Grad will rewrite this chapter to address all of them.
+          </p>
+          <textarea
+            value={corrections}
+            onChange={e => setCorrections(e.target.value)}
+            placeholder={`e.g. "The background section needs more recent references — nothing older than 2020. The problem statement is too vague, be more specific about the gap. Add a paragraph about the Nigerian context in the significance section."`}
+            rows={5}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+            <button
+              onClick={apply}
+              disabled={!corrections.trim() || loading}
+              style={{ padding: '8px 18px', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: corrections.trim() ? 'pointer' : 'not-allowed', opacity: corrections.trim() ? 1 : 0.5 }}
+            >
+              {loading ? 'Applying corrections...' : 'Apply Corrections →'}
+            </button>
+            <button onClick={() => setOpen(false)} style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── UNDERSTAND PANEL COMPONENT ───────────────────────────────────────────────
 function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
   const [open, setOpen] = useState(false)
@@ -998,7 +1075,7 @@ export default function Results() {
                   >
                     <span className="ch-num">CH {ch.number}</span>
                     <span className="ch-title">{ch.title}</span>
-                    {isLocked && <span className="ch-badge locked">🔒</span>}
+                   {isLocked && <span className="ch-badge locked">🔒 Locked</span>}
                     {!isLocked && hasContent && <span className="ch-badge complete">✓</span>}
                     {!isLocked && !hasContent && <span className="ch-badge draft">Draft</span>}
                     {subsections.length > 0 && (
@@ -1167,15 +1244,26 @@ export default function Results() {
 
                       <div className="res-chapter-body">
                         {isLocked ? (
-                          <div className="res-locked-block">
-                            <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', marginBottom: 6 }}>This chapter is locked</p>
-                            <p>Unlock the full project to read and edit all five chapters.</p>
-                            <button onClick={() => setShowPaywall(true)}
-                              style={{ padding: '9px 22px', borderRadius: 100, border: 'none',
-                                background: 'var(--accent)', color: 'white', fontSize: 14,
-                                fontWeight: 600, cursor: 'pointer', marginTop: 4 }}>
-                              Unlock Project →
-                            </button>
+                         <div className="res-locked-block">
+                        <div style={{ fontSize: 28, marginBottom: 12 }}>🔒</div>
+                        <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+                          Chapter {ch.number}: {ch.title}
+                        </p>
+                        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 6, lineHeight: 1.6 }}>
+                          {ch.number === 2 && 'Your Literature Review is ready — covering the academic research behind your topic, real citations, and the gap your project fills.'}
+                          {ch.number === 3 && 'Your System Analysis chapter is ready — covering the methodology, system design, and technical approach specific to your project.'}
+                          {ch.number === 4 && 'Your Implementation chapter is ready — covering the actual build, tools used, and how your system works.'}
+                          {ch.number === 5 && 'Your Conclusion chapter is ready — covering your findings, recommendations, and the full summary of your project.'}
+                        </p>
+                        <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 20 }}>
+                          Unlock to read, edit, humanize, and download all five chapters.
+                        </p>
+                        <button
+                          onClick={() => setShowPaywall(true)}
+                          style={{ padding: '10px 24px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 100, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Unlock Full Project — ₦10,000 →
+                        </button>
                           </div>
                         ) : hasContent ? (
                           <>
@@ -1227,6 +1315,23 @@ export default function Results() {
                           </p>
                         )}
                       </div>
+
+                      {!isLocked && paid && (
+                        <CorrectionsPanel
+                          chapterTitle={ch.title}
+                          chapterContent={ch.content}
+                          onApply={(revisedContent) => {
+                            const updatedChapters = result.chapters.map((c, ci) =>
+                              ci === idx ? { ...c, content: revisedContent } : c
+                            )
+                            const updated = { ...result, chapters: updatedChapters }
+                            setResult(updated)
+                            sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+                            const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+                            if (projectId) updateProject(projectId, { chapters: updatedChapters }).catch(console.error)
+                          }}
+                        />
+                      )}
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 52, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
                         <button
@@ -1436,18 +1541,18 @@ export default function Results() {
       )}
 
       {/* ── UNLOCK BAR ── */}
-      {!paid && (
+     {!paid && (
         <div className="res-unlock-bar">
           <div>
             <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, fontFamily: 'Geist, sans-serif' }}>
-              You're reading Chapter 1 of {totalChapters}.
+              ✅ Your Chapter 1 is ready. {totalChapters - 1} more chapters are waiting.
             </p>
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Geist, sans-serif' }}>
-              Unlock all chapters, defense prep, flashcards, and Word export.
+              Unlock Chapters 2–{totalChapters}, defense prep, flashcards, supervisor corrections, and Word export.
             </p>
           </div>
           <button onClick={() => setShowPaywall(true)} className="res-unlock-btn">
-            Unlock Full Project — ₦10,000
+            Unlock Full Project — ₦10,000 →
           </button>
         </div>
       )}

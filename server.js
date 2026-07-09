@@ -752,26 +752,55 @@ app.post('/api/generate-full-project', requireAuth, async (req, res) => {
 
     // ── Step 1: Fetch real papers ──────────────────────────────────────────────
     send('status', { message: 'Finding real academic papers on your topic...', progress: 5 })
-    let realPapers = []
-    try {
-      const queries = [
-        projectInfo.topic.split(' ').slice(0, 4).join(' '),
-        `${projectInfo.department} ${projectInfo.topic.split(' ').slice(0, 3).join(' ')}`,
-        projectInfo.topic
-      ]
-      for (const q of queries) {
-        const paperRes = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=15&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`)
-        if (paperRes.ok) {
-          const paperData = await paperRes.json()
-          if (paperData.data?.length > 0) {
-            realPapers = paperData.data
-            break
+   let realPapers = []
+      try {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+        const queries = [
+          projectInfo.topic.split(' ').slice(0, 4).join(' '),
+          `${projectInfo.department} ${projectInfo.topic.split(' ').slice(0, 3).join(' ')}`,
+          projectInfo.topic
+        ]
+        for (const q of queries) {
+          try {
+            await sleep(1100) // Semantic Scholar rate limit: 1 req/sec without API key
+            const paperRes = await fetch(
+              `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=10&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`,
+              { headers: { 'User-Agent': 'GradelyAI/1.0 (academic research tool)' } }
+            )
+            console.log(`Semantic Scholar query "${q}": status ${paperRes.status}`)
+            if (paperRes.status === 429) {
+              console.log('Rate limited — waiting 3 seconds before retry')
+              await sleep(3000)
+              continue
+            }
+            if (!paperRes.ok) {
+              console.log(`Semantic Scholar returned ${paperRes.status} for query: ${q}`)
+              continue
+            }
+            const paperData = await paperRes.json()
+            if (paperData.data?.length > 0) {
+              realPapers = paperData.data
+              console.log(`Found ${realPapers.length} papers for query: "${q}"`)
+              break
+            } else {
+              console.log(`No papers found for query: "${q}", trying next`)
+            }
+          } catch (queryErr) {
+            console.error(`Query failed for "${q}":`, queryErr.message)
           }
         }
+        if (realPapers.length === 0) {
+          console.log('All Semantic Scholar queries returned no results — generation will proceed without real papers')
+        }
+      } catch (err) {
+        console.error('Paper fetch block failed:', err.message)
       }
-    } catch (err) {
-      console.error('Paper fetch failed, continuing without:', err.message)
-    }
+      send('status', {
+        message: realPapers.length > 0
+          ? `Found ${realPapers.length} real academic papers. Reading them...`
+          : 'Proceeding without external papers — Grad will generate from academic knowledge.',
+        progress: 15
+      })
     send('status', { message: `Found ${realPapers.length} real papers. Reading them...`, progress: 15 })
 
     // ── Step 2: Get guide from RAG ─────────────────────────────────────────────
@@ -842,13 +871,21 @@ Return ONLY this JSON:
       estimatedPages: 80
     })
 
-    // ── Step 4: Build paper context string ────────────────────────────────────
-    const paperContext = realPapers.slice(0, 8).map((p, i) => {
-      const authors = p.authors?.map(a => a.name).join(', ') || 'Unknown Author'
-      const year = p.year || 'n.d.'
-      const journal = p.journal?.name || p.publicationVenue?.name || ''
-      return `[${i + 1}] ${authors} (${year}). "${p.title}". ${journal}.`
-    }).join('\n')
+    // ── Step 4: Build paper context — abstracts only for AI, metadata for citations
+      // The AI gets abstracts to understand content. Real citation text is built separately.
+      const paperLookup = {} // key: "[1]" → real paper object
+      const paperContext = realPapers.slice(0, 8).map((p, i) => {
+        const ref = `[${i + 1}]`
+        paperLookup[ref] = p
+        const authors = p.authors?.slice(0, 3).map(a => a.name).join(', ') || 'Unknown Author'
+        const year = p.year || 'n.d.'
+        const journal = p.journal?.name || p.publicationVenue?.name || ''
+        // Give AI: number, title, year, journal, and a note to use as citation
+        // Do NOT give AI authors in citation format — it will hallucinate initials and page numbers
+        return `${ref} Title: "${p.title}" | Year: ${year} | Published in: ${journal || 'academic journal'} | Authors: ${authors}
+
+Use ${ref} as the in-text citation marker wherever this paper's findings are relevant.`
+      }).join('\n\n')
 
     // ── Step 5: Generate each chapter ─────────────────────────────────────────
     const generatedChapters = []
@@ -867,7 +904,20 @@ Return ONLY this JSON:
         ? `\n\nStudent's GitHub repository: ${projectInfo.githubLink}. Reference the real technologies and implementation details.`
         : ''
 
-      const chapterSystem = `You are an academic writer producing a Nigerian university final year project chapter. Write formal, specific, well-structured academic content. Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize. Write in full paragraphs. Be specific to the project topic and Nigerian context.${githubContext}`
+    const chapterSystem = `You are an academic writer producing a Nigerian university final year project chapter.
+
+CITATION RULES — FOLLOW EXACTLY:
+- When you reference a paper's findings, use its number marker like (Author, Year) but ONLY use the author name and year provided in the paper list — do not invent any other details
+- Write the citation as ([${chapter.number <= 2 ? 'Author, Year' : 'Author, Year'}]) immediately after the claim it supports
+- Never invent paper titles, authors, journals, volume numbers, or page numbers
+- If no paper supports a claim, write it without a citation — do not fabricate one
+
+WRITING RULES:
+- Write formal academic English appropriate for Nigerian universities
+- Be specific to "${projectInfo.topic}" throughout — never write generic academic filler
+- Minimum 3 full paragraphs per subsection
+- Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize, it is worth noting
+- Do not use placeholders like "[to be completed]" — write actual content${githubContext}`
 
       const chapterUser = `Write Chapter ${chapter.number}: ${chapter.title} for this project:
 
@@ -877,7 +927,7 @@ Department: ${projectInfo.department}
 Project Type: ${projectInfo.projectType || 'software'}
 
 ${subsectionList ? `Required subsections:\n${subsectionList}\n` : ''}
-${paperContext ? `\nReal academic papers to cite (use these, do not invent any):\n${paperContext}\n` : ''}
+${paperContext ? `\nREAL ACADEMIC PAPERS — use these as sources for your claims. Use the [number] markers as in-text citations:\n\n${paperContext}\n\nIMPORTANT: Only cite using the markers above. Never invent citations not in this list.\n` : 'No external papers available — write from established academic knowledge without citations.\n'}
 ${projectInfo.supervisorNotes ? `\nSupervisor notes: ${projectInfo.supervisorNotes}\n` : ''}
 
 Write each subsection in full. Use in-text citations from the papers provided above in APA format (Author, Year). Minimum 3 paragraphs per subsection. Be specific to "${projectInfo.topic}" throughout. Do not use placeholders or say "to be completed".`
@@ -991,16 +1041,15 @@ Rewrite ONE paragraph from this section to naturally incorporate the student's s
     }
 
     // No answer — return comprehension questions
-    const user = `Section: "${sectionTitle}"
-Content: ${sectionContent.slice(0, 800)}
+    const user = `Section title: "${sectionTitle}"
+Section content: ${sectionContent.slice(0, 1200)}
 
 Return ONLY this JSON (no markdown, no preamble):
 {
-  "plainExplanation": "One sentence explaining what this section argues in plain language a student can understand",
-  "localQuestion": "One specific question connecting this section's content to the student's personal experience at their Nigerian university",
-  "expertQuestion": "One specific question a final year project panel examiner would ask about this exact section"
+  "plainExplanation": "Write 3-4 sentences explaining what this section is saying in plain, direct language a Nigerian final year student can fully understand. Start by stating the main argument, then explain why it matters for the project, then explain how it connects to the next section. Avoid academic jargon — write like you are explaining to a friend.",
+  "localQuestion": "Write one specific, personal question that forces the student to connect this section to something they have actually seen, experienced or observed at their own university or in Nigeria. The question must reference something specific from the section content — not a generic question. Example format: 'In your Background, we argued that [specific claim]. Have you personally seen this at [university type] — for example [concrete example]? How does your experience compare to what the research says?'",
+  "expertQuestion": "Write one sharp, specific question that a Nigerian university external examiner would actually ask in a defense about this exact section. It must challenge a specific claim, methodology choice, or gap in this section — not a generic academic question. Format it exactly as an examiner would ask it in the room."
 }`
-
     const raw = await callOpenAI(system, user, 350)
     const data = serverSafeParseJSON(raw, {
       plainExplanation: 'This section explains the context and importance of your project topic.',
@@ -1011,6 +1060,38 @@ Return ONLY this JSON (no markdown, no preamble):
 
   } catch (err) {
     console.error('Understand section error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+
+// ─── SUPERVISOR CORRECTIONS ───────────────────────────────────────────────────
+app.post('/api/apply-corrections', requireAuth, async (req, res) => {
+  const { chapterTitle, chapterContent, corrections } = req.body
+  if (!chapterTitle || !chapterContent || !corrections) {
+    return res.status(400).json({ error: 'chapterTitle, chapterContent and corrections are required' })
+  }
+  try {
+    const system = `You are an academic editor helping a Nigerian university student revise their final year project chapter based on supervisor feedback.
+Apply the corrections carefully and completely. Maintain the academic tone and formal writing style.
+Keep all correct parts of the original — only change what the corrections address.
+Never reduce the length. If a correction asks to add something, add it properly.
+Return the complete revised chapter — not just the changed parts.`
+
+    const user = `Chapter: "${chapterTitle}"
+
+ORIGINAL CHAPTER CONTENT:
+${chapterContent.slice(0, 3000)}
+
+SUPERVISOR'S CORRECTIONS:
+${corrections}
+
+Rewrite the complete chapter applying all the supervisor's corrections. Return only the revised chapter content — no explanation, no preamble.`
+
+    const revised = await callOpenAI(system, user, 3000)
+    res.json({ success: true, revisedContent: revised.trim() })
+  } catch (err) {
+    console.error('Apply corrections error:', err)
     res.status(500).json({ error: err.message })
   }
 })
