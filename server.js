@@ -1196,21 +1196,48 @@ app.post('/api/ai', async (req, res) => {
 app.get('/api/papers', async (req, res) => {
   const { query } = req.query
   if (!query) return res.json({ data: [] })
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms))
   const queries = [query.split(' ').slice(0, 4).join(' '), query]
+
   for (const q of queries) {
     try {
+      await sleep(1100)
       const encoded = encodeURIComponent(q)
-      const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=15&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`
-      const response = await fetch(url)
-      if (!response.ok) continue
+      const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=10&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`
+
+      const ssHeaders = { 'User-Agent': 'GradelyAI/1.0' }
+      if (process.env.SEMANTIC_SCHOLAR_API_KEY) {
+        ssHeaders['x-api-key'] = process.env.SEMANTIC_SCHOLAR_API_KEY
+      }
+
+      const response = await fetch(url, { headers: ssHeaders })
+      console.log(`[/api/papers] query="${q}" status=${response.status}`)
+
+      if (response.status === 429) {
+        console.log('[/api/papers] Rate limited — waiting 5s')
+        await sleep(5000)
+        continue
+      }
+      if (!response.ok) {
+        console.log(`[/api/papers] Failed with ${response.status}`)
+        continue
+      }
+
       const data = await response.json()
-      if (data.data && data.data.length > 0) return res.json({ data: data.data })
-    } catch {
+      if (data.data && data.data.length > 0) {
+        console.log(`[/api/papers] Found ${data.data.length} papers for "${q}"`)
+        return res.json({ data: data.data })
+      }
+      console.log(`[/api/papers] No results for "${q}"`)
+    } catch (err) {
+      console.log(`[/api/papers] Exception: ${err.message}`)
       continue
     }
   }
-  res.json({ data: [] })
-})
+  console.log('[/api/papers] All queries exhausted — returning empty')
+  return res.json({ data: [] })
+  })
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
 app.post('/api/admin/login', (req, res) => {

@@ -95,23 +95,34 @@ Return ONLY this JSON:
 // ─── SEMANTIC SCHOLAR ─────────────────────────────────────────────────────────
 
 export async function fetchRealPapers(topic, department) {
+  // Better queries — more specific first, broader fallbacks
+  const topicWords = topic.split(' ').slice(0, 5).join(' ')
   const queries = [
-    topic.split(' ').slice(0, 4).join(' '),
-    department,
-    `${department} Nigeria`,
+    topicWords,                                    // e.g. "Network Authentication System Universities"
+    `${topicWords} Nigeria`,                       // Nigerian context
+    topic.split(' ').slice(0, 3).join(' '),        // shorter version
+    department.split(' ')[0],                      // just the main dept word e.g. "Computer"
   ]
 
   for (const q of queries) {
     try {
       const encoded = encodeURIComponent(q)
       const res = await fetch(`${BASE_URL}/api/papers?query=${encoded}`)
-      if (!res.ok) continue
+      if (!res.ok) {
+        console.log(`fetchRealPapers: /api/papers returned ${res.status} for "${q}"`)
+        continue
+      }
       const data = await res.json()
-      if (data.data && data.data.length > 0) return data.data
-    } catch {
+      if (data.data && data.data.length > 0) {
+        console.log(`fetchRealPapers: got ${data.data.length} papers for "${q}"`)
+        return data.data
+      }
+    } catch (err) {
+      console.log(`fetchRealPapers: exception for "${q}": ${err.message}`)
       continue
     }
   }
+  console.log('fetchRealPapers: all queries returned empty')
   return []
 }
 
