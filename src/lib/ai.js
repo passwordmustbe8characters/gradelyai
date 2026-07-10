@@ -96,12 +96,14 @@ Return ONLY this JSON:
 
 export async function fetchRealPapers(topic, department) {
   // Better queries — more specific first, broader fallbacks
-  const topicWords = topic.split(' ').slice(0, 5).join(' ')
+  // Shorter queries work better with Semantic Scholar rate limits
+  // Max 3 words per query to avoid 429s on the first attempt
+  const words = topic.split(' ').filter(w => w.length > 3) // skip short words like "of", "for", "a"
+  const shortTopic = words.slice(0, 3).join(' ')
   const queries = [
-    topicWords,                                    // e.g. "Network Authentication System Universities"
-    `${topicWords} Nigeria`,                       // Nigerian context
-    topic.split(' ').slice(0, 3).join(' '),        // shorter version
-    department.split(' ')[0],                      // just the main dept word e.g. "Computer"
+    shortTopic,                           // e.g. "Network Authentication System"
+    words.slice(0, 2).join(' '),          // e.g. "Network Authentication"
+    department.split(' ')[0],             // e.g. "Computer"
   ]
 
   for (const q of queries) {

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { exportToWord } from '../lib/export'
 // isPaid replaced by direct check on parsed.isPaidUser
-import { updateProject } from '../lib/auth'
+import { updateProject, fetchProject } from '../lib/auth'
 import { fetchRealPapers, generateReferences } from '../lib/ai'
 import Paywall from '../components/Paywall'
 import logoPrimary from '../assets/primary-logo.png' 
@@ -596,22 +596,33 @@ function CorrectionsPanel({ chapterTitle, chapterContent, onApply }) {
 }
 
 // ─── UNDERSTAND PANEL COMPONENT ───────────────────────────────────────────────
+const IMPLEMENTATION_KEYWORDS = ['implementation', 'system design', 'methodology', 'architecture', 'results', 'testing', 'evaluation', 'development', 'design', 'analysis']
+
 function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
   const [open, setOpen] = useState(false)
   const [data, setData] = useState(null)
   const [answer, setAnswer] = useState('')
+  const [githubLink, setGithubLink] = useState('')
+  const [photos, setPhotos] = useState([])
+  const [photoUrls, setPhotoUrls] = useState([])
   const [loading, setLoading] = useState(false)
-  const [updates, setUpdates] = useState([]) // track all updates, not just one
+  const [uploadingPhotos, setUploadingPhotos] = useState(false)
+  const [updates, setUpdates] = useState([])
   const BASE_URL = import.meta.env.VITE_API_URL || ''
+
+  const isImplementationSection = IMPLEMENTATION_KEYWORDS.some(k =>
+    sectionTitle.toLowerCase().includes(k)
+  )
+
+  const getToken = () => localStorage.getItem('token') || localStorage.getItem('gradelyToken')
 
   const load = async () => {
     if (data) { setOpen(o => !o); return }
     setLoading(true)
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
       const res = await fetch(`${BASE_URL}/api/understand-section`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
         body: JSON.stringify({ sectionTitle, sectionContent })
       })
       const d = await res.json()
@@ -623,28 +634,62 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
     setLoading(false)
   }
 
+  const handlePhotoSelect = async (e) => {
+    const files = Array.from(e.target.files).slice(0, 5)
+    setPhotos(files)
+    const previews = files.map(f => URL.createObjectURL(f))
+    setPhotoUrls(previews)
+
+    // Upload immediately so we have real URLs for the AI call
+    setUploadingPhotos(true)
+    try {
+      const formData = new FormData()
+      files.forEach(f => formData.append('photos', f))
+      const uploadRes = await fetch(`${BASE_URL}/api/upload/photos`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: formData
+      })
+      const uploadData = await uploadRes.json()
+      if (uploadData.success) setPhotoUrls(uploadData.urls)
+    } catch (err) {
+      console.error('Photo upload error:', err)
+    }
+    setUploadingPhotos(false)
+  }
+
   const submit = async () => {
-    if (!answer.trim()) return
+    const hasInput = answer.trim() || githubLink.trim() || photoUrls.length > 0
+    if (!hasInput) return
     setLoading(true)
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
       const res = await fetch(`${BASE_URL}/api/understand-section`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ sectionTitle, sectionContent, studentAnswer: answer })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+        body: JSON.stringify({
+          sectionTitle,
+          sectionContent,
+          studentAnswer: answer || null,
+          githubLink: githubLink.trim() || null,
+          photoUrls: photoUrls.length > 0 ? photoUrls : null
+        })
       })
       const d = await res.json()
       if (d.updatedParagraph && onUpdateParagraph) {
         onUpdateParagraph(d.updatedParagraph)
-        setUpdates(prev => [...prev, answer]) // log this update
-        setAnswer('') // clear input — allow another answer
-        // Don't close panel — let them keep adding context
+        setUpdates(prev => [...prev, answer || githubLink || 'photo upload'])
+        setAnswer('')
+        setGithubLink('')
+        setPhotos([])
+        setPhotoUrls([])
       }
     } catch (err) {
       console.error('Update paragraph error:', err)
     }
     setLoading(false)
   }
+
+  const hasInput = answer.trim() || githubLink.trim() || photoUrls.length > 0
 
   return (
     <div style={{ margin: '8px 0 20px' }}>
@@ -653,6 +698,7 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
           ✓ {updates.length} personal context{updates.length > 1 ? 's' : ''} added to this section.
         </div>
       )}
+
       <button
         onClick={load}
         disabled={loading}
@@ -673,30 +719,93 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
           <p style={{ fontSize: 13, marginBottom: 14, color: 'var(--text)' }}>
             <strong>Your panel might ask:</strong> {data.expertQuestion}
           </p>
-          {updates.length > 0 && (
-            <p style={{ fontSize: 12, color: 'var(--success)', marginBottom: 10 }}>
-              You've already added {updates.length} response{updates.length > 1 ? 's' : ''} — you can keep adding more context below.
-            </p>
-          )}
+
+          {/* Text answer — always shown */}
           <textarea
             value={answer}
             onChange={e => setAnswer(e.target.value)}
-            placeholder={updates.length > 0 ? "Add another detail or personal experience to strengthen this section further..." : "Type your answer here — your response will be woven into this section to personalise it (optional)"}
+            placeholder={
+              isImplementationSection
+                ? 'Describe what you actually built, the tools you used, how it works, or any challenges you faced...'
+                : updates.length > 0
+                ? 'Add another detail or experience to strengthen this section...'
+                : 'Type your answer here — your response will be woven into this section...'
+            }
             rows={3}
-            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
           />
-          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+
+          {/* Implementation-specific inputs */}
+          {isImplementationSection && (
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Make this section more accurate
+              </p>
+
+              {/* GitHub link */}
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                  GitHub repository link (optional)
+                </label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 18 }}>🔗</span>
+                  <input
+                    type="url"
+                    value={githubLink}
+                    onChange={e => setGithubLink(e.target.value)}
+                    placeholder="https://github.com/username/your-project"
+                    style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
+                  Grad will read your README and file structure to write accurate implementation details.
+                </p>
+              </div>
+
+              {/* Photo upload */}
+              <div>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                  Hardware/project photos (optional, up to 5)
+                </label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 18 }}>📷</span>
+                  <label htmlFor={`photo-${sectionTitle}`} style={{ padding: '7px 14px', borderRadius: 20, border: '1.5px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'Geist, sans-serif', fontWeight: 600 }}>
+                    {uploadingPhotos ? 'Uploading...' : photos.length > 0 ? `${photos.length} photo${photos.length > 1 ? 's' : ''} selected` : 'Choose photos'}
+                  </label>
+                  <input id={`photo-${sectionTitle}`} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handlePhotoSelect} />
+
+                  {/* Photo previews */}
+                  {photoUrls.filter(u => u.startsWith('blob:') === false).map((url, i) => (
+                    <img key={i} src={url} alt={`upload ${i}`} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                  ))}
+                  {photos.length > 0 && photoUrls[0]?.startsWith('blob:') && (
+                    <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                      {uploadingPhotos ? '⏳ Uploading...' : '✓ Ready'}
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
+                  Upload photos of your hardware or project for Grad to describe accurately.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {updates.length > 0 && (
+            <p style={{ fontSize: 12, color: 'var(--success)', marginBottom: 10 }}>
+              You've added {updates.length} response{updates.length > 1 ? 's' : ''} — you can keep adding more.
+            </p>
+          )}
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
             <button
               onClick={submit}
-              disabled={!answer.trim() || loading}
-              style={{ padding: '8px 18px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: answer.trim() ? 'pointer' : 'not-allowed', opacity: answer.trim() ? 1 : 0.5 }}
+              disabled={!hasInput || loading || uploadingPhotos}
+              style={{ padding: '8px 18px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: hasInput ? 'pointer' : 'not-allowed', opacity: hasInput ? 1 : 0.5 }}
             >
-              {loading ? 'Updating...' : updates.length > 0 ? 'Add more context →' : 'Add to my project →'}
+              {loading ? 'Updating...' : updates.length > 0 ? 'Add more →' : 'Add to my project →'}
             </button>
-            <button
-              onClick={() => setOpen(false)}
-              style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}
-            >
+            <button onClick={() => setOpen(false)} style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}>
               Close
             </button>
           </div>
@@ -705,6 +814,180 @@ function UnderstandPanel({ sectionTitle, sectionContent, onUpdateParagraph }) {
     </div>
   )
 }
+
+// ─── DEFENSE SIMULATION COMPONENT ─────────────────────────────────────────────
+function DefenseSimulation({ projectId, flashcards, onComplete }) {
+  const [phase, setPhase] = useState('intro') // intro | questions | results
+  const [currentQ, setCurrentQ] = useState(0)
+  const [answers, setAnswers] = useState([])
+  const [currentAnswer, setCurrentAnswer] = useState('')
+  const [results, setResults] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const BASE_URL = import.meta.env.VITE_API_URL || ''
+  const getToken = () => localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+
+  // Use flashcard questions as defense questions
+  const questions = (flashcards || []).slice(0, 8).map(f => f.question || f.front || f)
+
+  const submitAnswer = () => {
+    const newAnswers = [...answers, { question: questions[currentQ], answer: currentAnswer }]
+    setAnswers(newAnswers)
+    setCurrentAnswer('')
+
+    if (currentQ < questions.length - 1) {
+      setCurrentQ(currentQ + 1)
+    } else {
+      submitAll(newAnswers)
+    }
+  }
+
+  const submitAll = async (allAnswers) => {
+    setLoading(true)
+    setPhase('results')
+    try {
+      const res = await fetch(`${BASE_URL}/api/projects/${projectId}/defense-simulation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+        body: JSON.stringify({ answers: allAnswers })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setResults(data)
+        if (onComplete) onComplete(data.overallScore)
+      }
+    } catch (err) {
+      console.error('Defense simulation submit error:', err)
+    }
+    setLoading(false)
+  }
+
+  const scoreColor = (score) => score >= 70 ? 'var(--success)' : score >= 50 ? '#E8A020' : 'var(--danger)'
+
+  if (phase === 'intro') return (
+    <div style={{ padding: '32px 24px', textAlign: 'center', maxWidth: 560, margin: '0 auto' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🎓</div>
+      <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 24, marginBottom: 12 }}>Defense Simulation</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>
+        I'm going to play the role of your panel examiner. Answer {questions.length} questions about your project — the way you would in your actual defense room.
+      </p>
+      <p style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 28 }}>
+        There are no wrong answers — only answers that need more confidence.
+      </p>
+      <button
+        onClick={() => setPhase('questions')}
+        disabled={questions.length === 0}
+        style={{ padding: '12px 32px', background: '#1a1a1a', color: 'white', border: 'none', borderRadius: 40, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+      >
+        {questions.length === 0 ? 'Load flashcards first' : 'Start Simulation →'}
+      </button>
+    </div>
+  )
+
+  if (phase === 'questions') return (
+    <div style={{ maxWidth: 620, margin: '0 auto', padding: '24px' }}>
+      {/* Progress */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Question {currentQ + 1} of {questions.length}</span>
+        <div style={{ width: 120, height: 4, background: 'var(--border)', borderRadius: 4 }}>
+          <div style={{ width: `${((currentQ + 1) / questions.length) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 4, transition: 'width 0.3s' }} />
+        </div>
+      </div>
+
+      {/* Examiner bubble */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '20px 24px', marginBottom: 20 }}>
+        <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+          Examiner asks:
+        </p>
+        <p style={{ fontSize: 16, color: 'var(--text)', lineHeight: 1.6 }}>
+          {questions[currentQ]}
+        </p>
+      </div>
+
+      {/* Student answer */}
+      <textarea
+        value={currentAnswer}
+        onChange={e => setCurrentAnswer(e.target.value)}
+        placeholder="Type your answer here — speak as you would in your actual defense..."
+        rows={5}
+        style={{ width: '100%', padding: '14px 16px', borderRadius: 10, border: '1.5px solid var(--border)', fontSize: 14, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}
+        onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submitAnswer() }}
+      />
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={submitAnswer}
+          disabled={!currentAnswer.trim()}
+          style={{ flex: 1, padding: '12px', background: '#1a1a1a', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: currentAnswer.trim() ? 'pointer' : 'not-allowed', opacity: currentAnswer.trim() ? 1 : 0.5 }}
+        >
+          {currentQ < questions.length - 1 ? 'Next Question →' : 'Submit All Answers →'}
+        </button>
+        <button
+          onClick={() => { setCurrentAnswer("I'm not sure about this one."); setTimeout(submitAnswer, 100) }}
+          style={{ padding: '12px 16px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 13, cursor: 'pointer' }}
+        >
+          Skip
+        </button>
+      </div>
+    </div>
+  )
+
+  if (phase === 'results') return (
+    <div style={{ maxWidth: 620, margin: '0 auto', padding: '24px' }}>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+          <p style={{ color: 'var(--text-muted)' }}>Examiner is reviewing your answers...</p>
+        </div>
+      ) : results ? (
+        <>
+          {/* Score */}
+          <div style={{ textAlign: 'center', padding: '32px 24px', background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', marginBottom: 24 }}>
+            <div style={{ fontSize: 56, fontWeight: 800, color: scoreColor(results.overallScore), fontFamily: 'Melodrama, serif' }}>
+              {results.overallScore}%
+            </div>
+            <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+              Defense Readiness: {results.readinessLevel}
+            </p>
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6 }}>{results.summaryFeedback}</p>
+          </div>
+
+          {/* Per-question breakdown */}
+          <div style={{ marginBottom: 24 }}>
+            {(results.scores || []).map((s, i) => (
+              <div key={i} style={{ padding: '14px 16px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Q{i + 1}: {questions[i]?.slice(0, 60)}...</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: scoreColor(s.score * 10) }}>{s.score}/10</span>
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{s.feedback}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Download gate */}
+          {results.overallScore >= 70 ? (
+            <div style={{ padding: '16px 20px', background: 'rgba(45,155,111,0.08)', border: '1px solid rgba(45,155,111,0.2)', borderRadius: 12, textAlign: 'center' }}>
+              <p style={{ fontWeight: 600, color: 'var(--success)', marginBottom: 4 }}>✅ You're ready to download your project</p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Your defense readiness score of {results.overallScore}% will appear on your document cover page.</p>
+            </div>
+          ) : (
+            <div style={{ padding: '16px 20px', background: 'rgba(230,126,34,0.08)', border: '1px solid rgba(230,126,34,0.2)', borderRadius: 12, textAlign: 'center' }}>
+              <p style={{ fontWeight: 600, color: '#E8A020', marginBottom: 4 }}>⚠️ Review recommended before downloading</p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>Your score is {results.overallScore}%. Review the weak areas above, then retake the simulation.</p>
+              <button onClick={() => { setPhase('intro'); setCurrentQ(0); setAnswers([]); setResults(null) }}
+                style={{ padding: '8px 20px', background: '#E8A020', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Retake Simulation
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <p style={{ textAlign: 'center', color: 'var(--danger)' }}>Scoring failed. Please try again.</p>
+      )}
+    </div>
+  )
+}
+
 
 export default function Results() {
   const navigate = useNavigate()
@@ -870,9 +1153,30 @@ export default function Results() {
 
   const handleExport = async (isClean) => {
     if (!result || exporting) return
+
+    // Soft gate — check defense readiness
+    const dbId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+    const projectInDb = dbId ? await fetchProject(dbId).catch(() => null) : null
+    const readiness = projectInDb?.defense_readiness || 0
+
+    if (readiness === 0) {
+      const proceed = window.confirm(
+        'You haven\'t completed your Defense Simulation yet.\n\nStudents who complete the simulation are 3x more likely to pass their defense.\n\nDo you still want to download without completing it?'
+      )
+      if (!proceed) {
+        setActiveTab('simulation')
+        return
+      }
+    }
+
     setExporting(true)
-    try { await exportToWord(result, isClean) }
-    catch (err) { console.error(err); alert('Export failed. Please try again.') }
+    try {
+      // Add readiness score to result before export
+      await exportToWord({ ...result, defenseReadiness: readiness }, isClean)
+    } catch (err) {
+      console.error(err)
+      alert('Export failed. Please try again.')
+    }
     setExporting(false)
   }
 
@@ -895,18 +1199,27 @@ export default function Results() {
   }
 
   const handleUnlock = async () => {
-   setPaid(true); setShowPaywall(false)
+    setPaid(true)
+    setShowPaywall(false)
+
+    // Update sessionStorage immediately
     const curResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
     sessionStorage.setItem('gradelyResult', JSON.stringify({ ...curResult, isPaidUser: true }))
     sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true, timestamp: Date.now() }))
+
+    // Mark as paid in DB
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
     if (projectId && user) {
       try { await updateProject(projectId, { is_paid: true }) }
       catch (err) { console.error('Failed to mark as paid:', err) }
     }
+
+    // Use the keys Generate.jsx already reads (lines 31-80)
     sessionStorage.setItem('gradely_continue_from', '2')
     sessionStorage.setItem('gradely_existing_chapters', JSON.stringify(result.chapters))
-    navigate('/build')
+
+    // Navigate to generation screen for chapters 2-5
+    navigate('/generate')
   }
 
   const handleTextInstruct = async (selectedText, instruction, manualEdit) => {
@@ -1111,16 +1424,17 @@ export default function Results() {
           {paid && (
             <div className="res-sidebar-defense">
               <p className="res-sidebar-defense-label">Defense Prep</p>
-              {[
+             {[
                 { key: 'breakdown', label: 'Student Breakdown', icon: <BookIcon /> },
                 { key: 'weaknesses', label: 'Weak Spots', icon: <ShieldIcon /> },
+                { key: 'simulation', label: 'Defense Simulation', icon: <span style={{fontSize:14}}>🎓</span> },
                 { key: 'references', label: 'References', icon: <RefsIcon /> },
               ].map(t => (
                 <button key={t.key}
                   className={`res-nav-item${activeTab === t.key ? ' active' : ''}`}
                   onClick={() => {
-                    setActiveTab(t.key)
-                   if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData()
+                  if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData()
+                    if (t.key === 'simulation') loadUnifiedDefensePrepData() // loads flashcards needed for simulation
                     if (t.key === 'references') loadReferences()
                     setMobileMenuOpen(false)
                   }}>
@@ -1459,6 +1773,19 @@ export default function Results() {
               </div>
             )}
 
+            {activeTab === 'simulation' && (
+                <DefenseSimulation
+                  projectId={result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')}
+                  flashcards={(() => {
+                    try { return JSON.parse(sessionStorage.getItem('gradelyFlashcards') || '[]') } catch { return [] }
+                  })()}
+                  onComplete={(score) => {
+                    const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+                    if (projectId) updateProject(projectId, { defense_readiness: score }).catch(console.error)
+                  }}
+                />
+              )}
+
             {/* ── REFERENCES TAB ── */}
             {activeTab === 'references' && (
               <div className="res-doc">
@@ -1546,10 +1873,10 @@ export default function Results() {
         <div className="res-unlock-bar">
           <div>
             <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, fontFamily: 'Geist, sans-serif' }}>
-              ✅ Your Chapter 1 is ready. {totalChapters - 1} more chapters are waiting.
+             ✅ Your Chapter 1 is ready. {(result?.structure?.chapters?.length || 5) - 1} more chapters are waiting.
             </p>
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Geist, sans-serif' }}>
-              Unlock Chapters 2–{totalChapters}, defense prep, flashcards, supervisor corrections, and Word export.
+              Unlock all {(result?.structure?.chapters?.length || 5)} chapters, defense prep, flashcards, humanization, supervisor corrections, and Word export.
             </p>
           </div>
           <button onClick={() => setShowPaywall(true)} className="res-unlock-btn">

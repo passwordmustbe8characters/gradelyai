@@ -1020,7 +1020,7 @@ Write each subsection in full. Use in-text citations from the papers provided ab
 
 // ─── UNDERSTAND SECTION ───────────────────────────────────────────────────────
 app.post('/api/understand-section', requireAuth, async (req, res) => {
-  const { sectionTitle, sectionContent, studentAnswer } = req.body
+  const { sectionTitle, sectionContent, studentAnswer, githubLink, photoUrls } = req.body
   if (!sectionTitle || !sectionContent) {
     return res.status(400).json({ error: 'sectionTitle and sectionContent are required' })
   }
@@ -1028,15 +1028,35 @@ app.post('/api/understand-section', requireAuth, async (req, res) => {
   try {
     const system = `You are Grad, a warm and direct academic mentor helping a Nigerian university student understand their own final year project. Be concise and specific. Never be generic. Always refer to the actual content of the section provided.`
 
-    if (studentAnswer && studentAnswer.trim().length > 5) {
-      // Student answered — return a paragraph update
+   const hasStudentInput = (studentAnswer && studentAnswer.trim().length > 5) ||
+      (githubLink && githubLink.trim().length > 5) ||
+      (photoUrls && photoUrls.length > 0)
+
+    if (hasStudentInput) {
+      // Fetch GitHub context if link provided
+      let githubContext = ''
+      if (githubLink && githubLink.trim()) {
+        try {
+          githubContext = await fetchGithubContext(githubLink.trim())
+        } catch (err) {
+          console.error('GitHub fetch in understand section:', err.message)
+        }
+      }
+
+      // Build photo context string
+      const photoContext = photoUrls && photoUrls.length > 0
+        ? `\nStudent has uploaded ${photoUrls.length} photo(s) of their project: ${photoUrls.join(', ')}\nDescribe what these photos show and incorporate visual details into the section.`
+        : ''
+
       const user = `Section: "${sectionTitle}"
 Original section content: ${sectionContent.slice(0, 1000)}
-Student's personal context they want to add: "${studentAnswer}"
+${studentAnswer ? `Student's description: "${studentAnswer}"` : ''}
+${githubContext ? `\nStudent's GitHub repository context:\n${githubContext.slice(0, 800)}` : ''}
+${photoContext}
 
-Rewrite ONE paragraph from this section to naturally incorporate the student's specific detail or personal experience. Keep the academic tone. Return only the rewritten paragraph — no preamble, no explanation.`
+Rewrite ONE paragraph from this section to naturally incorporate the student's specific details — their actual tools, their real implementation, their personal experience. Make the content technically accurate and specific. Keep the academic tone. Return only the rewritten paragraph — no preamble, no explanation.`
 
-      const updatedParagraph = await callOpenAI(system, user, 400)
+      const updatedParagraph = await callOpenAI(system, user, 500)
       return res.json({ type: 'update', updatedParagraph: updatedParagraph.trim() })
     }
 
@@ -1155,15 +1175,108 @@ app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
       generateFlashcards(parsedInfo, collectiveText),
       analyzeWeaknesses(parsedInfo, collectiveText)
     ]);
-    return res.status(200).json({
+
+    // Normalize parsed results (functions may return objects or JSON strings)
+    const parsedBreakdown = typeof breakdown === 'string' ? JSON.parse(breakdown) : breakdown || {};
+    const parsedFlashcards = typeof flashcards === 'string' ? JSON.parse(flashcards) : flashcards || [];
+    const parsedWeaknesses = typeof weaknesses === 'string' ? JSON.parse(weaknesses) : weaknesses || { weaknesses: [] };
+
+    // Calculate readiness score from weakness count
+    const weaknessCount = (parsedWeaknesses.weaknesses && parsedWeaknesses.weaknesses.length) || 0;
+    const readinessScore = Math.max(20, 100 - (weaknessCount * 12));
+
+    // Write score back to DB
+    await db.execute({
+      sql: 'UPDATE projects SET defense_readiness = ? WHERE id = ?',
+      args: [readinessScore, req.params.id]
+    });
+
+    res.json({
       success: true,
-      data: { breakdown, flashcards, weaknesses }
+      data: {
+        breakdown: parsedBreakdown,
+        weaknesses: parsedWeaknesses,
+        flashcards: parsedFlashcards,
+        readinessScore
+      }
     });
   } catch (error) {
     console.error("[Defense Prep Route Error]:", error);
     return res.status(500).json({ success: false, error: "Failed to compile defense training matrices." });
   }
 });
+
+
+// ─── DEFENSE SIMULATION Q&A ───────────────────────────────────────────────────
+app.post('/api/projects/:id/defense-simulation', requireAuth, async (req, res) => {
+  const { answers } = req.body // array of { question, answer }
+
+  try {
+    const existing = await db.execute({
+      sql: 'SELECT chapters, project_info, is_paid FROM projects WHERE id = ? AND user_id = ?',
+      args: [req.params.id, req.user.id]
+    })
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
+
+    const project = existing.rows[0]
+    if (!project.is_paid) return res.status(402).json({ error: 'Defense simulation requires premium access' })
+
+    const parsedChapters = JSON.parse(project.chapters || '[]')
+    const parsedInfo = JSON.parse(project.project_info || '{}')
+    const projectText = parsedChapters.map(c => c.content).join('\n\n').slice(0, 4000)
+
+    const system = `You are a strict but fair Nigerian university external examiner scoring a final year project defense. 
+Score each student answer honestly. Be specific about what was good and what was missing.`
+
+    const user = `Project Title: "${parsedInfo.topic}"
+Department: ${parsedInfo.department}
+
+Project Content Summary:
+${projectText}
+
+Student's answers to defense questions:
+${answers.map((a, i) => `Q${i + 1}: ${a.question}\nA${i + 1}: ${a.answer || '(No answer provided)'}`).join('\n\n')}
+
+For each answer, provide:
+1. A score out of 10
+2. One sentence of specific feedback
+3. Whether the answer demonstrates understanding (true/false)
+
+Return ONLY this JSON:
+{
+  "scores": [
+    {
+      "questionIndex": 0,
+      "score": 8,
+      "feedback": "Good understanding of the problem but missed mentioning the specific authentication protocol used.",
+      "demonstrates_understanding": true
+    }
+  ],
+  "overallScore": 75,
+  "readinessLevel": "Ready|Needs Review|Not Ready",
+  "summaryFeedback": "Two sentence overall assessment of the student's readiness."
+}`
+
+    const raw = await callOpenAI(system, user, 1500)
+    const scored = serverSafeParseJSON(raw, {
+      scores: answers.map((_, i) => ({ questionIndex: i, score: 5, feedback: 'Could not score', demonstrates_understanding: false })),
+      overallScore: 50,
+      readinessLevel: 'Needs Review',
+      summaryFeedback: 'Scoring failed. Please try again.'
+    })
+
+    // Update defense_readiness in DB
+    await db.execute({
+      sql: 'UPDATE projects SET defense_readiness = ? WHERE id = ?',
+      args: [scored.overallScore, req.params.id]
+    })
+
+    res.json({ success: true, ...scored })
+  } catch (err) {
+    console.error('Defense simulation error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
 
 // ─── PROXY: OpenAI ────────────────────────────────────────────────────────────
 app.post('/api/ai', async (req, res) => {
