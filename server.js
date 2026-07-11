@@ -384,6 +384,68 @@ app.post('/api/payments/webhook', async (req, res) => {
     res.status(200).send('Webhook Received');
 });
 
+// ─── PAYSTACK PAYMENT VERIFICATION ────────────────────────────────────────────
+app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
+  const { reference, projectId } = req.body
+  if (!reference) return res.status(400).json({ error: 'Payment reference is required' })
+
+  try {
+    // Verify with Paystack API
+    const verifyRes = await fetch(
+      `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
+
+    const verifyData = await verifyRes.json()
+
+    if (!verifyData.status || verifyData.data?.status !== 'success') {
+      console.error('Paystack verification failed:', verifyData)
+      return res.status(400).json({ error: 'Payment could not be verified. Please contact support.' })
+    }
+
+    const amountPaid = verifyData.data.amount / 100 // kobo → naira
+    const customerEmail = verifyData.data.customer?.email
+    console.log(`✅ Paystack payment verified: ₦${amountPaid} from ${customerEmail} ref: ${reference}`)
+
+    // Mark project as paid
+    if (projectId) {
+      await db.execute({
+        sql: 'UPDATE projects SET is_paid = 1, updated_at = datetime("now") WHERE id = ? AND user_id = ?',
+        args: [projectId, req.user.id]
+      })
+    }
+
+    // Log the transaction
+    try {
+      await db.execute({
+        sql: `INSERT INTO transaction_logs 
+              (user_id, project_id, amount, reference, provider, status, created_at) 
+              VALUES (?, ?, ?, ?, 'paystack', 'success', datetime('now'))`,
+        args: [req.user.id, projectId || null, amountPaid, reference]
+      })
+    } catch (logErr) {
+      // Don't fail the whole request if logging fails
+      console.error('Transaction log failed:', logErr.message)
+    }
+
+    res.json({
+      success: true,
+      amount: amountPaid,
+      plan: amountPaid >= 15000 ? 'PREMIUM' : 'STANDARD',
+      message: 'Payment verified successfully'
+    })
+
+  } catch (err) {
+    console.error('Paystack verify error:', err)
+    res.status(500).json({ error: 'Verification failed. Please try again or contact support.' })
+  }
+})
+
 // ─── RAG ──────────────────────────────────────────────────────────────────────
 async function getRelevantGuideContent(university, department, sectionTitle) {
   let guide = await db.execute({
@@ -904,20 +966,30 @@ Use ${ref} as the in-text citation marker wherever this paper's findings are rel
         ? `\n\nStudent's GitHub repository: ${projectInfo.githubLink}. Reference the real technologies and implementation details.`
         : ''
 
-    const chapterSystem = `You are an academic writer producing a Nigerian university final year project chapter.
+   const chapterSystem = `You are an academic writer producing a Nigerian university final year project chapter.
+
+FORMATTING RULES — CRITICAL — DO NOT IGNORE:
+- Write in plain paragraphs ONLY — no markdown whatsoever
+- Do NOT use # ## ### or any heading markers — section titles are already displayed separately
+- Do NOT use ** for bold or * for italic
+- Do NOT use bullet points (-, *, +) or numbered lists unless the content absolutely requires enumeration
+- Do NOT repeat the chapter title or section title at the start — start directly with content
+- Separate paragraphs with a single blank line
+- Each subsection should flow naturally into the next without any headers
 
 CITATION RULES — FOLLOW EXACTLY:
-- When you reference a paper's findings, use its number marker like (Author, Year) but ONLY use the author name and year provided in the paper list — do not invent any other details
-- Write the citation as ([${chapter.number <= 2 ? 'Author, Year' : 'Author, Year'}]) immediately after the claim it supports
-- Never invent paper titles, authors, journals, volume numbers, or page numbers
-- If no paper supports a claim, write it without a citation — do not fabricate one
+- When you reference a paper's findings, write the citation as (Author, Year) immediately after the claim
+- Only use author names and years from the paper list provided — do not invent any details
+- Never invent paper titles, journals, volume numbers, or page numbers
+- If no paper supports a claim, write it without a citation
 
 WRITING RULES:
 - Write formal academic English appropriate for Nigerian universities
 - Be specific to "${projectInfo.topic}" throughout — never write generic academic filler
 - Minimum 3 full paragraphs per subsection
 - Never use: crucial, furthermore, moreover, delve, robust, leverage, utilize, it is worth noting
-- Do not use placeholders like "[to be completed]" — write actual content${githubContext}`
+- Do not use placeholder text like "[to be completed]" — write actual content${githubContext}`
+
 
       const chapterUser = `Write Chapter ${chapter.number}: ${chapter.title} for this project:
 

@@ -1,55 +1,40 @@
-// lib/payment.js
+const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY
 
-/**
- * Initializes the Monnify payment SDK.
- * @param {Object} user - The user object from your AuthContext.
- * @param {number} amount - The amount to charge in NGN.
- * @param {string} planName - Description of the plan (e.g., 'Standard Plan').
- */
-export const initMonnifyPayment = (user, amount, planName) => {
-  return new Promise((resolve, reject) => {
-    // 1. Ensure the SDK is loaded (it must be in index.html)
-    if (!window.MonnifySDK) {
-      alert('Payment system is loading. Please try again in a moment.');
-      return reject('Monnify SDK not loaded');
+export function initializePaystackPayment({ email, amount, onSuccess, onClose }) {
+  // Load Paystack script dynamically if not already loaded
+  if (window.PaystackPop) {
+    openPaystack({ email, amount, onSuccess, onClose })
+    return
+  }
+
+  const script = document.createElement('script')
+  script.src = 'https://js.paystack.co/v1/inline.js'
+  script.async = true
+  script.onload = () => openPaystack({ email, amount, onSuccess, onClose })
+  script.onerror = () => {
+    console.error('Failed to load Paystack script')
+    if (onClose) onClose()
+  }
+  document.head.appendChild(script)
+}
+
+function openPaystack({ email, amount, onSuccess, onClose }) {
+  const handler = window.PaystackPop.setup({
+    key: PAYSTACK_PUBLIC_KEY,
+    email,
+    amount: amount * 100, // Paystack uses kobo — ₦10,000 = 1,000,000 kobo
+    currency: 'NGN',
+    callback: (response) => {
+      if (onSuccess) onSuccess(response.reference)
+    },
+    onClose: () => {
+      if (onClose) onClose()
     }
+  })
+  handler.openIframe()
+}
 
-    // 2. Initialize the payment
-    window.MonnifySDK.initialize({
-      amount: amount,
-      currency: "NGN",
-      reference: "gradely_" + Math.floor(Math.random() * 1000000000),
-      customerName: user.name,
-      customerEmail: user.email,
-      apiKey: import.meta.env.VITE_MONNIFY_API_KEY,
-      contractCode: import.meta.env.VITE_MONNIFY_CONTRACT_CODE,
-      paymentDescription: `GradelyAI ${planName}`,
-      // This is crucial: we pass the user ID so your backend knows who paid!
-      metaData: {
-        userId: user.id
-      },
-      onComplete: (response) => {
-        // response.status will be 'SUCCESSFUL' if the transaction went through
-        if (response.status === 'SUCCESSFUL') {
-          resolve(response);
-        } else {
-          reject(response);
-        }
-      },
-      onClose: () => {
-        reject("Payment closed by user");
-      }
-    });
-  });
-};
-
-// 2. Add the exports your Results.jsx and Paywall.jsx are looking for
-export const initiatePayment = (user, amount, planName) => {
-    return initMonnifyPayment(user, amount, planName);
-};
-
+// Legacy export — kept so nothing else breaks if imported elsewhere
 export const isPaid = (user) => {
-    // Basic logic: return true if status is 'active'
-    // Ensure 'user' object has this property
-    return user?.subscription_status === 'active';
-};
+  return user?.subscription_status === 'active'
+}

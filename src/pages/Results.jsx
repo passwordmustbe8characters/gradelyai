@@ -1261,55 +1261,55 @@ export default function Results() {
     }
   }
 
-  const renderContentWithSources = (text) => {
-    if (!text) return null
-    const sourceRegex = /\[SOURCE:\s*([^\]]+)\]/g
-    const parts = []
-    let lastIndex = 0
-    let match
-    while ((match = sourceRegex.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        const before = text.slice(lastIndex, match.index)
-        before.split('\n').forEach((line, i, arr) => {
-          parts.push(<span key={`text-${match.index}-${i}`}>{line}</span>)
-          if (i < arr.length - 1) parts.push(<br key={`br-${match.index}-${i}`} />)
-        })
-      }
-      const sourceContent = match[1].trim()
-      const urlMatch = sourceContent.match(/(https?:\/\/[^\s,]+)/)
-      const url = urlMatch ? urlMatch[1] : null
-      const label = sourceContent.replace(url || '', '').replace(/,\s*$/, '').trim()
-      parts.push(
-        <span key={`source-${match.index}`}>
-          {url ? (
-            <a href={url} target="_blank" rel="noreferrer" title={label}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, padding: '1px 7px',
-                borderRadius: 10, marginLeft: 3, background: 'rgba(0,126,167,0.08)', color: 'var(--accent)',
-                border: '1px solid rgba(0,126,167,0.2)', cursor: 'pointer', textDecoration: 'none',
-                fontWeight: 600, verticalAlign: 'middle' }}>
-              {label.substring(0, 40)}{label.length > 40 ? '...' : ''}
-            </a>
-          ) : (
-            <span title={label}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 11, padding: '1px 7px',
-                borderRadius: 10, marginLeft: 3, background: 'var(--bg-elevated)', color: 'var(--text-muted)',
-                border: '1px solid var(--border)', verticalAlign: 'middle', fontWeight: 500 }}>
-              {label.substring(0, 40)}{label.length > 40 ? '...' : ''}
-            </span>
-          )}
-        </span>
-      )
-      lastIndex = match.index + match[0].length
-    }
-    if (lastIndex < text.length) {
-      const remaining = text.slice(lastIndex)
-      remaining.split('\n').forEach((line, i, arr) => {
-        parts.push(<span key={`end-${i}`}>{line}</span>)
-        if (i < arr.length - 1) parts.push(<br key={`end-br-${i}`} />)
+const renderContentWithSources = (text) => {
+  if (!text) return null
+
+  // Strip markdown formatting that the AI sometimes leaks into content
+  const clean = text
+    .replace(/^#{1,6}\s+/gm, '')           // remove # ## ### headings
+    .replace(/\*\*(.*?)\*\*/gs, '$1')       // remove **bold**
+    .replace(/\*(.*?)\*/gs, '$1')           // remove *italic*
+    .replace(/^[-*+]\s+/gm, '')             // remove bullet points
+    .replace(/^\d+\.\s+/gm, '')             // remove numbered lists
+    .trim()
+
+  const sourceRegex = /\[SOURCE:\s*([^\]]+)\]/g
+  const parts = []
+  let lastIndex = 0
+  let match
+
+  while ((match = sourceRegex.exec(clean)) !== null) {
+    if (match.index > lastIndex) {
+      const before = clean.slice(lastIndex, match.index)
+      before.split('\n').forEach((line, i, arr) => {
+        if (line.trim()) parts.push(<span key={`text-${match.index}-${i}`}>{line}</span>)
+        if (i < arr.length - 1) parts.push(<br key={`br-${match.index}-${i}`} />)
       })
     }
-    return <>{parts}</>
+    parts.push(
+      <span key={`source-${match.index}`}
+        style={{ fontSize: 11, color: 'var(--accent)', background: 'rgba(0,126,167,0.08)', borderRadius: 4, padding: '1px 6px', margin: '0 2px', cursor: 'default' }}
+        title={match[1]}>
+        [{match[1].slice(0, 30)}]
+      </span>
+    )
+    lastIndex = match.index + match[0].length
   }
+
+  if (lastIndex < clean.length) {
+    const remaining = clean.slice(lastIndex)
+    remaining.split('\n').forEach((line, i, arr) => {
+      if (line.trim()) parts.push(<span key={`end-${i}`}>{line}</span>)
+      if (i < arr.length - 1) parts.push(<br key={`end-br-${i}`} />)
+    })
+  }
+
+  return parts.length > 0 ? (
+    <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, margin: '0 0 16px' }}>{parts}</p>
+  ) : (
+    <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, margin: '0 0 16px' }}>{clean}</p>
+  )
+}
 
   const getSubsections = (chapterIndex) => {
     if (!result?.structure?.chapters) return []
