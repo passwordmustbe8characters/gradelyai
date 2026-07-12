@@ -451,6 +451,80 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
   }
 })
 
+
+// ─── DEFENSE PREP ─────────────────────────────────────────────────────────────
+
+app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
+  try {
+    const project = await db.execute({
+      sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?',
+      args: [req.params.id, req.user.id]
+    })
+
+    if (project.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' })
+    }
+
+    const proj = project.rows[0]
+    const chapters = JSON.parse(proj.chapters || '[]')
+    const allText = chapters.map(c => c.content || '').join('\n\n')
+
+    // Call Claude to generate defense prep
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2000,
+        system: `You are a Nigerian university project defense coach. Generate realistic panel questions and model answers. Return only valid JSON.`,
+        messages: [{
+          role: 'user',
+          content: `Generate defense preparation for this project:
+
+Title: ${proj.title}
+Department: ${proj.department}
+
+Project content:
+${allText.substring(0, 4000)}
+
+Return ONLY this JSON:
+{
+  "questions": [
+    {
+      "id": 1,
+      "question": "Panel question here?",
+      "answer": "Model answer here",
+      "difficulty": "easy|medium|hard",
+      "category": "methodology|findings|theory|practical"
+    }
+  ],
+  "overallTips": ["tip 1", "tip 2", "tip 3"]
+}`
+        }]
+      })
+    })
+
+    const data = await response.json()
+    const text = data.content[0].text
+    const cleaned = text.replace(/```json|```/g, '').trim()
+    const defensePrep = JSON.parse(cleaned)
+
+    // Save to project
+    await db.execute({
+      sql: 'UPDATE projects SET defense_prep = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      args: [JSON.stringify(defensePrep), req.params.id]
+    })
+
+    res.json({ defensePrep })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ─── RAG ──────────────────────────────────────────────────────────────────────
 async function getRelevantGuideContent(university, department, sectionTitle) {
   let guide = await db.execute({
@@ -1387,47 +1461,23 @@ app.get('/api/papers', async (req, res) => {
   const { query } = req.query
   if (!query) return res.json({ data: [] })
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-  const queries = [query.split(' ').slice(0, 4).join(' '), query]
-
-  for (const q of queries) {
-    try {
-      await sleep(1100)
-      const encoded = encodeURIComponent(q)
-      const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=10&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`
-
-      const ssHeaders = { 'User-Agent': 'GradelyAI/1.0' }
-      if (process.env.SEMANTIC_SCHOLAR_API_KEY) {
-        ssHeaders['x-api-key'] = process.env.SEMANTIC_SCHOLAR_API_KEY
-      }
-
-      const response = await fetch(url, { headers: ssHeaders })
-      console.log(`[/api/papers] query="${q}" status=${response.status}`)
-
-      if (response.status === 429) {
-        console.log('[/api/papers] Rate limited — waiting 5s')
-        await sleep(5000)
-        continue
-      }
-      if (!response.ok) {
-        console.log(`[/api/papers] Failed with ${response.status}`)
-        continue
-      }
-
-      const data = await response.json()
-      if (data.data && data.data.length > 0) {
-        console.log(`[/api/papers] Found ${data.data.length} papers for "${q}"`)
-        return res.json({ data: data.data })
-      }
-      console.log(`[/api/papers] No results for "${q}"`)
-    } catch (err) {
-      console.log(`[/api/papers] Exception: ${err.message}`)
-      continue
-    }
+  try {
+    const encoded = encodeURIComponent(query)
+    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=15&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`
+    
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeout)
+    
+    if (!response.ok) return res.json({ data: [] })
+    const data = await response.json()
+    res.json({ data: data.data || [] })
+  } catch {
+    res.json({ data: [] })
   }
-  console.log('[/api/papers] All queries exhausted — returning empty')
-  return res.json({ data: [] })
-  })
+})
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
 app.post('/api/admin/login', (req, res) => {
