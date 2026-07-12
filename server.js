@@ -391,6 +391,11 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
 
   try {
     // Verify with Paystack API
+    if (!process.env.PAYSTACK_SECRET_KEY) {
+      console.error('PAYSTACK_SECRET_KEY is not set in environment variables')
+      return res.status(500).json({ error: 'Payment service not configured. Please contact support.' })
+    }
+    console.log('Verifying Paystack reference:', reference)
     const verifyRes = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
       {
@@ -425,7 +430,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
       await db.execute({
         sql: `INSERT INTO transaction_logs 
               (user_id, project_id, amount, reference, provider, status, created_at) 
-              VALUES (?, ?, ?, ?, 'paystack', 'success', datetime('now'))`,
+              VALUES (?, ?, ?, ?, 'paystack', 'success', CURRENT_TIMESTAMP)`,
         args: [req.user.id, projectId || null, amountPaid, reference]
       })
     } catch (logErr) {
