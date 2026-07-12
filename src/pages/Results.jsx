@@ -320,15 +320,19 @@ const pageStyles = `
   .res-sidebar-defense { flex-shrink: 0; border-top: 1px solid var(--border); padding: 12px 10px 16px; background: var(--bg-elevated); }
   .res-sidebar-defense-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); padding: 0 6px; margin-bottom: 6px; }
   
-  .res-nav-item {
-    display: flex; align-items: center; gap: 9px; padding: 7px 10px;
-    border-radius: 6px; cursor: pointer; font-size: 12.5px; color: var(--text-muted);
-    transition: all 0.15s; border: none; background: transparent; width: 100%;
-    text-align: left; font-family: 'Geist', sans-serif; margin-bottom: 1px;
+ .res-nav-item {
+    display: flex; align-items: center; gap: 9px; padding: 9px 10px;
+    border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--text-muted);
+    transition: all 0.15s; border: 1px solid transparent; background: var(--bg-card);
+    width: 100%; text-align: left; font-family: 'Geist', sans-serif; margin-bottom: 4px;
+    border: 1px solid var(--border-light);
   }
-  .res-nav-item:hover { background: rgba(0,0,0,0.04); color: var(--text); }
-  .res-nav-item.active { background: rgba(0,126,167,0.08); color: var(--accent); }
+  .res-nav-item:hover:not(.locked) { background: rgba(0,126,167,0.04); color: var(--text); border-color: rgba(0,126,167,0.2); }
+  .res-nav-item.active { background: rgba(0,126,167,0.08); color: var(--accent); border-color: rgba(0,126,167,0.3); }
+  .res-nav-item.locked { cursor: default; opacity: 0.5; }
+  .res-nav-item.locked:hover { background: var(--bg-card); color: var(--text-muted); border-color: var(--border-light); }
   .res-nav-item svg { flex-shrink: 0; }
+  .res-nav-lock { margin-left: auto; font-size: 11px; }
 
   /* ── MAIN COLUMN ── */
   .res-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; position: relative; }
@@ -1266,11 +1270,15 @@ const renderContentWithSources = (text) => {
 
   // Strip markdown formatting that the AI sometimes leaks into content
   const clean = text
-    .replace(/^#{1,6}\s+/gm, '')           // remove # ## ### headings
-    .replace(/\*\*(.*?)\*\*/gs, '$1')       // remove **bold**
-    .replace(/\*(.*?)\*/gs, '$1')           // remove *italic*
-    .replace(/^[-*+]\s+/gm, '')             // remove bullet points
-    .replace(/^\d+\.\s+/gm, '')             // remove numbered lists
+ .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/gs, '$1')
+    .replace(/\*(.*?)\*/gs, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    // Remove AI-inserted structural labels
+    .replace(/^CHAPTER\s+\d+:\s+[A-Z\s]+$/gm, '')
+    .replace(/^\d+\.\d+\.\s+.+$/gm, '')
+    .replace(/^Chapter\s+\d+:\s+.+$/gm, '')
     .trim()
 
   const sourceRegex = /\[SOURCE:\s*([^\]]+)\]/g
@@ -1421,29 +1429,39 @@ const renderContentWithSources = (text) => {
             })}
           </div>
 
-          {paid && (
-            <div className="res-sidebar-defense">
-              <p className="res-sidebar-defense-label">Defense Prep</p>
-             {[
-                { key: 'breakdown', label: 'Student Breakdown', icon: <BookIcon /> },
-                { key: 'weaknesses', label: 'Weak Spots', icon: <ShieldIcon /> },
-                { key: 'simulation', label: 'Defense Simulation', icon: <span style={{fontSize:14}}>🎓</span> },
-                { key: 'references', label: 'References', icon: <RefsIcon /> },
-              ].map(t => (
-                <button key={t.key}
-                  className={`res-nav-item${activeTab === t.key ? ' active' : ''}`}
-                  onClick={() => {
+          <div className="res-sidebar-defense">
+          <p className="res-sidebar-defense-label">Defense Prep</p>
+          {[
+            { key: 'breakdown', label: 'Student Breakdown', icon: <BookIcon />, requiresPaid: false },
+            { key: 'weaknesses', label: 'Weak Spots', icon: <ShieldIcon />, requiresPaid: true },
+            { key: 'simulation', label: 'Defense Simulation', icon: <span style={{fontSize:13}}>🎓</span>, requiresPaid: true },
+            { key: 'references', label: 'References', icon: <RefsIcon />, requiresPaid: false },
+          ].map(t => {
+            const isLocked = t.requiresPaid && !paid
+            return (
+              <button
+                key={t.key}
+                className={`res-nav-item${activeTab === t.key ? ' active' : ''}${isLocked ? ' locked' : ''}`}
+                title={isLocked ? 'Unlock the full project to access this' : ''}
+                onClick={() => {
+                  if (isLocked) {
+                    setShowPaywall(true)
+                    return
+                  }
+                  setActiveTab(t.key)
                   if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData()
-                    if (t.key === 'simulation') loadUnifiedDefensePrepData() // loads flashcards needed for simulation
-                    if (t.key === 'references') loadReferences()
-                    setMobileMenuOpen(false)
-                  }}>
-                  {t.icon}
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          )}
+                  if (t.key === 'simulation') loadUnifiedDefensePrepData()
+                  if (t.key === 'references') loadReferences()
+                  setMobileMenuOpen(false)
+                }}
+              >
+                {t.icon}
+                <span style={{ flex: 1 }}>{t.label}</span>
+                {isLocked && <span className="res-nav-lock">🔒</span>}
+              </button>
+            )
+          })}
+        </div>
         </aside>
 
         {/* ── MAIN PANEL ── */}
@@ -1884,9 +1902,13 @@ const renderContentWithSources = (text) => {
           </button>
         </div>
       )}
-
-      {showPaywall && (
-        <Paywall projectInfo={result.projectInfo} onUnlock={handleUnlock} userEmail={user?.email} />
+{showPaywall && (
+        <Paywall
+          projectInfo={result.projectInfo}
+          onUnlock={handleUnlock}
+          userEmail={user?.email}
+          onClose={() => setShowPaywall(false)}
+        />
       )}
     </>
   )

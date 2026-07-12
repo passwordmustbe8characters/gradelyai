@@ -6,8 +6,8 @@ const PLANS = {
   PREMIUM: { label: 'Premium', price: 15000, features: ['Everything in Standard', 'AI Humanizer (unlimited)', 'Priority support', 'Plagiarism-safe guarantee'] }
 }
 
-export default function Paywall({ projectInfo, onUnlock, userEmail }) {
-  const [email, setEmail] = useState(userEmail || '')
+export default function Paywall({ projectInfo, onUnlock, userEmail, onClose }) {
+  const [email] = useState(userEmail || '')
   const [selectedPlan, setSelectedPlan] = useState('STANDARD')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -69,17 +69,27 @@ export default function Paywall({ projectInfo, onUnlock, userEmail }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '20px', overflowY: 'auto'
     }}>
-      <div style={{
-        background: 'var(--bg-card)',
-        borderRadius: 20,
-        padding: '36px 32px',
-        maxWidth: 480,
-        width: '100%',
-        border: '1px solid var(--border)',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.3)'
-      }}>
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+     <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: 20,
+          padding: '36px 32px',
+          maxWidth: 480,
+          width: '100%',
+          border: '1px solid var(--border)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
+          position: 'relative'
+        }}>
+          {/* Close button */}
+          {onClose && (
+            <button onClick={onClose} style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'transparent', border: 'none',
+              fontSize: 20, cursor: 'pointer', color: 'var(--text-muted)',
+              lineHeight: 1, padding: 4
+            }}>✕</button>
+          )}
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
           <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 24, color: 'var(--text)', marginBottom: 8 }}>
             Unlock Your Full Project
@@ -115,27 +125,7 @@ export default function Paywall({ projectInfo, onUnlock, userEmail }) {
           ))}
         </div>
 
-        {/* Email input */}
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Email address
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="your@email.com"
-            style={{
-              width: '100%', padding: '12px 14px',
-              borderRadius: 10,
-              border: '1.5px solid var(--border)',
-              fontSize: 14, fontFamily: 'Geist, sans-serif',
-              background: 'var(--bg)', color: 'var(--text)',
-              outline: 'none', boxSizing: 'border-box'
-            }}
-          />
-        </div>
-
+      
         {/* Error */}
         {error && (
           <p style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
