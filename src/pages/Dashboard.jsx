@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { fetchProjects, deleteProject, fetchProject } from '../lib/auth'
 import logoSubmark from '../assets/submark-logo.png'
-import { initMonnifyPayment } from '../lib/payment';
+import { initializePaystackPayment } from "../lib/payment";
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -24,7 +24,7 @@ export default function Dashboard() {
 
 const handlePurchase = async (amount, planName) => {
   try {
-    await initMonnifyPayment(user, amount, planName);
+    await initializePaystackPayment (user, amount, planName);
     alert("Payment successful! Credits will be added shortly.");
     // Reload user data to show new credit balance
     window.location.reload(); 
