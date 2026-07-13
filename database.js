@@ -88,4 +88,8 @@ await client.execute(`
   )
 `)
 
+await client.execute(`
+  ALTER TABLE projects ADD COLUMN IF NOT EXISTS defense_prep TEXT
+`)
+
 export default client
