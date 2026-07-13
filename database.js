@@ -36,6 +36,10 @@ await client.execute(`
   )
 `)
 
+
+try {
+  await client.execute(`ALTER TABLE projects ADD COLUMN defense_prep TEXT`)
+} catch {
 await client.execute(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,11 +57,13 @@ await client.execute(`
     project_info TEXT,
     flashcard_scores TEXT,
     defense_readiness INTEGER DEFAULT 0,
+    defense_prep TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   )
 `)
+}
 
 await client.execute(`
   CREATE TABLE IF NOT EXISTS payments (
@@ -88,8 +94,6 @@ await client.execute(`
   )
 `)
 
-await client.execute(`
-  ALTER TABLE projects ADD COLUMN IF NOT EXISTS defense_prep TEXT
-`)
+
 
 export default client
