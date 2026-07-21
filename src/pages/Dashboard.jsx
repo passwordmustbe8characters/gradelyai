@@ -6,10 +6,11 @@ import logoSubmark from '../assets/submark-logo.png'
 import { initializePaystackPayment } from "../lib/payment";
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
+const UNLIMITED_PROJECTS_EMAIL = 'josephdelight87@gmail.com'
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(null)
@@ -24,17 +25,33 @@ export default function Dashboard() {
     setLoading(false)
   }
 
-const handlePurchase = async (amount, planName) => {
-  try {
-    await initializePaystackPayment (user, amount, planName);
-    alert("Payment successful! Credits will be added shortly.");
-    // Reload user data to show new credit balance
-    window.location.reload(); 
-  } catch (err) {
-    console.error("Payment failed:", err);
-    alert("Payment failed or was cancelled.");
+  const handlePurchase = (amount, planName) => {
+    if (!user?.email) return
+    initializePaystackPayment({
+      email: user.email,
+      amount,
+      onSuccess: async (reference) => {
+        try {
+          const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+          const res = await fetch(`${BASE_URL}/api/payments/paystack/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ reference, purpose: 'credits', plan: planName })
+          })
+          const data = await res.json()
+          if (data.success) {
+            await refreshUser()
+            alert(`✅ Payment verified — ${data.creditsAdded.toLocaleString()} humanization credits added.`)
+          } else {
+            alert(data.error || 'Payment verified but crediting failed. Please contact support.')
+          }
+        } catch (err) {
+          console.error('Credit purchase verify error:', err)
+          alert('Could not verify payment. Please contact support with your payment reference: ' + reference)
+        }
+      }
+    })
   }
-};
   
   useEffect(() => {
     if (!user) {
@@ -184,7 +201,15 @@ const handlePurchase = async (amount, planName) => {
                   : `You have ${projects.length} project${projects.length > 1 ? 's' : ''}.`}
               </p>
             </div>
-            <button className="btn-primary" onClick={() => navigate('/start?mode=new_project')} style={{ fontSize: 15, padding: '13px 28px', whiteSpace: 'nowrap' }}>
+            <button className="btn-primary" onClick={() => {
+              const paidProjects = projects.filter(p => p.is_paid)
+              const hasPremium = paidProjects.some(p => p.plan === 'PREMIUM')
+              if (user?.email !== UNLIMITED_PROJECTS_EMAIL && paidProjects.length > 0 && !hasPremium) {
+                alert('You already have a paid project. Delete it, or upgrade it to Premium, to start a second one.')
+                return
+              }
+              navigate('/start?mode=new_project')
+            }} style={{ fontSize: 15, padding: '13px 28px', whiteSpace: 'nowrap' }}>
               + New Project
             </button>
           </div>

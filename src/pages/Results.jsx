@@ -1000,7 +1000,7 @@ const HIGHLIGHT_EDITOR_ENABLED = false
 
 export default function Results() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const [result, setResult] = useState(null)
   const [activeTab, setActiveTab] = useState('project')
   const [activeChapter, setActiveChapter] = useState(0)
@@ -1070,27 +1070,40 @@ export default function Results() {
 
   const handleHumanize = async () => {
     if (!result) return
+    const totalWords = result.chapters.reduce((sum, c) => sum + (c.content?.split(/\s+/).filter(Boolean).length || 0), 0)
+    const available = user?.humanization_credits || 0
+    if (available < totalWords) {
+      const proceed = window.confirm(
+        `Humanizing this project needs about ${totalWords.toLocaleString()} words of credit, but you only have ${available.toLocaleString()} left.\n\nGo to your dashboard to top up?`
+      )
+      if (proceed) navigate('/dashboard')
+      return
+    }
     setHumanizing(true)
     try {
       const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
       const humanizedChapters = []
       for (const chapter of result.chapters) {
         const response = await fetch(`${BASE_URL}/api/humanize`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ text: chapter.content })
         })
         const data = await response.json()
         if (!data.success) throw new Error(data.error || "Humanization API failed")
-        humanizedChapters.push({ ...chapter, content: data.data })
+        humanizedChapters.push({ ...chapter, content: data.text })
       }
       const updated = { ...result, chapters: humanizedChapters, humanized: true }
       setResult(updated)
       sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
       setHumanized(true)
+      await refreshUser()
       alert('🎉 Your entire project has been fully humanized successfully!')
     } catch (err) {
       console.error("Humanize Error:", err)
-      alert('Humanization failed. Please check your console for details and try again.')
+      alert(err.message?.includes('Insufficient credits')
+        ? 'You ran out of humanization credits partway through. Some chapters may not have been humanized — top up and try again.'
+        : 'Humanization failed. Please check your console for details and try again.')
     } finally {
       setHumanizing(false)
     }
@@ -1526,6 +1539,13 @@ const renderContentWithSources = (text) => {
 
               {paid && (
                 <>
+                  <span
+                    title="Humanization credits left — 1 credit per word"
+                    onClick={() => navigate('/dashboard')}
+                    style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    {(user?.humanization_credits || 0).toLocaleString()} <span className="hide-on-mobile">credits</span>
+                  </span>
+
                   <SpinningButton onClick={handleHumanize} loading={humanizing}
                     className="res-btn-black res-btn-humanize"
                     style={{ fontSize: 12, padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 5 }}>

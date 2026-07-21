@@ -59,6 +59,7 @@ await client.execute(`
     defense_readiness INTEGER DEFAULT 0,
     defense_prep TEXT,
     corrections_history TEXT,
+    plan TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -68,6 +69,12 @@ await client.execute(`
 
 try {
   await client.execute(`ALTER TABLE projects ADD COLUMN corrections_history TEXT`)
+} catch {
+  // column already exists
+}
+
+try {
+  await client.execute(`ALTER TABLE projects ADD COLUMN plan TEXT`)
 } catch {
   // column already exists
 }

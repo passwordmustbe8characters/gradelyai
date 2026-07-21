@@ -106,6 +106,9 @@ if (!process.env.ADMIN_PASSWORD || !process.env.JWT_SECRET) {
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 const JWT_SECRET = process.env.JWT_SECRET
 
+// Exempt from the one-paid-project limit
+const UNLIMITED_PROJECTS_EMAIL = 'josephdelight87@gmail.com'
+
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 
 function requireAdmin(req, res, next) {
@@ -417,7 +420,7 @@ app.post('/api/payments/webhook', async (req, res) => {
 
 // ─── PAYSTACK PAYMENT VERIFICATION ────────────────────────────────────────────
 app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
-  const { reference, projectId } = req.body
+  const { reference, projectId, purpose } = req.body
   if (!reference) return res.status(400).json({ error: 'Payment reference is required' })
 
   try {
@@ -446,33 +449,44 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
 
     const amountPaid = verifyData.data.amount / 100 // kobo → naira
     const customerEmail = verifyData.data.customer?.email
+    const plan = amountPaid >= 15000 ? 'PREMIUM' : 'STANDARD'
     console.log(`✅ Paystack payment verified: ₦${amountPaid} from ${customerEmail} ref: ${reference}`)
 
-    // Mark project as paid
-    if (projectId) {
-      await db.execute({
-        sql: 'UPDATE projects SET is_paid = 1, updated_at = datetime("now") WHERE id = ? AND user_id = ?',
-        args: [projectId, req.user.id]
-      })
-    }
-
-    // Log the transaction
+    // Idempotency guard — `reference` is UNIQUE, so a retried/duplicate verify call fails here
+    // and we skip crediting twice for the same payment.
+    let alreadyProcessed = false
     try {
       await db.execute({
-        sql: `INSERT INTO transaction_logs 
-              (user_id, project_id, amount, reference, provider, status, created_at) 
-              VALUES (?, ?, ?, ?, 'paystack', 'success', CURRENT_TIMESTAMP)`,
-        args: [req.user.id, projectId || null, amountPaid, reference]
+        sql: 'INSERT INTO payments (reference, email, user_id, amount, status) VALUES (?, ?, ?, ?, ?)',
+        args: [reference, customerEmail || req.user.email, req.user.id, amountPaid, 'success']
       })
-    } catch (logErr) {
-      // Don't fail the whole request if logging fails
-      console.error('Transaction log failed:', logErr.message)
+    } catch {
+      alreadyProcessed = true
+    }
+
+    if (purpose === 'credits') {
+      const creditsAdded = amountPaid >= 15000 ? 20000 : amountPaid >= 10000 ? 10000 : 0
+      if (!alreadyProcessed && creditsAdded > 0) {
+        await db.execute({
+          sql: 'UPDATE users SET humanization_credits = humanization_credits + ? WHERE id = ?',
+          args: [creditsAdded, req.user.id]
+        })
+      }
+      return res.json({ success: true, amount: amountPaid, plan, creditsAdded: alreadyProcessed ? 0 : creditsAdded, message: 'Payment verified successfully' })
+    }
+
+    // Default purpose: unlock a project
+    if (projectId && !alreadyProcessed) {
+      await db.execute({
+        sql: 'UPDATE projects SET is_paid = 1, plan = ?, updated_at = datetime("now") WHERE id = ? AND user_id = ?',
+        args: [plan, projectId, req.user.id]
+      })
     }
 
     res.json({
       success: true,
       amount: amountPaid,
-      plan: amountPaid >= 15000 ? 'PREMIUM' : 'STANDARD',
+      plan,
       message: 'Payment verified successfully'
     })
 
@@ -1869,6 +1883,19 @@ app.post('/api/auth/new-project', requireAuth, async (req, res) => {
 app.post('/api/projects', requireAuth, async (req, res) => {
   const { title, university, department, project_type, status, is_paid, chapters, abstract, references, structure, project_info } = req.body
   try {
+    if (req.user.email !== UNLIMITED_PROJECTS_EMAIL) {
+      const existingPaid = await db.execute({
+        sql: 'SELECT plan FROM projects WHERE user_id = ? AND is_paid = 1',
+        args: [req.user.id]
+      })
+      const hasPremium = existingPaid.rows.some(r => r.plan === 'PREMIUM')
+      if (existingPaid.rows.length > 0 && !hasPremium) {
+        return res.status(403).json({
+          error: 'You already have a paid project. Delete it, or upgrade it to Premium, to start a second one.'
+        })
+      }
+    }
+
     const result = await db.execute({
       sql: 'INSERT INTO projects (user_id, title, university, department, project_type, status, is_paid, chapters, abstract, refs, structure, project_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       args: [
@@ -1957,7 +1984,7 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
 app.get('/api/projects', requireAuth, async (req, res) => {
   try {
     const result = await db.execute({
-      sql: 'SELECT id, title, university, department, project_type, status, is_paid, defense_readiness, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC',
+      sql: 'SELECT id, title, university, department, project_type, status, is_paid, plan, defense_readiness, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC',
       args: [req.user.id]
     })
     res.json({ projects: result.rows })
