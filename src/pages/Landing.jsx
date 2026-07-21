@@ -4,6 +4,8 @@ import { useAuth } from '../lib/AuthContext'
 import logoPrimary from '../assets/primary-logo.png';
 import logoPrimaryW from '../assets/primary-logo-w.png';
 
+const BASE_URL = import.meta.env.VITE_API_URL || ''
+
 export default function Landing() {
   const navigate = useNavigate()
  const { user, loading } = useAuth()
@@ -28,7 +30,7 @@ export default function Landing() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/stats')
+        const res = await fetch(`${BASE_URL}/api/stats`)
         const data = await res.json()
         if (data.success) {
           setStats(data.stats)

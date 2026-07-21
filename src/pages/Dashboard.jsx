@@ -5,6 +5,8 @@ import { fetchProjects, deleteProject, fetchProject } from '../lib/auth'
 import logoSubmark from '../assets/submark-logo.png'
 import { initializePaystackPayment } from "../lib/payment";
 
+const BASE_URL = import.meta.env.VITE_API_URL || ''
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
@@ -61,7 +63,7 @@ const handlePurchase = async (amount, planName) => {
   const handlePublish = async (projectId) => {
     try {
       const token = localStorage.getItem('gradelyToken')
-      const res = await fetch(`/api/projects/${projectId}/publish`, {
+      const res = await fetch(`${BASE_URL}/api/projects/${projectId}/publish`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`, 

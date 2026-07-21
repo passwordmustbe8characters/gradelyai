@@ -72,8 +72,11 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '10mb' }))
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'gradely2025'
-const JWT_SECRET = process.env.JWT_SECRET || 'gradelyai-jwt-secret-2025'
+if (!process.env.ADMIN_PASSWORD || !process.env.JWT_SECRET) {
+  throw new Error('ADMIN_PASSWORD and JWT_SECRET must be set in the environment — refusing to start with insecure defaults.')
+}
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+const JWT_SECRET = process.env.JWT_SECRET
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 

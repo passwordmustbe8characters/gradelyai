@@ -1190,8 +1190,9 @@ export default function Results() {
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
     if (!projectId) { alert('Please save your project first'); return }
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(`/api/projects/${projectId}/publish`, {
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const response = await fetch(`${BASE_URL}/api/projects/${projectId}/publish`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
       })
       const data = await response.json()
@@ -1234,7 +1235,8 @@ export default function Results() {
       targetNewText = manualEdit
     } else {
       try {
-        const response = await fetch('/api/humanize', {
+        const BASE_URL = import.meta.env.VITE_API_URL || ''
+        const response = await fetch(`${BASE_URL}/api/humanize`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: `Supervisor Correction Request: Please alter this specific selection: "${selectedText}". Follow this user instruction: ${instruction}` })
         })
@@ -1257,8 +1259,9 @@ export default function Results() {
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
     if (projectId) {
       try {
-        const token = localStorage.getItem('token')
-        await fetch(`/api/projects/${projectId}/persist-chapters`, {
+        const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+        const BASE_URL = import.meta.env.VITE_API_URL || ''
+        await fetch(`${BASE_URL}/api/projects/${projectId}/persist-chapters`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ chapters: updatedChapters })
         })

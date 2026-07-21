@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import logoPrimary from '../assets/primary-logo.png';
 
+const BASE_URL = import.meta.env.VITE_API_URL || ''
+
 export default function ProjectDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -31,7 +33,7 @@ export default function ProjectDetails() {
   }
 
   useEffect(() => {
-    fetch(`/api/project/${id}`)
+    fetch(`${BASE_URL}/api/project/${id}`)
       .then(res => res.json())
       .then(data => {
         setProject(data)

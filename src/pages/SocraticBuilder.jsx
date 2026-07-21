@@ -6,6 +6,19 @@ import { createProject, updateProject, fetchProject } from '../lib/auth'
 import logoSubmark from '../assets/submark-logo.png'; // Import your Submark icon or image
 
 
+// ─── SEARCH HIGHLIGHT ─────────────────────────────────────────────────────────
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+function highlightMatch(text, query) {
+  if (!query) return text
+  const parts = text.split(new RegExp(`(${escapeRegex(query)})`, 'gi'))
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <span key={i} className="highlight">{part}</span>
+      : part
+  )
+}
+
 // ─── WINDOW SIZE HOOK ─────────────────────────────────────────────────────────
 function useWindowSize() {
   const [size, setSize] = useState({
@@ -1029,9 +1042,9 @@ const handleSaveAndExit = async () => {
             )}
             {searchResults.map((res, idx) => (
               <div key={idx} className="sb-search-result-item" onClick={() => scrollToMessage(res.index)}>
-                <div className="sb-search-result-preview" dangerouslySetInnerHTML={{
-                  __html: res.preview.replace(new RegExp(searchQuery, 'gi'), match => `<span class="highlight">${match}</span>`)
-                }} />
+                <div className="sb-search-result-preview">
+                  {highlightMatch(res.preview, searchQuery)}
+                </div>
                 <div className="sb-search-result-meta">Message #{res.index + 1}</div>
               </div>
             ))}

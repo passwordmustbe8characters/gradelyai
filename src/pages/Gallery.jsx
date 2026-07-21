@@ -6,6 +6,7 @@ import logoPrimary from '../assets/primary-logo.png';
 
 // Flatten departments from faculties into a single array
 const ALL_DEPARTMENTS = Object.values(DEPARTMENTS_BY_FACULTY).flat()
+const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 // Custom hook to get window size
 function useWindowSize() {
@@ -53,7 +54,7 @@ export default function Gallery() {
         setLoadingMore(true)
       }
       const params = new URLSearchParams({ ...filters, page: currentPage, limit })
-      const res = await fetch(`/api/gallery?${params}`)
+      const res = await fetch(`${BASE_URL}/api/gallery?${params}`)
       const data = await res.json()
       const newProjects = data.projects || []
       
