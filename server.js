@@ -50,6 +50,34 @@ function serverSafeParseJSON(raw, fallback = null) {
   } catch { return fallback }
 }
 
+// Builds an APA in-text citation, e.g. "(Smith, 2021)" / "(Smith & Lee, 2021)" / "(Smith et al., 2021)"
+// — always from real paper metadata, never from AI-generated text, so it can't be hallucinated.
+function formatInTextCitation(paper) {
+  const year = paper.year || 'n.d.'
+  const lastName = (name) => {
+    const parts = (name || '').trim().split(' ')
+    return parts[parts.length - 1] || 'Unknown'
+  }
+  const authors = paper.authors || []
+  if (authors.length === 0) return `(Unknown Author, ${year})`
+  if (authors.length === 1) return `(${lastName(authors[0].name)}, ${year})`
+  if (authors.length === 2) return `(${lastName(authors[0].name)} & ${lastName(authors[1].name)}, ${year})`
+  return `(${lastName(authors[0].name)} et al., ${year})`
+}
+
+// Replaces the AI's [n] citation markers with real, deterministically-formatted in-text
+// citations from paperLookup. Any marker that doesn't match a real paper is stripped —
+// the AI is never trusted to write citation text itself.
+function resolveCitationMarkers(content, paperLookup) {
+  return content
+    .replace(/\[(\d+)\]/g, (match, num) => {
+      const paper = paperLookup[`[${num}]`]
+      return paper ? formatInTextCitation(paper) : ''
+    })
+    .replace(/[ \t]+([.,;:])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+}
+
 const app = express()
 const upload = multer({ dest: 'uploads/' })
 const memoryUpload = multer({ storage: multer.memoryStorage() })
@@ -987,10 +1015,10 @@ FORMATTING RULES — CRITICAL — DO NOT IGNORE:
 - Each subsection should flow naturally into the next without any headers
 
 CITATION RULES — FOLLOW EXACTLY:
-- When you reference a paper's findings, write the citation as (Author, Year) immediately after the claim
-- Only use author names and years from the paper list provided — do not invent any details
-- Never invent paper titles, journals, volume numbers, or page numbers
-- If no paper supports a claim, write it without a citation
+- When you reference a paper's findings, insert its marker — e.g. [1] — immediately after the claim, exactly as given in the paper list below
+- Do NOT write out an author name or year yourself. Never write "(Author, Year)" — only ever write the bracket marker like [1] or [2]. The real citation text is inserted automatically afterward from verified data
+- Only use markers from the list provided — never invent a marker number that wasn't given to you
+- If no paper supports a claim, write it without any marker
 
 WRITING RULES:
 - Write formal academic English appropriate for Nigerian universities
@@ -1008,10 +1036,10 @@ Department: ${projectInfo.department}
 Project Type: ${projectInfo.projectType || 'software'}
 
 ${subsectionList ? `Required subsections:\n${subsectionList}\n` : ''}
-${paperContext ? `\nREAL ACADEMIC PAPERS — use these as sources for your claims. Use the [number] markers as in-text citations:\n\n${paperContext}\n\nIMPORTANT: Only cite using the markers above. Never invent citations not in this list.\n` : 'No external papers available — write from established academic knowledge without citations.\n'}
+${paperContext ? `\nREAL ACADEMIC PAPERS — use these as sources for your claims. Insert the [number] marker as the in-text citation wherever relevant:\n\n${paperContext}\n\nIMPORTANT: Only cite using the markers above, written exactly as [1], [2] etc. Never write an author name or year yourself, and never invent a marker not in this list.\n` : 'No external papers available — write from established academic knowledge without citations.\n'}
 ${projectInfo.supervisorNotes ? `\nSupervisor notes: ${projectInfo.supervisorNotes}\n` : ''}
 
-Write each subsection in full. Use in-text citations from the papers provided above in APA format (Author, Year). Minimum 3 paragraphs per subsection. Be specific to "${projectInfo.topic}" throughout. Do not use placeholders or say "to be completed".`
+Write each subsection in full. Insert the [number] citation markers from the papers provided above wherever relevant. Minimum 3 paragraphs per subsection. Be specific to "${projectInfo.topic}" throughout. Do not use placeholders or say "to be completed".`
 
       let chapterContent = ''
       try {
@@ -1021,6 +1049,8 @@ Write each subsection in full. Use in-text citations from the papers provided ab
           .replace(/```[a-z]*/gi, '')
           .replace(/```/g, '')
           .trim()
+        // Swap [n] markers for real (Author, Year) citations built from verified paper data
+        chapterContent = resolveCitationMarkers(chapterContent, paperLookup)
       } catch (err) {
         console.error(`Chapter ${chapter.number} generation failed:`, err.message)
         chapterContent = `Chapter ${chapter.number}: ${chapter.title}\n\nContent generation failed. Please regenerate this chapter.`

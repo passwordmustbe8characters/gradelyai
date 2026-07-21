@@ -1520,7 +1520,7 @@ const renderContentWithSources = (text) => {
             <div className="res-topbar-actions">
               {paid && (
                 <button className="res-btn-text" onClick={() => setCorrectionsModalOpen(true)}>
-                  <ShieldIcon /> <span className="hide-on-mobile">Apply Corrections</span>
+                  <ShieldIcon /> <span className="hide-on-mobile">Apply Supervisor Corrections</span>
                 </button>
               )}
 

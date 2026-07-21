@@ -128,16 +128,49 @@ export async function fetchRealPapers(topic, department) {
   return []
 }
 
+// Builds the numbered paper list shown to the AI, plus a lookup so markers can be
+// resolved back to real citations afterward — the AI only ever sees title/year/journal,
+// never a pre-formatted citation string, so it has nothing to copy or misremember.
 function formatPapersForPrompt(papers) {
-  if (!papers.length) return ''
-  return papers.map((p, i) => {
-    const authors = p.authors?.map(a => a.name).join(', ') || 'Unknown Author'
+  const lookup = {}
+  if (!papers.length) return { context: '', lookup }
+  const context = papers.slice(0, 8).map((p, i) => {
+    const ref = `[${i + 1}]`
+    lookup[ref] = p
+    const authors = p.authors?.slice(0, 3).map(a => a.name).join(', ') || 'Unknown Author'
     const year = p.year || 'n.d.'
-    const title = p.title || 'Untitled'
     const journal = p.journal?.name || p.publicationVenue?.name || ''
-    const url = p.openAccessPdf?.url || ''
-    return `[REF${i + 1}] ${authors} (${year}). "${title}". ${journal}. ${url}`
+    return `${ref} Title: "${p.title || 'Untitled'}" | Year: ${year} | Published in: ${journal || 'academic journal'} | Authors: ${authors}`
   }).join('\n')
+  return { context, lookup }
+}
+
+// Builds an APA in-text citation, e.g. "(Smith, 2021)" / "(Smith & Lee, 2021)" / "(Smith et al., 2021)"
+// — always from real paper metadata, never from AI-generated text, so it can't be hallucinated.
+function formatInTextCitation(paper) {
+  const year = paper.year || 'n.d.'
+  const lastName = (name) => {
+    const parts = (name || '').trim().split(' ')
+    return parts[parts.length - 1] || 'Unknown'
+  }
+  const authors = paper.authors || []
+  if (authors.length === 0) return `(Unknown Author, ${year})`
+  if (authors.length === 1) return `(${lastName(authors[0].name)}, ${year})`
+  if (authors.length === 2) return `(${lastName(authors[0].name)} & ${lastName(authors[1].name)}, ${year})`
+  return `(${lastName(authors[0].name)} et al., ${year})`
+}
+
+// Replaces the AI's [n] citation markers with real, deterministically-formatted in-text
+// citations from lookup. Any marker that doesn't match a real paper is stripped — the AI
+// is never trusted to write citation text itself.
+function resolveCitationMarkers(content, lookup) {
+  return content
+    .replace(/\[(\d+)\]/g, (match, num) => {
+      const paper = lookup[`[${num}]`]
+      return paper ? formatInTextCitation(paper) : ''
+    })
+    .replace(/[ \t]+([.,;:])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
 }
 
 // ─── AREA GENERATION (Dynamic, department-aware) ────────────────────────────
@@ -460,7 +493,7 @@ Return ONLY this JSON with no extra text:
 export async function generateChapter(chapterInfo, projectInfo) {
   const { chapter, realPapers = [] } = chapterInfo
   const isImplementation = chapter.number >= 3 && projectInfo.projectType !== 'research'
-  const papersForPrompt = formatPapersForPrompt(realPapers)
+  const { context: papersForPrompt, lookup: paperLookup } = formatPapersForPrompt(realPapers)
 
   const styleSection = projectInfo.styleProfile ? `
 STUDENT WRITING STYLE TO MIRROR:
@@ -476,17 +509,17 @@ Write this chapter so it sounds like THIS specific student wrote it.
 Match their vocabulary level, sentence rhythm, and natural transitions.
 ` : ''
 
-  const system = `You are a professional Nigerian academic writer with expertise in writing final year 
+  const system = `You are a professional Nigerian academic writer with expertise in writing final year
 project reports for Nigerian universities. You write rich, detailed, academically rigorous content.
 
 WRITING RULES:
 - Write in formal academic English appropriate for Nigerian universities
 - Each subsection must be substantial — minimum 3 to 4 rich paragraphs
-- Use proper in-text citations in ${projectInfo.referenceStyle || 'APA'} format e.g. (Smith, 2021)
-- If real papers are provided below cite them using this format after the relevant claim: [SOURCE: Author, Year, "Paper Title", URL_OR_EMPTY]
-- If the real papers list is empty write clean academic prose with NO citation markers at all
-- NEVER invent fabricate or guess at sources
-- NEVER write [SOURCE: General Knowledge] or any made up author
+- If real papers are provided below, insert the [number] marker — e.g. [1] — immediately after the relevant claim, exactly as given in the paper list
+- Do NOT write out an author name or year yourself. Never write "(Author, Year)" — only ever write the bracket marker like [1] or [2]. The real citation text is inserted automatically afterward from verified data
+- Only use markers from the list provided — never invent a marker number that wasn't given to you
+- If the real papers list is empty, write clean academic prose with NO citation markers at all
+- NEVER invent, fabricate, or guess at sources
 - Be specific to the Nigerian context where relevant
 - For software and hardware chapters be technically precise
 - Do NOT use placeholder text — write actual substantive content
@@ -519,7 +552,8 @@ ${isImplementation && projectInfo.builtContext
 Write each subsection with its number and title as a heading then write rich academic content.
 Make this chapter comprehensive, rigorous, and specific to the exact project topic.`
 
-  return await callAI(system, user, 4096)
+  const raw = await callAI(system, user, 4096)
+  return resolveCitationMarkers(raw, paperLookup)
 }
 
 // ─── ABSTRACT ────────────────────────────────────────────────────────────────
