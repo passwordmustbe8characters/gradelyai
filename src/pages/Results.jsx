@@ -1094,9 +1094,10 @@ export default function Results() {
     setLoadingBreakdown(true); setLoadingWeaknesses(true)
     try {
       const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
       if (!projectId) return
-      const response = await fetch(`/api/projects/${projectId}/defense-prep`, {
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const response = await fetch(`${BASE_URL}/api/projects/${projectId}/defense-prep`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
       })
       const resData = await response.json()
