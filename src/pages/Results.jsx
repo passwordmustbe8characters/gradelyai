@@ -1796,7 +1796,7 @@ const renderContentWithSources = (text) => {
                 <DefenseSimulation
                   projectId={result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')}
                   flashcards={(() => {
-                    try { return JSON.parse(sessionStorage.getItem('gradelyFlashcards') || '[]') } catch { return [] }
+                    try { return JSON.parse(sessionStorage.getItem('gradelyFlashcards') || '{}').defenseCards || [] } catch { return [] }
                   })()}
                   onComplete={(score) => {
                     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
