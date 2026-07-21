@@ -1230,6 +1230,108 @@ app.post('/api/projects/:id/persist-chapters', requireAuth, async (req, res) => 
 });
 
 // ─── DEFENSE PREP ─────────────────────────────────────────────────────────────
+async function generateStudentBreakdown(projectInfo, fullProjectText) {
+  const system = `You are a friendly student mentor who explains complex academic projects in simple
+clear language. You speak directly to the student like a brilliant friend helping them understand their own work.`
+
+  const user = `Create a student-friendly breakdown of this final year project so the student can
+confidently explain and defend it.
+
+Project Title: "${projectInfo.topic}"
+Department: ${projectInfo.department}
+
+Project Content:
+${fullProjectText.substring(0, 5000)}
+
+Write these sections:
+1. "What Your Project Is About" — explain in 3 to 4 simple sentences as if telling a friend
+2. "The Problem You Are Solving" — why this matters in plain language
+3. "What You Did or Built" — simple walk-through of methodology
+4. "Key Findings or What Your Project Shows"
+5. "Why This Matters" — real world impact
+6. "5 Key Terms You Must Know" — define the most important concepts simply
+
+Write directly to the student using "your project", "you found", "you built".
+Keep language simple but not patronizing.`
+
+  return await callOpenAI(system, user, 2000)
+}
+
+async function generateFlashcards(projectInfo, fullProjectText) {
+  const system = `You are a Nigerian university exam coach creating study flashcards for final year
+project defense preparation. Return only valid JSON. No markdown. No preamble.`
+
+  const user = `Generate two sets of flashcards for this project defense:
+
+Project: "${projectInfo.topic}"
+Department: ${projectInfo.department}
+
+Project content:
+${fullProjectText.substring(0, 5000)}
+
+SET 1 — CONCEPT CARDS: 10 cards covering key terms and concepts from the project
+SET 2 — DEFENSE CARDS: 10 cards with realistic Nigerian university panel questions and model answers
+
+Make defense questions varied — some easy, some medium, some hard like a real panel.
+
+Return ONLY this JSON:
+{
+  "conceptCards": [
+    {
+      "id": "c1",
+      "front": "What is [term]?",
+      "back": "Clear definition with context from the project",
+      "category": "concept"
+    }
+  ],
+  "defenseCards": [
+    {
+      "id": "d1",
+      "front": "Panel question?",
+      "back": "Model answer the student should give",
+      "difficulty": "easy|medium|hard",
+      "category": "defense"
+    }
+  ]
+}`
+
+  return await callOpenAI(system, user, 2500)
+}
+
+async function analyzeWeaknesses(projectInfo, fullProjectText) {
+  const system = `You are a strict but fair Nigerian university project supervisor doing a pre-defense
+review. You identify genuine weaknesses honestly and help students prepare. Return only valid JSON. No markdown.`
+
+  const user = `Review this project and identify where a panel might challenge the student.
+
+Project: "${projectInfo.topic}"
+Department: ${projectInfo.department}
+
+Project excerpt:
+${fullProjectText.substring(0, 4000)}
+
+Identify 5 to 7 specific weaknesses. For each provide the area, the specific issue,
+why a panel would flag it, and how the student should respond.
+
+Return ONLY this JSON:
+{
+  "weaknesses": [
+    {
+      "id": 1,
+      "area": "Methodology",
+      "issue": "Specific issue description",
+      "whyItMatters": "Why a panel would flag this",
+      "suggestedResponse": "How the student should handle this question",
+      "severity": "low|medium|high"
+    }
+  ],
+  "overallReadiness": 75,
+  "readinessComment": "Overall assessment in 2 sentences"
+}`
+
+  return await callOpenAI(system, user, 2000)
+}
+
 app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
   try {
     const existing = await db.execute({
@@ -1246,18 +1348,16 @@ app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
     const parsedChapters = JSON.parse(project.chapters || '[]');
     const parsedInfo = JSON.parse(project.project_info || '{}');
     const collectiveText = parsedChapters.map(c => c.content).join('\n\n');
-    const { generateStudentBreakdown, generateFlashcards, analyzeWeaknesses } = await import('./lib/ai.js');
     console.log(`[Defense Engine] Synthesizing evaluation assets for project: ${req.params.id}`);
-    const [breakdown, flashcards, weaknesses] = await Promise.all([
+    const [breakdownRaw, flashcardsRaw, weaknessesRaw] = await Promise.all([
       generateStudentBreakdown(parsedInfo, collectiveText),
       generateFlashcards(parsedInfo, collectiveText),
       analyzeWeaknesses(parsedInfo, collectiveText)
     ]);
 
-    // Normalize parsed results (functions may return objects or JSON strings)
-    const parsedBreakdown = typeof breakdown === 'string' ? JSON.parse(breakdown) : breakdown || {};
-    const parsedFlashcards = typeof flashcards === 'string' ? JSON.parse(flashcards) : flashcards || [];
-    const parsedWeaknesses = typeof weaknesses === 'string' ? JSON.parse(weaknesses) : weaknesses || { weaknesses: [] };
+    const parsedBreakdown = breakdownRaw || {};
+    const parsedFlashcards = serverSafeParseJSON(flashcardsRaw, []);
+    const parsedWeaknesses = serverSafeParseJSON(weaknessesRaw, { weaknesses: [] });
 
     // Calculate readiness score from weakness count
     const weaknessCount = (parsedWeaknesses.weaknesses && parsedWeaknesses.weaknesses.length) || 0;
