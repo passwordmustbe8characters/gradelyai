@@ -83,18 +83,6 @@ function MenuIcon() {
   )
 }
 
-function SparklesIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="10" rx="2"/>
-      <path d="M12 11V7"/>
-      <circle cx="12" cy="5" r="2"/>
-      <line x1="8" y1="15" x2="8" y2="15" strokeWidth="3"/>
-      <line x1="16" y1="15" x2="16" y2="15" strokeWidth="3"/>
-    </svg>
-  )
-}
-
 // ─── SPINNING BUTTON ──────────────────────────────────────────────────────────
 
 function SpinningButton({ onClick, disabled, loading, children, style, className = 'btn-ghost' }) {
@@ -523,12 +511,10 @@ const pageStyles = `
   }
 `
 
-// ─── CORRECTIONS PANEL ────────────────────────────────────────────────────────
-function CorrectionsPanel({ chapterTitle, chapterContent, onApply }) {
-  const [open, setOpen] = useState(false)
+// ─── CORRECTIONS MODAL ────────────────────────────────────────────────────────
+function CorrectionsModal({ open, onClose, chapterTitle, chapterContent, history, onApply }) {
   const [corrections, setCorrections] = useState('')
   const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(false)
   const BASE_URL = import.meta.env.VITE_API_URL || ''
 
   const apply = async () => {
@@ -543,59 +529,75 @@ function CorrectionsPanel({ chapterTitle, chapterContent, onApply }) {
       })
       const data = await res.json()
       if (data.revisedContent) {
-        onApply(data.revisedContent)
-        setDone(true)
-        setOpen(false)
+        onApply(data.revisedContent, corrections)
         setCorrections('')
+      } else {
+        alert(data.error || 'Failed to apply corrections. Please try again.')
       }
     } catch (err) {
       console.error('Corrections error:', err)
+      alert('Failed to apply corrections. Please try again.')
     }
     setLoading(false)
   }
 
-  if (done) return (
-    <div style={{ margin: '8px 0 16px', padding: '8px 14px', background: 'rgba(45,155,111,0.08)', borderRadius: 8, border: '1px solid rgba(45,155,111,0.2)', fontSize: 13, color: 'var(--success)' }}>
-      ✓ Supervisor corrections applied successfully.
-    </div>
-  )
+  if (!open) return null
 
   return (
-    <div style={{ margin: '8px 0 20px' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ background: 'none', border: '1px solid rgba(217,79,79,0.3)', padding: '6px 14px', borderRadius: 20, color: 'var(--danger)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'Geist, sans-serif' }}
-      >
-        {open ? '✕ Cancel' : '📝 Apply supervisor corrections'}
-      </button>
-
-      {open && (
-        <div style={{ marginTop: 12, padding: '16px 18px', background: 'rgba(217,79,79,0.03)', borderRadius: 10, border: '1px solid rgba(217,79,79,0.15)' }}>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
-            Paste your supervisor's comments or corrections below. Grad will rewrite this chapter to address all of them.
-          </p>
-          <textarea
-            value={corrections}
-            onChange={e => setCorrections(e.target.value)}
-            placeholder={`e.g. "The background section needs more recent references — nothing older than 2020. The problem statement is too vague, be more specific about the gap. Add a paragraph about the Nigerian context in the significance section."`}
-            rows={5}
-            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
-          />
-          <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-            <button
-              onClick={apply}
-              disabled={!corrections.trim() || loading}
-              style={{ padding: '8px 18px', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: corrections.trim() ? 'pointer' : 'not-allowed', opacity: corrections.trim() ? 1 : 0.5 }}
-            >
-              {loading ? 'Applying corrections...' : 'Apply Corrections →'}
-            </button>
-            <button onClick={() => setOpen(false)} style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 1998, background: 'rgba(0,0,0,0.45)' }} onClick={onClose} />
+      <div style={{
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        zIndex: 1999, width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto',
+        background: 'var(--bg-card, #fff)', borderRadius: 16, padding: '24px 26px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', boxSizing: 'border-box'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+          <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)', margin: 0 }}>Apply Supervisor Corrections</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-muted)', lineHeight: 1 }}>✕</button>
         </div>
-      )}
-    </div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '8px 0 16px' }}>
+          Editing <strong style={{ color: 'var(--text)' }}>{chapterTitle}</strong>. Paste your supervisor's comments below and Grad will rewrite the chapter to address all of them.
+        </p>
+        <textarea
+          value={corrections}
+          onChange={e => setCorrections(e.target.value)}
+          placeholder={`e.g. "The background section needs more recent references — nothing older than 2020. The problem statement is too vague, be more specific about the gap. Add a paragraph about the Nigerian context in the significance section."`}
+          rows={5}
+          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid var(--border)', fontSize: 13, fontFamily: 'Geist, sans-serif', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+        />
+        <div style={{ display: 'flex', gap: 10, marginTop: 10, marginBottom: 22 }}>
+          <button
+            onClick={apply}
+            disabled={!corrections.trim() || loading}
+            style={{ padding: '8px 18px', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: corrections.trim() ? 'pointer' : 'not-allowed', opacity: corrections.trim() && !loading ? 1 : 0.5 }}
+          >
+            {loading ? 'Applying corrections...' : 'Apply Corrections →'}
+          </button>
+          <button onClick={onClose} style={{ padding: '8px 14px', background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 13, cursor: 'pointer' }}>
+            Close
+          </button>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 10 }}>
+            History{history.length > 0 ? ` (${history.length})` : ''}
+          </p>
+          {history.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>No corrections applied yet for this chapter.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[...history].reverse().map((h, i) => (
+                <div key={i} style={{ padding: '10px 12px', background: 'var(--bg)', border: '1px solid var(--border-light)', borderRadius: 8 }}>
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{new Date(h.appliedAt).toLocaleString()}</p>
+                  <p style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{h.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -993,6 +995,9 @@ function DefenseSimulation({ projectId, flashcards, onComplete }) {
 }
 
 
+// Highlight-to-edit toolbar — disabled for now, not part of the current flow
+const HIGHLIGHT_EDITOR_ENABLED = false
+
 export default function Results() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -1001,6 +1006,7 @@ export default function Results() {
   const [activeChapter, setActiveChapter] = useState(0)
   const [expandedChapters, setExpandedChapters] = useState({})
   const [activeSubsection, setActiveSubsection] = useState(null)
+  const [correctionsModalOpen, setCorrectionsModalOpen] = useState(false)
   const [humanizing, setHumanizing] = useState(false)
   const [humanized, setHumanized] = useState(false)
   const [breakdown, setBreakdown] = useState('')
@@ -1037,9 +1043,10 @@ export default function Results() {
               const proj = data.project
               const merged = {
                 ...parsed,
-                chapters: proj.chapters ? JSON.parse(proj.chapters) : parsed.chapters,
-                structure: proj.structure ? JSON.parse(proj.structure) : parsed.structure,
-                projectInfo: proj.project_info ? JSON.parse(proj.project_info) : parsed.projectInfo,
+                chapters: proj.chapters?.length ? proj.chapters : parsed.chapters,
+                structure: proj.structure && Object.keys(proj.structure).length ? proj.structure : parsed.structure,
+                projectInfo: proj.project_info && Object.keys(proj.project_info).length ? proj.project_info : parsed.projectInfo,
+                correctionsHistory: proj.corrections_history && Object.keys(proj.corrections_history).length ? proj.corrections_history : parsed.correctionsHistory,
               }
               sessionStorage.setItem('gradelyResult', JSON.stringify(merged))
               setTimeout(() => setResult(merged), 0)
@@ -1183,6 +1190,24 @@ export default function Results() {
       alert('Export failed. Please try again.')
     }
     setExporting(false)
+  }
+
+  const applyChapterCorrections = (revisedContent, correctionText) => {
+    const updatedChapters = result.chapters.map((c, ci) =>
+      ci === activeChapter ? { ...c, content: revisedContent } : c
+    )
+    const existingHistory = result.correctionsHistory || {}
+    const chapterHistory = existingHistory[activeChapter] || []
+    const updatedHistory = {
+      ...existingHistory,
+      [activeChapter]: [...chapterHistory, { text: correctionText, appliedAt: new Date().toISOString() }]
+    }
+    const updated = { ...result, chapters: updatedChapters, correctionsHistory: updatedHistory }
+    setResult(updated)
+    sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+    setCorrectionsModalOpen(false)
+    const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+    if (projectId) updateProject(projectId, { chapters: updatedChapters, corrections_history: updatedHistory }).catch(console.error)
   }
 
   const handlePublish = async () => {
@@ -1493,9 +1518,11 @@ const renderContentWithSources = (text) => {
 </div>
 
             <div className="res-topbar-actions">
-              <button className="res-btn-text" onClick={() => navigate('/build')}>
-                <SparklesIcon /> <span className="hide-on-mobile">Back to Grad</span>
-              </button>
+              {paid && (
+                <button className="res-btn-text" onClick={() => setCorrectionsModalOpen(true)}>
+                  <ShieldIcon /> <span className="hide-on-mobile">Apply Corrections</span>
+                </button>
+              )}
 
               {paid && (
                 <>
@@ -1538,7 +1565,7 @@ const renderContentWithSources = (text) => {
           </div>
 
           <div className="res-content-scroll" ref={contentRef}>
-            <TextEditor onInstruct={handleTextInstruct} />
+            {HIGHLIGHT_EDITOR_ENABLED && <TextEditor onInstruct={handleTextInstruct} />}
 
             {activeTab === 'project' && (
               <div className="res-doc">
@@ -1648,27 +1675,10 @@ const renderContentWithSources = (text) => {
                           </>
                         ) : (
                           <p style={{ color: 'var(--text-dim)', fontStyle: 'italic' }}>
-                            No content yet for this chapter. Go back to Grad to build it.
+                            No content yet for this chapter.
                           </p>
                         )}
                       </div>
-
-                      {!isLocked && paid && (
-                        <CorrectionsPanel
-                          chapterTitle={ch.title}
-                          chapterContent={ch.content}
-                          onApply={(revisedContent) => {
-                            const updatedChapters = result.chapters.map((c, ci) =>
-                              ci === idx ? { ...c, content: revisedContent } : c
-                            )
-                            const updated = { ...result, chapters: updatedChapters }
-                            setResult(updated)
-                            sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
-                            const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
-                            if (projectId) updateProject(projectId, { chapters: updatedChapters }).catch(console.error)
-                          }}
-                        />
-                      )}
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 52, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
                         <button
@@ -1914,6 +1924,14 @@ const renderContentWithSources = (text) => {
           onClose={() => setShowPaywall(false)}
         />
       )}
+      <CorrectionsModal
+        open={correctionsModalOpen}
+        onClose={() => setCorrectionsModalOpen(false)}
+        chapterTitle={result.chapters[activeChapter]?.title || ''}
+        chapterContent={result.chapters[activeChapter]?.content || ''}
+        history={result.correctionsHistory?.[activeChapter] || []}
+        onApply={applyChapterCorrections}
+      />
     </>
   )
 }

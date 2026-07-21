@@ -72,6 +72,8 @@ function TrophyIcon() {
   )
 }
 
+const BASE_URL = import.meta.env.VITE_API_URL || ''
+
 export default function Flashcards() {
   const navigate = useNavigate()
   const [cards, setCards] = useState(null)
@@ -81,6 +83,9 @@ export default function Flashcards() {
   const [userAnswer, setUserAnswer] = useState('')
   const [scores, setScores] = useState({ got: 0, almost: 0, missed: 0 })
   const [finished, setFinished] = useState(false)
+  const [checkingAnswer, setCheckingAnswer] = useState(false)
+  const [aiRating, setAiRating] = useState(null)
+  const [checkError, setCheckError] = useState('')
 
   useEffect(() => {
   const saved = sessionStorage.getItem('gradelyFlashcards')
@@ -101,19 +106,40 @@ export default function Flashcards() {
     setUserAnswer('')
     setScores({ got: 0, almost: 0, missed: 0 })
     setFinished(false)
+    setAiRating(null)
+    setCheckError('')
   }
 
-  const handleFlip = () => {
-    if (!userAnswer.trim()) return
-    setShowAnswer(true)
+  const checkAnswer = async () => {
+    if (!userAnswer.trim() || checkingAnswer) return
+    setCheckingAnswer(true)
+    setCheckError('')
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      const res = await fetch(`${BASE_URL}/api/flashcards/rate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ question: currentCard.front, modelAnswer: currentCard.back, studentAnswer: userAnswer })
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error)
+      setAiRating({ score: data.score, feedback: data.feedback })
+      setShowAnswer(true)
+    } catch (err) {
+      console.error('Answer rating failed:', err)
+      setCheckError('Could not score your answer right now. Please try again.')
+    }
+    setCheckingAnswer(false)
   }
 
-  const handleScore = (rating) => {
-    setScores(s => ({ ...s, [rating]: s[rating] + 1 }))
+  const nextCard = () => {
+    const bracket = aiRating == null ? 'almost' : aiRating.score >= 7 ? 'got' : aiRating.score >= 4 ? 'almost' : 'missed'
+    setScores(s => ({ ...s, [bracket]: s[bracket] + 1 }))
     if (currentIndex < activeCards.length - 1) {
       setCurrentIndex(i => i + 1)
       setShowAnswer(false)
       setUserAnswer('')
+      setAiRating(null)
     } else {
       setFinished(true)
     }
@@ -195,7 +221,7 @@ export default function Flashcards() {
 
             <div className="card" style={{ background: 'rgba(0,126,167,0.05)', border: '1px solid rgba(0,126,167,0.15)' }}>
               <p style={{ fontSize: 14, color: 'var(--accent)', lineHeight: 1.7 }}>
-                <strong>How it works:</strong> A question appears. Write your answer, then flip the card to compare. Rate yourself honestly — the score tells you how ready you are.
+                <strong>How it works:</strong> A question appears. Type your answer, and Grad scores it against the model answer and tells you what you got right and what you missed.
               </p>
             </div>
           </div>
@@ -250,28 +276,52 @@ export default function Flashcards() {
               <div style={{ marginBottom: 20 }}>
                 <label className="label">Your answer</label>
                 <textarea className="input" rows={4}
-                  placeholder="Write your answer before flipping the card..."
+                  placeholder="Write your answer as you would say it in your defense..."
                   value={userAnswer}
                   onChange={e => setUserAnswer(e.target.value)}
                   style={{ resize: 'vertical' }} />
                 <button
                   className="btn-primary"
-                  onClick={handleFlip}
-                  disabled={!userAnswer.trim()}
+                  onClick={checkAnswer}
+                  disabled={!userAnswer.trim() || checkingAnswer}
                   style={{ width: '100%', justifyContent: 'center', marginTop: 12, fontSize: 15, padding: '13px' }}>
-                  Flip Card — See Answer
+                  {checkingAnswer ? 'Grad is checking your answer...' : 'Check My Answer →'}
                 </button>
-                {!userAnswer.trim() && (
+                {checkError && (
+                  <p style={{ fontSize: 12, color: 'var(--danger)', textAlign: 'center', marginTop: 8 }}>
+                    {checkError}
+                  </p>
+                )}
+                {!userAnswer.trim() && !checkError && (
                   <p style={{ fontSize: 12, color: 'var(--text-dim)', textAlign: 'center', marginTop: 8 }}>
-                    Write something first before flipping
+                    Write something first before checking
                   </p>
                 )}
               </div>
             )}
 
-            {/* Answer reveal */}
+            {/* Answer reveal + AI rating */}
             {showAnswer && (
               <div style={{ animation: 'fadeUp 0.3s ease' }}>
+                {aiRating && (
+                  <div style={{
+                    padding: '18px 20px', borderRadius: 12, marginBottom: 20,
+                    background: aiRating.score >= 7 ? 'rgba(45,155,111,0.08)' : aiRating.score >= 4 ? 'rgba(232,160,32,0.08)' : 'rgba(217,79,79,0.08)',
+                    border: `1.5px solid ${aiRating.score >= 7 ? 'var(--success)' : aiRating.score >= 4 ? '#E8A020' : 'var(--danger)'}`
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      {aiRating.score >= 7 ? <GotItIcon /> : aiRating.score >= 4 ? <AlmostIcon /> : <MissedIcon />}
+                      <span style={{
+                        fontSize: 15, fontWeight: 700,
+                        color: aiRating.score >= 7 ? 'var(--success)' : aiRating.score >= 4 ? '#E8A020' : 'var(--danger)'
+                      }}>
+                        {aiRating.score}/10
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.6 }}>{aiRating.feedback}</p>
+                  </div>
+                )}
+
                 <div style={{ padding: '24px', borderRadius: 16, background: 'rgba(0,126,167,0.05)', border: '1.5px solid rgba(0,126,167,0.2)', marginBottom: 20 }}>
                   <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Model Answer
@@ -286,27 +336,9 @@ export default function Flashcards() {
                   </div>
                 )}
 
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 12, textAlign: 'center' }}>
-                  How did you do?
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 16, marginBottom: 24 }}>
-                  {[
-                    { key: 'got', label: 'Got it', color: 'var(--success)', bg: 'rgba(45,155,111,0.08)', icon: <GotItIcon /> },
-                    { key: 'almost', label: 'Almost', color: '#E8A020', bg: 'rgba(232,160,32,0.08)', icon: <AlmostIcon /> },
-                    { key: 'missed', label: 'Missed it', color: 'var(--danger)', bg: 'rgba(217,79,79,0.08)', icon: <MissedIcon /> },
-                  ].map(r => (
-                    <button key={r.key} onClick={() => handleScore(r.key)} style={{
-                      padding: '12px', borderRadius: 12,
-                      border: `1px solid ${r.color}`,
-                      background: r.bg, color: r.color,
-                      cursor: 'pointer', fontFamily: 'Geist, sans-serif',
-                      fontSize: 14, fontWeight: 600, transition: 'all 0.15s',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
-                    }}>
-                      {r.icon} {r.label}
-                    </button>
-                  ))}
-                </div>
+                <button className="btn-primary" onClick={nextCard} style={{ width: '100%', justifyContent: 'center', fontSize: 15, padding: '13px' }}>
+                  {currentIndex < activeCards.length - 1 ? 'Next Card →' : 'Finish Session →'}
+                </button>
               </div>
             )}
           </div>

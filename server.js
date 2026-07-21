@@ -1182,14 +1182,14 @@ Return the complete revised chapter — not just the changed parts.`
     const user = `Chapter: "${chapterTitle}"
 
 ORIGINAL CHAPTER CONTENT:
-${chapterContent.slice(0, 3000)}
+${chapterContent}
 
 SUPERVISOR'S CORRECTIONS:
 ${corrections}
 
 Rewrite the complete chapter applying all the supervisor's corrections. Return only the revised chapter content — no explanation, no preamble.`
 
-    const revised = await callOpenAI(system, user, 3000)
+    const revised = await callOpenAI(system, user, 4000)
     res.json({ success: true, revisedContent: revised.trim() })
   } catch (err) {
     console.error('Apply corrections error:', err)
@@ -1459,6 +1459,39 @@ Return ONLY this JSON:
   }
 })
 
+// ─── FLASHCARD ANSWER RATING ───────────────────────────────────────────────────
+app.post('/api/flashcards/rate', requireAuth, async (req, res) => {
+  const { question, modelAnswer, studentAnswer } = req.body
+  if (!question || !modelAnswer || !studentAnswer) {
+    return res.status(400).json({ error: 'question, modelAnswer and studentAnswer are required' })
+  }
+  try {
+    const system = `You are a supportive but honest Nigerian university exam coach grading a student's spoken-style answer
+during defense flashcard practice. Judge whether the student captured the key ideas — it does not need to match the
+model answer word for word. Return only valid JSON. No markdown.`
+
+    const user = `Question: ${question}
+
+Model Answer: ${modelAnswer}
+
+Student's Answer: ${studentAnswer}
+
+Rate the student's answer from 0 to 10 based on how well it captures the key ideas in the model answer.
+Return ONLY this JSON:
+{
+  "score": 7,
+  "feedback": "One or two sentences of specific, encouraging feedback on what was right and what was missing."
+}`
+
+    const raw = await callOpenAI(system, user, 300)
+    const rating = serverSafeParseJSON(raw, { score: 5, feedback: 'Could not score this answer automatically.' })
+    res.json({ success: true, ...rating })
+  } catch (err) {
+    console.error('Flashcard rating error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ─── PROXY: OpenAI ────────────────────────────────────────────────────────────
 app.post('/api/ai', async (req, res) => {
   try {
@@ -1486,27 +1519,63 @@ app.post('/api/ai', async (req, res) => {
   }
 })
 
-// ─── PROXY: Semantic Scholar ──────────────────────────────────────────────────
+// ─── PROXY: Semantic Scholar (with CrossRef fallback) ─────────────────────────
+async function searchSemanticScholar(query) {
+  const encoded = encodeURIComponent(query)
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=15&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  try {
+    const headers = process.env.SEMANTIC_SCHOLAR_API_KEY ? { 'x-api-key': process.env.SEMANTIC_SCHOLAR_API_KEY } : {}
+    const response = await fetch(url, { signal: controller.signal, headers })
+    if (!response.ok) return null
+    const data = await response.json()
+    return data.data?.length ? data.data : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// CrossRef needs no API key and has a far more generous rate limit — used when
+// Semantic Scholar's shared unauthenticated quota (429s constantly in practice) is exhausted.
+async function searchCrossRef(query) {
+  const encoded = encodeURIComponent(query)
+  const url = `https://api.crossref.org/works?query.bibliographic=${encoded}&rows=15&select=title,author,published,container-title,DOI,URL`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'GradelyAI/1.0 (mailto:mytechteammail@gmail.com)' } })
+    if (!response.ok) return null
+    const data = await response.json()
+    const items = data.message?.items || []
+    return items
+      .filter(it => it.title?.[0])
+      .map(it => ({
+        title: it.title[0],
+        authors: (it.author || []).map(a => ({ name: [a.given, a.family].filter(Boolean).join(' ') })),
+        year: it.published?.['date-parts']?.[0]?.[0] || null,
+        journal: { name: it['container-title']?.[0] || '' },
+        externalIds: { DOI: it.DOI },
+        openAccessPdf: it.URL ? { url: it.URL } : null
+      }))
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 app.get('/api/papers', async (req, res) => {
   const { query } = req.query
   if (!query) return res.json({ data: [] })
 
-  try {
-    const encoded = encodeURIComponent(query)
-    const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encoded}&limit=15&fields=title,authors,year,journal,externalIds,publicationVenue,openAccessPdf`
-    
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000)
-    
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
-    
-    if (!response.ok) return res.json({ data: [] })
-    const data = await response.json()
-    res.json({ data: data.data || [] })
-  } catch {
-    res.json({ data: [] })
-  }
+  const fromSemanticScholar = await searchSemanticScholar(query)
+  if (fromSemanticScholar) return res.json({ data: fromSemanticScholar })
+
+  const fromCrossRef = await searchCrossRef(query)
+  res.json({ data: fromCrossRef || [] })
 })
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
@@ -1821,13 +1890,13 @@ app.post('/api/upload/photos', requireAuth, memoryUpload.array('photos', 5), asy
 })
 
 app.put('/api/projects/:id', requireAuth, async (req, res) => {
-  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map, photos } = req.body
+  const { title, status, is_paid, chapters, abstract, references, structure, project_info, flashcard_scores, defense_readiness, chat_history, completed_sections, section_index_map, photos, corrections_history } = req.body
   try {
     const existing = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ? AND user_id = ?', args: [req.params.id, req.user.id] })
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
     const p = existing.rows[0]
     await db.execute({
-      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, photos = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
+      sql: 'UPDATE projects SET title = ?, status = ?, is_paid = ?, chapters = ?, abstract = ?, refs = ?, structure = ?, project_info = ?, flashcard_scores = ?, defense_readiness = ?, chat_history = ?, completed_sections = ?, section_index_map = ?, photos = ?, corrections_history = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
       args: [
         title || p.title,
         status || p.status,
@@ -1843,6 +1912,7 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
         completed_sections ? JSON.stringify(completed_sections) : p.completed_sections,
         section_index_map ? JSON.stringify(section_index_map) : p.section_index_map,
         photos ? JSON.stringify(photos) : p.photos,
+        corrections_history ? JSON.stringify(corrections_history) : p.corrections_history,
         req.params.id, req.user.id
       ]
     })
@@ -1878,6 +1948,7 @@ app.get('/api/projects/:id', requireAuth, async (req, res) => {
       structure: JSON.parse(project.structure || '{}'),
       project_info: JSON.parse(project.project_info || '{}'),
       flashcard_scores: JSON.parse(project.flashcard_scores || 'null'),
+      corrections_history: JSON.parse(project.corrections_history || '{}'),
     }
     res.json({ project: parsed })
   } catch (err) {

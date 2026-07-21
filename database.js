@@ -58,11 +58,18 @@ await client.execute(`
     flashcard_scores TEXT,
     defense_readiness INTEGER DEFAULT 0,
     defense_prep TEXT,
+    corrections_history TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   )
 `)
+}
+
+try {
+  await client.execute(`ALTER TABLE projects ADD COLUMN corrections_history TEXT`)
+} catch {
+  // column already exists
 }
 
 await client.execute(`

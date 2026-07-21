@@ -315,6 +315,7 @@ const resultData = {
   references: safeParseJSON(proj.refs, []),
   dbProjectId: proj.id,
   isPaidUser: proj.is_paid === 1,
+  correctionsHistory: safeParseJSON(proj.corrections_history, {}),
 }
                           sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
                           if (proj.is_paid) sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true }))
