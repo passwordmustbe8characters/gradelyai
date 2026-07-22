@@ -1067,6 +1067,7 @@ export default function Results() {
   const completedChapters = result?.chapters?.filter(c => c.content && c.content.trim().length > 0).length || 0
   const isProjectComplete = totalChapters > 0 && completedChapters === totalChapters
   const canPublish = paid && isProjectComplete
+  const isUploaded = result?.source === 'uploaded'
 
   const handleHumanize = async () => {
     if (!result) return
@@ -1120,6 +1121,10 @@ export default function Results() {
       const response = await fetch(`${BASE_URL}/api/projects/${projectId}/defense-prep`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
       })
+      if (response.status === 402) {
+        setShowPaywall(true)
+        return
+      }
       const resData = await response.json()
       if (resData.success) {
        setBreakdown(resData.data.breakdown)
@@ -1136,6 +1141,28 @@ export default function Results() {
       setDefenseError("Could not load defense data. Please try again.")
     } finally {
       setLoadingBreakdown(false); setLoadingWeaknesses(false)
+    }
+  }
+
+  const loadFreeSimulationData = async () => {
+    if (sessionStorage.getItem('gradelyFlashcards')) return
+    setLoadingWeaknesses(true)
+    try {
+      const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      if (!projectId) return
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const response = await fetch(`${BASE_URL}/api/projects/${projectId}/free-simulation-questions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+      })
+      const resData = await response.json()
+      if (!resData.success) throw new Error(resData.error)
+      sessionStorage.setItem('gradelyFlashcards', JSON.stringify({ conceptCards: [], defenseCards: resData.defenseCards }))
+    } catch (err) {
+      console.error("Free simulation load failed:", err)
+      setDefenseError("Could not load simulation questions. Please try again.")
+    } finally {
+      setLoadingWeaknesses(false)
     }
   }
 
@@ -1257,6 +1284,9 @@ export default function Results() {
       try { await updateProject(projectId, { is_paid: true }) }
       catch (err) { console.error('Failed to mark as paid:', err) }
     }
+
+    // Uploaded projects already have all their chapters — no need to generate anything further
+    if (isUploaded) return
 
     // Use the keys Generate.jsx already reads (lines 31-80)
     sessionStorage.setItem('gradely_continue_from', '2')
@@ -1420,7 +1450,7 @@ const renderContentWithSources = (text) => {
 
           <div className="res-sidebar-chapters">
             {result.chapters.map((ch, i) => {
-              const isLocked = !paid && ch.number > 1
+              const isLocked = !paid && ch.number > 1 && !isUploaded
               const hasContent = ch.content && ch.content.trim().length > 0
               const isActive = activeTab === 'project' && activeChapter === i
               const isExpanded = expandedChapters[i] || false
@@ -1479,7 +1509,8 @@ const renderContentWithSources = (text) => {
             { key: 'simulation', label: 'Defense Simulation', icon: <span style={{fontSize:13}}>🎓</span>, requiresPaid: true },
             { key: 'references', label: 'References', icon: <RefsIcon />, requiresPaid: false },
           ].map(t => {
-            const isLocked = t.requiresPaid && !paid
+            const freeViaUpload = t.key === 'simulation' && isUploaded
+            const isLocked = t.requiresPaid && !paid && !freeViaUpload
             return (
               <button
                 key={t.key}
@@ -1492,7 +1523,7 @@ const renderContentWithSources = (text) => {
                   }
                   setActiveTab(t.key)
                   if (t.key === 'breakdown' || t.key === 'weaknesses') loadUnifiedDefensePrepData()
-                  if (t.key === 'simulation') loadUnifiedDefensePrepData()
+                  if (t.key === 'simulation') freeViaUpload ? loadFreeSimulationData() : loadUnifiedDefensePrepData()
                   if (t.key === 'references') loadReferences()
                   setMobileMenuOpen(false)
                 }}
@@ -1609,7 +1640,7 @@ const renderContentWithSources = (text) => {
 
                 {result.chapters.map((ch, idx) => {
                   if (activeChapter !== idx) return null
-                  const isLocked = !paid && ch.number > 1
+                  const isLocked = !paid && ch.number > 1 && !isUploaded
                   const hasContent = ch.content && ch.content.trim().length > 0
                   const subsections = getSubsections(idx)
 
@@ -1716,7 +1747,7 @@ const renderContentWithSources = (text) => {
                           disabled={idx === result.chapters.length - 1}
                           onClick={() => {
                             const next = idx + 1
-                            const nextIsLocked = !paid && result.chapters[next]?.number > 1
+                            const nextIsLocked = !paid && result.chapters[next]?.number > 1 && !isUploaded
                             if (nextIsLocked) { setShowPaywall(true); return }
                             setActiveChapter(next)
                             setExpandedChapters(prev => ({ ...prev, [next]: true }))
@@ -1925,10 +1956,14 @@ const renderContentWithSources = (text) => {
         <div className="res-unlock-bar">
           <div>
             <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, fontFamily: 'Geist, sans-serif' }}>
-             ✅ Your Chapter 1 is ready. {(result?.structure?.chapters?.length || 5) - 1} more chapters are waiting.
+              {isUploaded
+                ? '🎓 Defense Simulation is free on your uploaded project.'
+                : `✅ Your Chapter 1 is ready. ${(result?.structure?.chapters?.length || 5) - 1} more chapters are waiting.`}
             </p>
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Geist, sans-serif' }}>
-              Unlock all {(result?.structure?.chapters?.length || 5)} chapters, defense prep, flashcards, humanization, supervisor corrections, and Word export.
+              {isUploaded
+                ? 'Unlock Student Breakdown, Weak Spots, Flashcards, humanization, supervisor corrections, and Word export.'
+                : `Unlock all ${(result?.structure?.chapters?.length || 5)} chapters, defense prep, flashcards, humanization, supervisor corrections, and Word export.`}
             </p>
           </div>
           <button onClick={() => setShowPaywall(true)} className="res-unlock-btn">

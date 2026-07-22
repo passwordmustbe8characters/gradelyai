@@ -7,6 +7,7 @@ import multer from 'multer'
 import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import mammoth from 'mammoth'
 import db from './database.js'
 
 console.log('=== SERVER STARTING ===');
@@ -48,6 +49,18 @@ function serverSafeParseJSON(raw, fallback = null) {
     const clean = raw.replace(/```json|```/g, '').trim()
     return JSON.parse(clean)
   } catch { return fallback }
+}
+
+async function extractPdfText(buffer) {
+  let parseFunction = pdfParse
+  if (typeof parseFunction !== 'function') parseFunction = pdfParse.default
+  if (typeof parseFunction !== 'function') parseFunction = Object.values(pdfParse).find(val => typeof val === 'function')
+  if (typeof parseFunction !== 'function') {
+    console.error("PDF Library Object:", pdfParse)
+    throw new Error('Server configuration error: PDF library failed to load.')
+  }
+  const data = await parseFunction(buffer)
+  return data.text
 }
 
 // Builds an APA in-text citation, e.g. "(Smith, 2021)" / "(Smith & Lee, 2021)" / "(Smith et al., 2021)"
@@ -1432,19 +1445,65 @@ app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
 });
 
 
+// ─── FREE SIMULATION QUESTIONS (uploaded projects only) ───────────────────────
+// Lets a student who uploaded an already-finished project practice Defense Simulation
+// without paying — the paid perks (breakdown, weak spots, flashcards, humanize) still
+// require unlocking via the normal paywall.
+app.post('/api/projects/:id/free-simulation-questions', requireAuth, async (req, res) => {
+  try {
+    const existing = await db.execute({
+      sql: 'SELECT chapters, project_info, source FROM projects WHERE id = ? AND user_id = ?',
+      args: [req.params.id, req.user.id]
+    })
+    if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Project not found.' })
+    const project = existing.rows[0]
+    if (project.source !== 'uploaded') {
+      return res.status(403).json({ success: false, error: 'Free defense simulation is only available for uploaded projects.' })
+    }
+
+    const parsedChapters = JSON.parse(project.chapters || '[]')
+    const parsedInfo = JSON.parse(project.project_info || '{}')
+    const collectiveText = parsedChapters.map(c => c.content).join('\n\n')
+
+    const system = `You are a Nigerian university exam coach creating realistic panel defense questions. Return only valid JSON. No markdown.`
+    const user = `Generate 8 realistic panel defense questions with model answers for this project:
+
+Project: "${parsedInfo.topic}"
+Department: ${parsedInfo.department}
+
+Project content:
+${collectiveText.substring(0, 5000)}
+
+Make the questions varied — some easy, some medium, some hard, like a real panel.
+
+Return ONLY this JSON:
+{
+  "defenseCards": [
+    { "id": "d1", "front": "Panel question?", "back": "Model answer the student should give", "difficulty": "easy|medium|hard" }
+  ]
+}`
+    const raw = await callOpenAI(system, user, 2000)
+    const parsed = serverSafeParseJSON(raw, { defenseCards: [] })
+    res.json({ success: true, defenseCards: parsed.defenseCards || [] })
+  } catch (err) {
+    console.error('Free simulation questions error:', err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // ─── DEFENSE SIMULATION Q&A ───────────────────────────────────────────────────
 app.post('/api/projects/:id/defense-simulation', requireAuth, async (req, res) => {
   const { answers } = req.body // array of { question, answer }
 
   try {
     const existing = await db.execute({
-      sql: 'SELECT chapters, project_info, is_paid FROM projects WHERE id = ? AND user_id = ?',
+      sql: 'SELECT chapters, project_info, is_paid, source FROM projects WHERE id = ? AND user_id = ?',
       args: [req.params.id, req.user.id]
     })
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Project not found' })
 
     const project = existing.rows[0]
-    if (!project.is_paid) return res.status(402).json({ error: 'Defense simulation requires premium access' })
+    if (!project.is_paid && project.source !== 'uploaded') return res.status(402).json({ error: 'Defense simulation requires premium access' })
 
     const parsedChapters = JSON.parse(project.chapters || '[]')
     const parsedInfo = JSON.parse(project.project_info || '{}')
@@ -1731,16 +1790,7 @@ app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
     let text = ''
     if (req.file.mimetype === 'application/pdf') {
-      const buffer = fs.readFileSync(req.file.path)
-      let parseFunction = pdfParse
-      if (typeof parseFunction !== 'function') parseFunction = pdfParse.default
-      if (typeof parseFunction !== 'function') parseFunction = Object.values(pdfParse).find(val => typeof val === 'function')
-      if (typeof parseFunction !== 'function') {
-        console.error("PDF Library Object:", pdfParse)
-        return res.status(500).json({ error: 'Server configuration error: PDF library failed to load.' })
-      }
-      const data = await parseFunction(buffer)
-      text = data.text
+      text = await extractPdfText(fs.readFileSync(req.file.path))
     } else {
       text = fs.readFileSync(req.file.path, 'utf-8')
     }
@@ -1915,6 +1965,127 @@ app.post('/api/projects', requireAuth, async (req, res) => {
   }
 })
 
+// Locates a chapter/subsection title inside the source text even if the AI's transcription
+// differs slightly in whitespace or casing from the original document.
+function findMarkerIndex(text, title) {
+  const exact = text.indexOf(title)
+  if (exact !== -1) return exact
+  const escaped = title.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+  const match = text.match(new RegExp(escaped, 'i'))
+  return match ? text.indexOf(match[0]) : -1
+}
+
+// ─── UPLOAD EXISTING PROJECT ───────────────────────────────────────────────────
+app.post('/api/projects/upload', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+
+    let text = ''
+    const mimetype = req.file.mimetype
+    try {
+      if (mimetype === 'application/pdf') {
+        text = await extractPdfText(fs.readFileSync(req.file.path))
+      } else if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const result = await mammoth.extractRawText({ path: req.file.path })
+        text = result.value
+      } else {
+        return res.status(400).json({ error: 'Please upload a .docx or .pdf file.' })
+      }
+    } finally {
+      fs.unlinkSync(req.file.path)
+    }
+
+    if (!text || text.trim().length < 200) {
+      return res.status(400).json({ error: 'Could not read enough text from this file. Please check the file and try again.' })
+    }
+
+    // AI identifies the project's metadata and chapter/subsection titles verbatim — it never
+    // rewrites the student's content. We use the verbatim titles to split the ORIGINAL text
+    // ourselves, so what ends up in the project is exactly what they wrote.
+    const system = `You are analyzing a Nigerian university final year project document to identify its structure.
+Return only valid JSON. No markdown.`
+    const user = `Here is the full text of a final year project document:
+
+${text.substring(0, 40000)}
+
+Identify:
+1. The project title/topic
+2. The department (if mentioned)
+3. The university (if mentioned)
+4. Each chapter's number and title, EXACTLY as it appears verbatim in the document — do not paraphrase, reformat, or fix typos
+5. Each chapter's subsection numbers and titles, EXACTLY as they appear verbatim
+
+Return ONLY this JSON:
+{
+  "topic": "the project title",
+  "department": "department name or empty string if not found",
+  "university": "university name or empty string if not found",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "verbatim chapter title as it appears in the text",
+      "subsections": [
+        { "number": "1.1", "title": "verbatim subsection title as it appears in the text" }
+      ]
+    }
+  ]
+}`
+
+    const raw = await callOpenAI(system, user, 3000)
+    const parsed = serverSafeParseJSON(raw, null)
+    if (!parsed?.chapters?.length) {
+      return res.status(422).json({ error: 'Could not identify chapters in this document. Please make sure it has clear chapter headings.' })
+    }
+
+    const markers = parsed.chapters
+      .map(ch => ({ ...ch, index: findMarkerIndex(text, ch.title) }))
+      .filter(ch => ch.index !== -1)
+      .sort((a, b) => a.index - b.index)
+
+    if (markers.length === 0) {
+      return res.status(422).json({ error: 'Could not locate chapter headings in the document text. Please check the formatting and try again.' })
+    }
+
+    const chapters = markers.map((ch, i) => {
+      const start = ch.index + ch.title.length
+      const end = i < markers.length - 1 ? markers[i + 1].index : text.length
+      const cleanTitle = ch.title.replace(/^chapter\s+\S+:?\s*/i, '').trim() || ch.title
+      // The AI sometimes transcribes a title without its "CHAPTER N:" number label, even
+      // verbatim, which leaves that dangling label stuck at the end of the PREVIOUS
+      // chapter's content after the deterministic split. Strip it defensively.
+      const content = text.slice(start, end).replace(/\n*chapter\s+\S+:?\s*$/i, '').trim()
+      return { number: ch.number, title: cleanTitle, subsections: ch.subsections || [], content }
+    })
+
+    const projectInfo = {
+      topic: parsed.topic || 'Untitled Project',
+      department: parsed.department || '',
+      university: parsed.university || '',
+      projectType: 'software'
+    }
+    const structure = {
+      chapters: chapters.map(c => ({ number: c.number, title: c.title, subsections: c.subsections })),
+      referenceStyle: 'APA'
+    }
+
+    const insertResult = await db.execute({
+      sql: `INSERT INTO projects (user_id, title, university, department, project_type, status, is_paid, chapters, abstract, refs, structure, project_info, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        req.user.id, projectInfo.topic, projectInfo.university, projectInfo.department, projectInfo.projectType,
+        'in_progress', 0,
+        JSON.stringify(chapters), '', JSON.stringify([]), JSON.stringify(structure), JSON.stringify(projectInfo),
+        'uploaded'
+      ]
+    })
+
+    const project = await db.execute({ sql: 'SELECT * FROM projects WHERE id = ?', args: [insertResult.lastInsertRowid] })
+    res.json({ success: true, project: project.rows[0] })
+  } catch (err) {
+    console.error('Project upload error:', err)
+    res.status(500).json({ error: err.message || 'Failed to process the uploaded document.' })
+  }
+})
 
 // ─── PHOTO UPLOAD ─────────────────────────────────────────────────────────────
 app.post('/api/upload/photos', requireAuth, memoryUpload.array('photos', 5), async (req, res) => {
@@ -1984,7 +2155,7 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
 app.get('/api/projects', requireAuth, async (req, res) => {
   try {
     const result = await db.execute({
-      sql: 'SELECT id, title, university, department, project_type, status, is_paid, plan, defense_readiness, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC',
+      sql: 'SELECT id, title, university, department, project_type, status, is_paid, plan, source, defense_readiness, created_at, updated_at FROM projects WHERE user_id = ? ORDER BY updated_at DESC',
       args: [req.user.id]
     })
     res.json({ projects: result.rows })

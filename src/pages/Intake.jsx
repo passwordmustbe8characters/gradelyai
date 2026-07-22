@@ -356,12 +356,20 @@ const removePhoto = (index) => {
 
         {/* Step 1 — Name */}
         {step === 1 && (
-          <StepCard title="First things first" subtitle="What should we call you?">
-            <label className="label">Your name</label>
-            <input className="input" placeholder="e.g. Chidi"
-              value={form.name} onChange={e => update('name', e.target.value)} />
-            <StepNav onNext={() => form.name.trim() && setStep(2)} disabled={!form.name.trim()} />
-          </StepCard>
+          <>
+            <StepCard title="First things first" subtitle="What should we call you?">
+              <label className="label">Your name</label>
+              <input className="input" placeholder="e.g. Chidi"
+                value={form.name} onChange={e => update('name', e.target.value)} />
+              <StepNav onNext={() => form.name.trim() && setStep(2)} disabled={!form.name.trim()} />
+            </StepCard>
+            <p style={{ textAlign: 'center', marginTop: 20, fontSize: 14, color: 'var(--text-muted)' }}>
+              Already have a finished project?{' '}
+              <span onClick={() => navigate('/upload')} style={{ color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}>
+                Upload it instead →
+              </span>
+            </p>
+          </>
         )}
 
         {/* Step 2 — University */}

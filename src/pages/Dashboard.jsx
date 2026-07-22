@@ -201,17 +201,22 @@ export default function Dashboard() {
                   : `You have ${projects.length} project${projects.length > 1 ? 's' : ''}.`}
               </p>
             </div>
-            <button className="btn-primary" onClick={() => {
-              const paidProjects = projects.filter(p => p.is_paid)
-              const hasPremium = paidProjects.some(p => p.plan === 'PREMIUM')
-              if (user?.email !== UNLIMITED_PROJECTS_EMAIL && paidProjects.length > 0 && !hasPremium) {
-                alert('You already have a paid project. Delete it, or upgrade it to Premium, to start a second one.')
-                return
-              }
-              navigate('/start?mode=new_project')
-            }} style={{ fontSize: 15, padding: '13px 28px', whiteSpace: 'nowrap' }}>
-              + New Project
-            </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn-ghost" onClick={() => navigate('/upload')} style={{ fontSize: 15, padding: '13px 24px', whiteSpace: 'nowrap' }}>
+                Upload Existing Project
+              </button>
+              <button className="btn-primary" onClick={() => {
+                const paidProjects = projects.filter(p => p.is_paid)
+                const hasPremium = paidProjects.some(p => p.plan === 'PREMIUM')
+                if (user?.email !== UNLIMITED_PROJECTS_EMAIL && paidProjects.length > 0 && !hasPremium) {
+                  alert('You already have a paid project. Delete it, or upgrade it to Premium, to start a second one.')
+                  return
+                }
+                navigate('/start?mode=new_project')
+              }} style={{ fontSize: 15, padding: '13px 28px', whiteSpace: 'nowrap' }}>
+                + New Project
+              </button>
+            </div>
           </div>
 
           {/* Stats row */}
@@ -341,6 +346,7 @@ const resultData = {
   dbProjectId: proj.id,
   isPaidUser: proj.is_paid === 1,
   correctionsHistory: safeParseJSON(proj.corrections_history, {}),
+  source: proj.source,
 }
                           sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
                           if (proj.is_paid) sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true }))

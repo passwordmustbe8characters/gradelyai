@@ -14,6 +14,7 @@ import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import About from './pages/About'
 import Humanizer from './pages/Humanizer'
+import UploadProject from './pages/UploadProject'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -42,6 +43,11 @@ export default function App() {
       <Route path="/dashboard" element={
         <ProtectedRoute>
           <Dashboard />
+        </ProtectedRoute>
+      } />
+      <Route path="/upload" element={
+        <ProtectedRoute>
+          <UploadProject />
         </ProtectedRoute>
       } />
     </Routes>
