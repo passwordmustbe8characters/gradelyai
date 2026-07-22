@@ -514,7 +514,9 @@ project reports for Nigerian universities. You write rich, detailed, academicall
 
 WRITING RULES:
 - Write in formal academic English appropriate for Nigerian universities
-- Each subsection must be substantial — minimum 3 to 4 rich paragraphs
+- EVERY subsection must be at least 500 to 600 words on its own — this applies individually to each subsection, not just the chapter as a whole. A subsection under 500 words is incomplete and unacceptable
+- Elaborate: for every claim or point, explain the reasoning behind it, work through specific examples, discuss implications, and connect it back to the project topic — do not summarize or state something in one sentence and move on
+- Do not rush through ideas. Fully develop each concept — its context, why it matters, how it applies here — before moving to the next one. If you find yourself moving to the next subsection after only 2-3 paragraphs, you have not written enough — go back and add more depth
 - If real papers are provided below, insert the [number] marker — e.g. [1] — immediately after the relevant claim, exactly as given in the paper list
 - Do NOT write out an author name or year yourself. Never write "(Author, Year)" — only ever write the bracket marker like [1] or [2]. The real citation text is inserted automatically afterward from verified data
 - Only use markers from the list provided — never invent a marker number that wasn't given to you
@@ -523,7 +525,6 @@ WRITING RULES:
 - Be specific to the Nigerian context where relevant
 - For software and hardware chapters be technically precise
 - Do NOT use placeholder text — write actual substantive content
-- Aim for 2500 to 3500 words for the full chapter
 ${styleSection}
 
 ${papersForPrompt ? `REAL PAPERS YOU CAN CITE:\n${papersForPrompt}` : ''}`
@@ -542,17 +543,17 @@ PROJECT DETAILS:
 ${builtContext}
 ${projectInfo.supervisorNotes ? `\nSupervisor instructions: ${projectInfo.supervisorNotes}` : ''}
 
-CHAPTER STRUCTURE:
+CHAPTER STRUCTURE (${chapter.subsections.length} subsections — each MUST be at least 500-600 words individually):
 ${chapter.subsections.map(s => `${s.number}. ${s.title}`).join('\n')}
 
 ${isImplementation && projectInfo.builtContext
     ? 'IMPORTANT: This chapter must accurately reflect what the student described building. Use their actual details.'
     : ''}
 
-Write each subsection with its number and title as a heading then write rich academic content.
+Write each subsection with its number and title as a heading then write rich academic content — at least 500-600 words per subsection.
 Make this chapter comprehensive, rigorous, and specific to the exact project topic.`
 
-  const raw = await callAI(system, user, 4096)
+  const raw = await callAI(system, user, 7500)
   return resolveCitationMarkers(raw, paperLookup)
 }
 
