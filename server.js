@@ -1246,7 +1246,7 @@ ${corrections}
 
 Rewrite the complete chapter applying all the supervisor's corrections. Return only the revised chapter content — no explanation, no preamble.`
 
-    const revised = await callOpenAI(system, user, 4000)
+    const revised = await callOpenAI(system, user, 7500)
     res.json({ success: true, revisedContent: revised.trim() })
   } catch (err) {
     console.error('Apply corrections error:', err)
