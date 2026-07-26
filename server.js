@@ -462,7 +462,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
 
     const amountPaid = verifyData.data.amount / 100 // kobo → naira
     const customerEmail = verifyData.data.customer?.email
-    const plan = amountPaid >= 15000 ? 'PREMIUM' : 'STANDARD'
+    const plan = amountPaid >= 15000 ? 'PREMIUM' : amountPaid >= 10000 ? 'PRO' : 'BASIC'
     console.log(`✅ Paystack payment verified: ₦${amountPaid} from ${customerEmail} ref: ${reference}`)
 
     // Idempotency guard — `reference` is UNIQUE, so a retried/duplicate verify call fails here
@@ -496,7 +496,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
       })
     }
 
-    res.json({
+      res.json({
       success: true,
       amount: amountPaid,
       plan,
@@ -947,9 +947,15 @@ app.post('/api/generate-full-project', requireAuth, async (req, res) => {
     }
 
     // ── Step 3: Generate project structure ────────────────────────────────────
-    send('status', { message: 'Planning your chapter structure...', progress: 25 })
-    const structureSystem = `You are a Nigerian university academic expert. Generate final year project chapter structures. Always respond with valid JSON only. No markdown. No preamble.${guideContext}`
-    const structureUser = `Create a chapter structure for:
+    // ── Use student-edited structure if provided ────────────────────────────────
+    let structure
+    if (projectInfo.customStructure?.chapters?.length > 0) {
+      send('status', { message: 'Using your custom chapter structure...', progress: 25 })
+      structure = projectInfo.customStructure
+    } else {
+      send('status', { message: 'Planning your chapter structure...', progress: 25 })
+      const structureSystem = `You are a Nigerian university academic expert. Generate final year project chapter structures. Always respond with valid JSON only. No markdown. No preamble.${guideContext}`
+      const structureUser = `Create a chapter structure for:
 - University: ${projectInfo.university}
 - Department: ${projectInfo.department}
 - Topic: ${projectInfo.topic}
@@ -976,26 +982,27 @@ Return ONLY this JSON:
   "estimatedPages": 80
 }`
 
-    const structureRaw = await callOpenAI(structureSystem, structureUser, 2000)
-    const structure = serverSafeParseJSON(structureRaw, {
-      chapters: [
-        { number: 1, title: 'INTRODUCTION', subsections: [
-          { number: '1.1', title: 'Background to the Study' },
-          { number: '1.2', title: 'Statement of the Problem' },
-          { number: '1.3', title: 'Aim and Objectives of the Study' },
-          { number: '1.4', title: 'Significance of the Study' },
-          { number: '1.5', title: 'Scope of the Study' },
-          { number: '1.6', title: 'Limitations of the Study' },
-          { number: '1.7', title: 'Definition of Terms' }
-        ]},
-        { number: 2, title: 'LITERATURE REVIEW', subsections: [] },
-        { number: 3, title: 'SYSTEM ANALYSIS AND DESIGN', subsections: [] },
-        { number: 4, title: 'SYSTEM IMPLEMENTATION', subsections: [] },
-        { number: 5, title: 'SUMMARY, CONCLUSION AND RECOMMENDATIONS', subsections: [] }
-      ],
-      referenceStyle: 'APA',
-      estimatedPages: 80
-    })
+      const structureRaw = await callOpenAI(structureSystem, structureUser, 2000)
+      structure = serverSafeParseJSON(structureRaw, {
+        chapters: [
+          { number: 1, title: 'INTRODUCTION', subsections: [
+            { number: '1.1', title: 'Background to the Study' },
+            { number: '1.2', title: 'Statement of the Problem' },
+            { number: '1.3', title: 'Aim and Objectives of the Study' },
+            { number: '1.4', title: 'Significance of the Study' },
+            { number: '1.5', title: 'Scope of the Study' },
+            { number: '1.6', title: 'Limitations of the Study' },
+            { number: '1.7', title: 'Definition of Terms' }
+          ]},
+          { number: 2, title: 'LITERATURE REVIEW', subsections: [] },
+          { number: 3, title: 'SYSTEM ANALYSIS AND DESIGN', subsections: [] },
+          { number: 4, title: 'SYSTEM IMPLEMENTATION', subsections: [] },
+          { number: 5, title: 'SUMMARY, CONCLUSION AND RECOMMENDATIONS', subsections: [] }
+        ],
+        referenceStyle: 'APA',
+        estimatedPages: 80
+      })
+    }
 
     // ── Step 4: Build paper context — abstracts only for AI, metadata for citations
       // The AI gets abstracts to understand content. Real citation text is built separately.

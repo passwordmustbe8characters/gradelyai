@@ -741,8 +741,8 @@ const getSectionPrompt = (sectionTitle) => {
       const aiReply = await socraticChat(
         savedProjectInfo || currentResult?.projectInfo || {},
         currentChapterStructure,
-        messages.slice(0, index),
-        text,
+        messages,
+        input,
         currentResult?.references || [],
         { requestType: 'draft', currentChapterNumber: editChapterNum, currentSectionTitle: currentSection?.title || '' }
       )

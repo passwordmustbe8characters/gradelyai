@@ -1958,7 +1958,7 @@ const renderContentWithSources = (text) => {
             <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, fontFamily: 'Geist, sans-serif' }}>
               {isUploaded
                 ? '🎓 Defense Simulation is free on your uploaded project.'
-                : `✅ Your Chapter 1 is ready. ${(result?.structure?.chapters?.length || 5) - 1} more chapters are waiting.`}
+                : `✅ Your Chapter 1 is ready. Unlock from ₦5,000 to get all ${(result?.structure?.chapters?.length || 5) - 1} chapters.`}
             </p>
             <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontFamily: 'Geist, sans-serif' }}>
               {isUploaded

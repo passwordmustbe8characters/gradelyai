@@ -37,6 +37,7 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
     selectedTopic: null,
     hasGuide: null,
     guideContent: '',
+    customStructure: null,
     supervisorNotes: '',
     projectType: '',
     builtContext: '',
@@ -248,6 +249,7 @@ const removePhoto = (index) => {
         guideContent: form.guideContent || '',
         ragGuideContent: form.ragGuideContent || '',
         hasGuide: form.hasGuide,
+        customStructure: form.customStructure || null,
         studentName: user?.name || form.name || '',
       }
 
@@ -586,14 +588,14 @@ const removePhoto = (index) => {
                 onClick={async () => {
                   update('hasGuide', false)
                   setLoading(true)
-                 const guide = await fetchGuideFromDB(form.university, form.department)
+                  const guide = await fetchGuideFromDB(form.university, form.department)
                   if (guide) {
                     update('guideContent', guide.structure)
                     update('guideFound', guide.label)
                     update('ragGuideContent', guide.structure)
                   }
                   setLoading(false)
-                  setStep(9)
+                  setStep('8b') // go to structure editor first
                 }}>
                 {loading ? 'Checking our database...' : 'No — use a standard structure'}
               </ChoiceButton>
@@ -613,8 +615,22 @@ const removePhoto = (index) => {
               placeholder="Paste chapter titles and subsections from your project guide..."
               value={form.guideContent} onChange={e => update('guideContent', e.target.value)}
               style={{ resize: 'vertical' }} />
-            <StepNav onBack={() => setStep(7)} onNext={() => setStep(9)} nextLabel="Continue →" />
+           <StepNav onBack={() => setStep(7)} onNext={() => setStep('8b')} nextLabel="Continue →" />
           </StepCard>
+        )}
+
+        {/* Step 8b — Structure editor */}
+        {step === '8b' && (
+          <StructureEditor
+            department={form.department}
+            projectType={form.selectedTopic?.type || form.projectType || 'software'}
+            guideFound={form.guideFound}
+            onBack={() => setStep(7)}
+            onConfirm={(editedStructure) => {
+              update('customStructure', editedStructure)
+              setStep(9)
+            }}
+          />
         )}
 
         {/* Step 9 — Final details */}
@@ -747,6 +763,232 @@ const removePhoto = (index) => {
     </div>
   )
 }
+  // ─── DEFAULT STRUCTURE ────────────────────────────────────────────────────────
+const DEFAULT_STRUCTURE = [
+  {
+    number: 1, title: 'INTRODUCTION',
+    subsections: [
+      { number: '1.1', title: 'Background to the Study' },
+      { number: '1.2', title: 'Statement of the Problem' },
+      { number: '1.3', title: 'Aim and Objectives of the Study' },
+      { number: '1.4', title: 'Significance of the Study' },
+      { number: '1.5', title: 'Scope of the Study' },
+      { number: '1.6', title: 'Limitations of the Study' },
+      { number: '1.7', title: 'Definition of Terms' },
+    ]
+  },
+  {
+    number: 2, title: 'LITERATURE REVIEW',
+    subsections: [
+      { number: '2.1', title: 'Introduction' },
+      { number: '2.2', title: 'Theoretical Background' },
+      { number: '2.3', title: 'Review of Related Literature' },
+      { number: '2.4', title: 'Summary of Literature Review' },
+    ]
+  },
+  {
+    number: 3, title: 'SYSTEM ANALYSIS AND DESIGN',
+    subsections: [
+      { number: '3.1', title: 'Introduction' },
+      { number: '3.2', title: 'System Analysis' },
+      { number: '3.3', title: 'System Design' },
+      { number: '3.4', title: 'System Architecture' },
+    ]
+  },
+  {
+    number: 4, title: 'SYSTEM IMPLEMENTATION AND TESTING',
+    subsections: [
+      { number: '4.1', title: 'Introduction' },
+      { number: '4.2', title: 'Implementation' },
+      { number: '4.3', title: 'Testing and Evaluation' },
+      { number: '4.4', title: 'Results and Discussion' },
+    ]
+  },
+  {
+    number: 5, title: 'SUMMARY, CONCLUSION AND RECOMMENDATIONS',
+    subsections: [
+      { number: '5.1', title: 'Summary' },
+      { number: '5.2', title: 'Conclusion' },
+      { number: '5.3', title: 'Recommendations' },
+      { number: '5.4', title: 'Suggestions for Further Work' },
+    ]
+  }
+]
+
+function StructureEditor({ department, guideFound, onBack, onConfirm }) {
+  const [chapters, setChapters] = useState(
+    JSON.parse(JSON.stringify(DEFAULT_STRUCTURE)) // deep clone
+  )
+
+  const updateChapterTitle = (chIdx, value) => {
+    setChapters(prev => prev.map((ch, i) =>
+      i === chIdx ? { ...ch, title: value } : ch
+    ))
+  }
+
+  const updateSubTitle = (chIdx, subIdx, value) => {
+    setChapters(prev => prev.map((ch, i) =>
+      i === chIdx ? {
+        ...ch,
+        subsections: ch.subsections.map((s, j) =>
+          j === subIdx ? { ...s, title: value } : s
+        )
+      } : ch
+    ))
+  }
+
+  const removeSubsection = (chIdx, subIdx) => {
+    setChapters(prev => prev.map((ch, i) =>
+      i === chIdx ? {
+        ...ch,
+        subsections: ch.subsections.filter((_, j) => j !== subIdx)
+      } : ch
+    ))
+  }
+
+  const addSubsection = (chIdx) => {
+    setChapters(prev => prev.map((ch, i) => {
+      if (i !== chIdx) return ch
+      const newNum = `${ch.number}.${ch.subsections.length + 1}`
+      return {
+        ...ch,
+        subsections: [...ch.subsections, { number: newNum, title: 'New Section' }]
+      }
+    }))
+  }
+
+  return (
+    <div style={{ width: '100%' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)', marginBottom: 6 }}>
+          Your project structure
+        </h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          {guideFound
+            ? `We found a guide for ${department} — this structure is based on it.`
+            : `This is the standard structure for ${department || 'your department'}. Edit any section title that doesn't match your school's requirements.`
+          }
+        </p>
+      </div>
+
+      {/* Chapter list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+        {chapters.map((ch, chIdx) => (
+          <div key={chIdx} style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            overflow: 'hidden',
+            background: 'var(--bg-card)'
+          }}>
+            {/* Chapter header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px',
+              background: 'rgba(0,126,167,0.06)',
+              borderBottom: '1px solid var(--border)'
+            }}>
+              <span style={{
+                fontSize: 11, fontWeight: 700, color: 'var(--accent)',
+                background: 'rgba(0,126,167,0.12)', borderRadius: 6,
+                padding: '2px 8px', whiteSpace: 'nowrap'
+              }}>
+                CH {ch.number}
+              </span>
+              <input
+                value={ch.title}
+                onChange={e => updateChapterTitle(chIdx, e.target.value)}
+                style={{
+                  flex: 1, background: 'transparent', border: 'none',
+                  fontSize: 13, fontWeight: 700, color: 'var(--text)',
+                  fontFamily: 'Geist, sans-serif', outline: 'none'
+                }}
+              />
+            </div>
+
+            {/* Subsections */}
+            <div style={{ padding: '8px 14px' }}>
+              {ch.subsections.map((sub, subIdx) => (
+                <div key={subIdx} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '6px 0',
+                  borderBottom: subIdx < ch.subsections.length - 1 ? '1px solid var(--border-light)' : 'none'
+                }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', minWidth: 28 }}>
+                    {sub.number}
+                  </span>
+                  <input
+                    value={sub.title}
+                    onChange={e => updateSubTitle(chIdx, subIdx, e.target.value)}
+                    style={{
+                      flex: 1, background: 'transparent', border: 'none',
+                      fontSize: 13, color: 'var(--text)',
+                      fontFamily: 'Geist, sans-serif', outline: 'none',
+                      padding: '2px 0'
+                    }}
+                  />
+                  <button
+                    onClick={() => removeSubsection(chIdx, subIdx)}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--text-dim)', fontSize: 14, padding: '2px 4px',
+                      lineHeight: 1, opacity: 0.6,
+                      display: ch.subsections.length <= 1 ? 'none' : 'block'
+                    }}
+                    title="Remove this section"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+
+              {/* Add subsection */}
+              <button
+                onClick={() => addSubsection(chIdx)}
+                style={{
+                  marginTop: 8, background: 'none', border: 'none',
+                  cursor: 'pointer', color: 'var(--accent)', fontSize: 12,
+                  fontFamily: 'Geist, sans-serif', fontWeight: 600,
+                  padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4
+                }}
+              >
+                + Add section
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Navigation */}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={onBack}
+          style={{
+            padding: '12px 20px', borderRadius: 40,
+            border: '1.5px solid var(--border)',
+            background: 'transparent', color: 'var(--text-muted)',
+            fontSize: 14, cursor: 'pointer', fontFamily: 'Geist, sans-serif'
+          }}
+        >
+          ← Back
+        </button>
+        <button
+          onClick={() => onConfirm({ chapters })}
+          style={{
+            flex: 1, padding: '12px 24px', borderRadius: 40,
+            border: 'none', background: '#1a1a1a', color: 'white',
+            fontSize: 14, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'Geist, sans-serif'
+          }}
+        >
+          This looks right — continue →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
 
 // ─── STEP CARD ────────────────────────────────────────────────────────────────
 function StepCard({ title, subtitle, children }) {
