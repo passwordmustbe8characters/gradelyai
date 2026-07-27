@@ -573,44 +573,21 @@ Make this chapter comprehensive, rigorous, and specific to the exact project top
 }
 
 // ─── DIAGRAMS ────────────────────────────────────────────────────────────────
-// One AI call per subsection flagged with a diagramType in the structure editor.
-export async function generateChapterDiagrams(chapter, projectInfo, chapterContent = '') {
-  const targets = []
-  for (const s of chapter.subsections || []) {
-    if (s.diagramType) targets.push({ subsectionNumber: s.number, title: s.title, diagramType: s.diagramType })
-    for (const c of s.children || []) {
-      if (c.diagramType) targets.push({ subsectionNumber: c.number, title: c.title, diagramType: c.diagramType })
-    }
-  }
-  if (targets.length === 0) return []
-
+// Manual, on-demand — triggered by a button in the "Understand this section"
+// panel rather than automatically during generation, so a failure is visible
+// and immediately retriable instead of silently missing from the final project.
+export async function generateSectionDiagram({ topic, subsectionTitle, diagramType, chapterExcerpt = '' }) {
   const token = localStorage.getItem('gradelyToken')
-  const results = await Promise.allSettled(targets.map(target =>
-    fetch(`${BASE_URL}/api/generate-diagram`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        topic: projectInfo.topic,
-        subsectionTitle: target.title,
-        diagramType: target.diagramType,
-        chapterExcerpt: chapterContent.slice(0, 1500)
-      })
-    }).then(res => res.json())
-  ))
-
-  const diagrams = []
-  results.forEach((result, i) => {
-    const target = targets[i]
-    if (result.status === 'fulfilled' && result.value?.mermaidCode) {
-      diagrams.push({ subsectionNumber: target.subsectionNumber, type: target.diagramType, mermaidCode: result.value.mermaidCode })
-    } else if (result.status === 'fulfilled') {
-      // fetch() resolves even on 4xx/5xx — surface the server's actual error
-      console.error(`Diagram generation failed for ${target.subsectionNumber}:`, result.value?.error || result.value)
-    } else {
-      console.error(`Diagram generation failed for ${target.subsectionNumber}:`, result.reason)
-    }
+  const res = await fetch(`${BASE_URL}/api/generate-diagram`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ topic, subsectionTitle, diagramType, chapterExcerpt: chapterExcerpt.slice(0, 1500) })
   })
-  return diagrams
+  const data = await res.json()
+  if (!res.ok || !data.mermaidCode) {
+    throw new Error(data.error || 'Diagram generation failed')
+  }
+  return data.mermaidCode
 }
 
 // ─── ABSTRACT ────────────────────────────────────────────────────────────────

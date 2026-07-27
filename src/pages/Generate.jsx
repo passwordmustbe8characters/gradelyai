@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import {
   generateProjectStructure,
   generateChapter,
-  generateChapterDiagrams,
   generateAbstract,
   generateReferences,
   fetchRealPapers,
@@ -133,23 +132,13 @@ setCurrentChapter(chapterIndex)
         { ...enrichedInfo, referenceStyle: struct.referenceStyle }
       )
 
-      const hasDiagramTargets = (chapter.subsections || []).some(s => s.diagramType || (s.children || []).some(c => c.diagramType))
-      let diagrams = []
-      if (hasDiagramTargets) {
-        addLog(`Drawing diagrams for Chapter ${chapter.number}...`)
-        try {
-          diagrams = await generateChapterDiagrams(chapter, enrichedInfo, content)
-          if (diagrams.length === 0) {
-            addLog(`⚠️ Diagram generation for Chapter ${chapter.number} returned nothing — check console for details.`)
-          }
-        } catch (err) {
-          console.error(`Diagram generation errored for Chapter ${chapter.number}:`, err)
-          addLog(`⚠️ Diagram generation failed for Chapter ${chapter.number}: ${err.message}`)
-        }
-      }
-
-      generatedChapters.push({ ...chapter, content, diagrams })
-      setChapters(prev => [...prev, { ...chapter, content, diagrams }])
+      // Diagrams are no longer auto-generated here — generating one takes a
+      // real AI call per flagged section and was failing silently with no way
+      // for the student to fix a bad result. Instead, diagram generation is
+      // now a manual action from the "Understand this section" panel, so the
+      // student can review/adjust the section first and trigger it on demand.
+      generatedChapters.push({ ...chapter, content, diagrams: [] })
+      setChapters(prev => [...prev, { ...chapter, content, diagrams: [] }])
       addLog(`✓ Chapter ${chapter.number} done.`)
 
       if (projectId && getToken()) {
