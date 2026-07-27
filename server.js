@@ -519,7 +519,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
 
     if (!alreadyProcessed) {
       await db.execute({
-        sql: 'UPDATE projects SET is_paid = 1, plan = ?, updated_at = datetime("now") WHERE id = ? AND user_id = ?',
+        sql: "UPDATE projects SET is_paid = 1, plan = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
         args: [plan, projectId, req.user.id]
       })
     }
