@@ -122,19 +122,26 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// `verify` stashes the raw body bytes so the Paystack webhook handler can
-// recompute the HMAC signature over the exact bytes Paystack signed — the
-// parsed/re-serialized JS object is not guaranteed to match byte-for-byte.
-app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf } }));
-
 app.set('trust proxy', 1)
 
+// cors() must run BEFORE the body parser — if a request is rejected while
+// parsing (e.g. 413 Payload Too Large), the response never reaches any
+// middleware registered after the point of failure. With cors() registered
+// second, size-limit and other parsing errors return with no CORS headers,
+// which the browser then reports as a CORS failure instead of the real error.
 app.use(cors({
  origin: 'https://getgradely.xyz',
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
-app.use(express.json({ limit: '10mb' }))
+
+// A full 5-chapter project (content + abstract + references + structure)
+// comfortably exceeds Express's default 100kb body limit, so this must be
+// set explicitly. `verify` stashes the raw body bytes so the Paystack webhook
+// handler can recompute the HMAC signature over the exact bytes Paystack
+// signed — the parsed/re-serialized JS object isn't guaranteed to match
+// byte-for-byte.
+app.use(express.json({ limit: '10mb', verify: (req, res, buf) => { req.rawBody = buf } }));
 
 if (!process.env.ADMIN_PASSWORD || !process.env.JWT_SECRET) {
   throw new Error('ADMIN_PASSWORD and JWT_SECRET must be set in the environment — refusing to start with insecure defaults.')

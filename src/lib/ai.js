@@ -380,6 +380,14 @@ function getFallbackTopics(department) {
 // ─── STRUCTURE GENERATION ─────────────────────────────────────────────────────
 
 export async function generateProjectStructure(projectInfo) {
+  // Honor the student's edits from the structure editor instead of asking the
+  // AI to invent a new structure from scratch — this is also what carries
+  // diagram flags, sub-subsections, and supporting paragraphs through to
+  // generation, so skipping it silently discards everything they customized.
+  if (projectInfo.customStructure?.chapters?.length > 0) {
+    return projectInfo.customStructure
+  }
+
   const system = `You are a Nigerian university academic expert. Generate final year project chapter structures.
 Always respond with valid JSON only. No markdown. No preamble. Keep it concise.`
 
@@ -544,7 +552,14 @@ ${builtContext}
 ${projectInfo.supervisorNotes ? `\nSupervisor instructions: ${projectInfo.supervisorNotes}` : ''}
 
 CHAPTER STRUCTURE (${chapter.subsections.length} subsections — each MUST be at least 500-600 words individually):
-${chapter.subsections.map(s => `${s.number}. ${s.title}`).join('\n')}
+${chapter.subsections.map(s => {
+    const line = `${s.number}. ${s.title}`
+    const childLines = (s.children || []).map(c => `  ${c.number}. ${c.title}`).join('\n')
+    return childLines ? `${line}\n${childLines}` : line
+  }).join('\n')}
+${(chapter.paragraphs || []).filter(p => (typeof p === 'string' ? p : p.text)).length > 0
+    ? `\nMust also cover these supporting notes for this chapter (no section number of their own — weave them in naturally):\n${chapter.paragraphs.map(p => (typeof p === 'string' ? p : p.text)).filter(Boolean).join('\n')}\n`
+    : ''}
 
 ${isImplementation && projectInfo.builtContext
     ? 'IMPORTANT: This chapter must accurately reflect what the student described building. Use their actual details.'
@@ -555,6 +570,44 @@ Make this chapter comprehensive, rigorous, and specific to the exact project top
 
   const raw = await callAI(system, user, 7500)
   return resolveCitationMarkers(raw, paperLookup)
+}
+
+// ─── DIAGRAMS ────────────────────────────────────────────────────────────────
+// One AI call per subsection flagged with a diagramType in the structure editor.
+export async function generateChapterDiagrams(chapter, projectInfo, chapterContent = '') {
+  const targets = []
+  for (const s of chapter.subsections || []) {
+    if (s.diagramType) targets.push({ subsectionNumber: s.number, title: s.title, diagramType: s.diagramType })
+    for (const c of s.children || []) {
+      if (c.diagramType) targets.push({ subsectionNumber: c.number, title: c.title, diagramType: c.diagramType })
+    }
+  }
+  if (targets.length === 0) return []
+
+  const token = localStorage.getItem('gradelyToken')
+  const results = await Promise.allSettled(targets.map(target =>
+    fetch(`${BASE_URL}/api/generate-diagram`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        topic: projectInfo.topic,
+        subsectionTitle: target.title,
+        diagramType: target.diagramType,
+        chapterExcerpt: chapterContent.slice(0, 1500)
+      })
+    }).then(res => res.json())
+  ))
+
+  const diagrams = []
+  results.forEach((result, i) => {
+    const target = targets[i]
+    if (result.status === 'fulfilled' && result.value?.mermaidCode) {
+      diagrams.push({ subsectionNumber: target.subsectionNumber, type: target.diagramType, mermaidCode: result.value.mermaidCode })
+    } else {
+      console.error(`Diagram generation failed for ${target.subsectionNumber}`)
+    }
+  })
+  return diagrams
 }
 
 // ─── ABSTRACT ────────────────────────────────────────────────────────────────

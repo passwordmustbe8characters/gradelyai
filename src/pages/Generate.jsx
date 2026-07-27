@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   generateProjectStructure,
   generateChapter,
+  generateChapterDiagrams,
   generateAbstract,
   generateReferences,
   fetchRealPapers,
@@ -45,13 +46,21 @@ export default function Generate() {
     addLog('Analysing your project details...')
     const struct = await generateProjectStructure(enrichedInfo)
 
-    // Clean structure
+    // Clean structure — keep diagramType/children/paragraphs, they're what
+    // the structure editor's diagram flags and supporting paragraphs ride in on
     struct.chapters = struct.chapters.map(ch => ({
       number: ch.number,
       title: ch.title,
+      paragraphs: ch.paragraphs || [],
       subsections: ch.subsections.map(s => ({
         number: s.number,
-        title: s.title
+        title: s.title,
+        diagramType: s.diagramType || null,
+        children: (s.children || []).map(c => ({
+          number: c.number,
+          title: c.title,
+          diagramType: c.diagramType || null
+        }))
       }))
     }))
 
@@ -124,8 +133,15 @@ setCurrentChapter(chapterIndex)
         { ...enrichedInfo, referenceStyle: struct.referenceStyle }
       )
 
-      generatedChapters.push({ ...chapter, content })
-      setChapters(prev => [...prev, { ...chapter, content }])
+      const hasDiagramTargets = (chapter.subsections || []).some(s => s.diagramType || (s.children || []).some(c => c.diagramType))
+      let diagrams = []
+      if (hasDiagramTargets) {
+        addLog(`Drawing diagrams for Chapter ${chapter.number}...`)
+        diagrams = await generateChapterDiagrams(chapter, enrichedInfo, content)
+      }
+
+      generatedChapters.push({ ...chapter, content, diagrams })
+      setChapters(prev => [...prev, { ...chapter, content, diagrams }])
       addLog(`✓ Chapter ${chapter.number} done.`)
 
       if (projectId && getToken()) {
