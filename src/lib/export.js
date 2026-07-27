@@ -1,6 +1,7 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak } from 'docx'
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageBreak, ImageRun } from 'docx'
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
+import mermaid from 'mermaid'
 
 // ─── FORMAT OPTIONS ────────────────────────────────────────────────────────────
 
@@ -59,14 +60,14 @@ function parseChapterContent(content) {
     if (!trimmed) continue
 
     // Detect subsection headings like "1.1 Background to the Study"
-    const isSubheading = /^\d+\.\d+\s+[A-Z]/.test(trimmed)
+    const subheadingMatch = trimmed.match(/^(\d+\.\d+)\s+[A-Z]/)
     // Detect chapter headings like "CHAPTER ONE" or all caps
     const isChapterHeading = /^(CHAPTER|[A-Z\s]{10,})/.test(trimmed)
 
     if (isChapterHeading) {
       paragraphs.push({ type: 'chapter', text: trimmed })
-    } else if (isSubheading) {
-      paragraphs.push({ type: 'subheading', text: trimmed })
+    } else if (subheadingMatch) {
+      paragraphs.push({ type: 'subheading', text: trimmed, number: subheadingMatch[1] })
     } else {
       paragraphs.push({ type: 'body', text: cleanText(trimmed) })
     }
@@ -75,9 +76,82 @@ function parseChapterContent(content) {
   return paragraphs
 }
 
+// ─── DIAGRAM RASTERIZATION (Mermaid SVG → PNG, for embedding in exports) ──────
+
+let mermaidInitialized = false
+function ensureMermaidInitialized() {
+  if (mermaidInitialized) return
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict' })
+  mermaidInitialized = true
+}
+
+const DIAGRAM_MAX_WIDTH_PX = 480
+
+async function svgToPngDataUrl(svgString) {
+  const dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
+  const img = new Image()
+  await new Promise((resolve, reject) => {
+    img.onload = resolve
+    img.onerror = reject
+    img.src = dataUri
+  })
+
+  const naturalWidth = img.naturalWidth || 600
+  const naturalHeight = img.naturalHeight || 400
+  const scale = 2 // rasterize at 2x for crisper embedded output
+  const canvas = document.createElement('canvas')
+  canvas.width = naturalWidth * scale
+  canvas.height = naturalHeight * scale
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  const displayWidth = Math.min(DIAGRAM_MAX_WIDTH_PX, naturalWidth)
+  const displayHeight = Math.round(displayWidth * (naturalHeight / naturalWidth))
+
+  return { dataUrl: canvas.toDataURL('image/png'), displayWidth, displayHeight }
+}
+
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1]
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+// Renders every chapter's flagged diagrams to PNG up front, so the rest of the
+// export logic (buildParagraphs / the PDF chapter loop) can stay synchronous.
+// Keyed by "{chapterNumber}_{subsectionNumber}" so lookups during paragraph
+// building are a simple object access.
+async function rasterizeDiagrams(chapters) {
+  ensureMermaidInitialized()
+  const images = {}
+  for (const chapter of chapters) {
+    for (const diagram of chapter.diagrams || []) {
+      if (!diagram.mermaidCode?.trim()) continue
+      try {
+        const id = `export-diagram-${chapter.number}-${diagram.subsectionNumber.replace(/\./g, '-')}`
+        const { svg } = await mermaid.render(id, diagram.mermaidCode)
+        const { dataUrl, displayWidth, displayHeight } = await svgToPngDataUrl(svg)
+        images[`${chapter.number}_${diagram.subsectionNumber}`] = {
+          bytes: dataUrlToUint8Array(dataUrl),
+          dataUrl,
+          width: displayWidth,
+          height: displayHeight,
+        }
+      } catch (err) {
+        console.error(`Failed to rasterize diagram for ${diagram.subsectionNumber}:`, err.message)
+      }
+    }
+  }
+  return images
+}
+
 // ─── WORD EXPORT ────────────────────────────────────────────────────────────
 
-function buildParagraphs(parsed, fmt) {
+function buildParagraphs(parsed, fmt, diagramImages, chapterNumber) {
   const docParagraphs = []
   const sizeHalfPoints = fmt.fontSize * 2
   const lineSpacing = SPACING_LINE[fmt.spacing] ?? SPACING_LINE.Double
@@ -101,6 +175,19 @@ function buildParagraphs(parsed, fmt) {
           spacing: { before: 300, after: 150 },
         })
       )
+      const diagram = diagramImages?.[`${chapterNumber}_${p.number}`]
+      if (diagram) {
+        docParagraphs.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 100, after: 300 },
+            children: [new ImageRun({
+              data: diagram.bytes,
+              transformation: { width: diagram.width, height: diagram.height }
+            })]
+          })
+        )
+      }
     } else {
       docParagraphs.push(
         new Paragraph({
@@ -227,6 +314,7 @@ export async function exportToWord(result, isClean = true, formatOptions = {}) {
   const fmt = { ...DEFAULT_FORMAT_OPTIONS, ...formatOptions }
   const { projectInfo, chapters, abstract, references } = result
 
+  const diagramImages = await rasterizeDiagrams(chapters)
   const allSections = []
 
   allSections.push(...buildTitlePage(projectInfo, fmt))
@@ -256,7 +344,7 @@ export async function exportToWord(result, isClean = true, formatOptions = {}) {
     )
 
     const parsed = parseChapterContent(chapter.content)
-    const built = buildParagraphs(parsed, fmt)
+    const built = buildParagraphs(parsed, fmt, diagramImages, chapter.number)
     allSections.push(...built)
 
     allSections.push(
@@ -329,6 +417,7 @@ export async function exportToPdf(result, isClean = true, formatOptions = {}) {
   const pdfFont = pdfFontFor(fmt.font)
   const lineHeight = mmLineHeight(fmt.fontSize, fmt.spacing)
 
+  const diagramImages = await rasterizeDiagrams(chapters)
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   let y = PDF_MARGIN.top
 
@@ -365,6 +454,16 @@ export async function exportToPdf(result, isClean = true, formatOptions = {}) {
     y += (opts.after || 2)
   }
 
+  const writeDiagram = (diagram) => {
+    // px → mm at 96dpi, capped to the page's content width
+    const widthMm = Math.min(diagram.width * 0.2646, PDF_CONTENT_WIDTH)
+    const heightMm = widthMm * (diagram.height / diagram.width)
+    ensureSpace(heightMm + 6)
+    const x = PDF_MARGIN.left + (PDF_CONTENT_WIDTH - widthMm) / 2
+    doc.addImage(diagram.dataUrl, 'PNG', x, y, widthMm, heightMm)
+    y += heightMm + 8
+  }
+
   // Title page
   y = 60
   writeCentered(projectInfo.university?.toUpperCase() || 'NIGERIAN UNIVERSITY', fmt.fontSize + 4, { style: 'bold', after: 6 })
@@ -396,6 +495,8 @@ export async function exportToPdf(result, isClean = true, formatOptions = {}) {
       } else if (p.type === 'subheading') {
         ensureSpace(lineHeight * 2)
         writeBody(p.text, fmt.fontSize + 1, { style: 'bold', after: 3 })
+        const diagram = diagramImages[`${chapter.number}_${p.number}`]
+        if (diagram) writeDiagram(diagram)
       } else {
         writeBody(p.text, fmt.fontSize, {})
       }

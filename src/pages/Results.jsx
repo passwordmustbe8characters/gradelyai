@@ -7,6 +7,7 @@ import { updateProject, fetchProject } from '../lib/auth'
 import { fetchRealPapers, generateReferences } from '../lib/ai'
 import Paywall from '../components/Paywall'
 import ExportFormatModal from '../components/ExportFormatModal'
+import MermaidDiagram from '../components/MermaidDiagram'
 import logoPrimary from '../assets/primary-logo.png' 
 import logoSubmark from '../assets/submark-logo.png'
 
@@ -1652,6 +1653,11 @@ const renderContentWithSources = (text) => {
                   const isLocked = !paid && ch.number > 1 && !isUploaded
                   const hasContent = ch.content && ch.content.trim().length > 0
                   const subsections = getSubsections(idx)
+                  const rawSubsections = result?.structure?.chapters?.[idx]?.subsections || []
+                  const diagramFor = (subIdx) => {
+                    const num = rawSubsections[subIdx]?.number
+                    return num ? ch.diagrams?.find(d => d.subsectionNumber === num) : null
+                  }
 
                   return (
                     <div key={idx} className="res-chapter-block">
@@ -1710,6 +1716,28 @@ const renderContentWithSources = (text) => {
                                     <div key={subIdx} id={`subsection-${idx}-${sub}`} className="res-subsection-anchor">
                                       <h3 className="res-subsection-heading">{sub}</h3>
                                       {renderContentWithSources(chunk)}
+                                      {!isLocked && diagramFor(subIdx) && (
+                                        <MermaidDiagram
+                                          mermaidCode={diagramFor(subIdx).mermaidCode}
+                                          topic={result.projectInfo?.topic}
+                                          subsectionTitle={sub}
+                                          diagramType={diagramFor(subIdx).type}
+                                          onCodeChange={(newCode) => {
+                                            const updatedChapters = result.chapters.map((c, ci) => {
+                                              if (ci !== idx) return c
+                                              return {
+                                                ...c,
+                                                diagrams: c.diagrams.map(d =>
+                                                  d.subsectionNumber === diagramFor(subIdx).subsectionNumber ? { ...d, mermaidCode: newCode } : d
+                                                )
+                                              }
+                                            })
+                                            const updated = { ...result, chapters: updatedChapters }
+                                            setResult(updated)
+                                            sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+                                          }}
+                                        />
+                                      )}
                                       {!isLocked && (
                                         <UnderstandPanel
                                           sectionTitle={sub}

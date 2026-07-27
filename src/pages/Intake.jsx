@@ -855,6 +855,25 @@ const makeId = () => (typeof crypto !== 'undefined' && crypto.randomUUID)
   ? crypto.randomUUID()
   : `id_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
+const DIAGRAM_TYPES = [
+  { value: '', label: 'None' },
+  { value: 'flowchart', label: 'Flowchart' },
+  { value: 'erDiagram', label: 'ER Diagram' },
+  { value: 'sequenceDiagram', label: 'Sequence' },
+  { value: 'architecture', label: 'Architecture' },
+]
+
+// Only used to pre-fill a first suggestion when a subsection is first loaded —
+// never re-runs on edits, so it never overrides a student's explicit choice.
+function suggestDiagramType(title) {
+  const t = (title || '').toLowerCase()
+  if (t.includes('architecture')) return 'architecture'
+  if (t.includes('er diagram') || t.includes('entity')) return 'erDiagram'
+  if (t.includes('use case') || t.includes('sequence')) return 'sequenceDiagram'
+  if (t.includes('flowchart') || t.includes('data flow') || t.includes('algorithm')) return 'flowchart'
+  return ''
+}
+
 function withIds(structure) {
   return structure.map(ch => ({
     ...ch,
@@ -863,7 +882,12 @@ function withIds(structure) {
     subsections: (ch.subsections || []).map(sub => ({
       ...sub,
       id: sub.id || makeId(),
-      children: (sub.children || []).map(c => ({ ...c, id: c.id || makeId() }))
+      diagramType: sub.diagramType ?? suggestDiagramType(sub.title),
+      children: (sub.children || []).map(c => ({
+        ...c,
+        id: c.id || makeId(),
+        diagramType: c.diagramType ?? suggestDiagramType(c.title)
+      }))
     }))
   }))
 }
@@ -936,6 +960,23 @@ function StructureEditor({ department, guideFound, initialStructure, onBack, onC
       subsections: ch.subsections.map(s => s.id !== subId ? s : {
         ...s,
         children: s.children.map(c => c.id === childId ? { ...c, title: value } : c)
+      })
+    }))
+  }
+
+  const setSubDiagramType = (chId, subId, value) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id === subId ? { ...s, diagramType: value } : s)
+    }))
+  }
+
+  const setChildDiagramType = (chId, subId, childId, value) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id !== subId ? s : {
+        ...s,
+        children: s.children.map(c => c.id === childId ? { ...c, diagramType: value } : c)
       })
     }))
   }
@@ -1097,6 +1138,19 @@ function StructureEditor({ department, guideFound, initialStructure, onBack, onC
                         padding: '2px 0'
                       }}
                     />
+                    <select
+                      value={sub.diagramType || ''}
+                      onChange={e => setSubDiagramType(ch.id, sub.id, e.target.value)}
+                      title="Does this section need a diagram?"
+                      style={{
+                        fontSize: 11, color: sub.diagramType ? 'var(--accent)' : 'var(--text-dim)',
+                        background: sub.diagramType ? 'rgba(0,126,167,0.08)' : 'transparent',
+                        border: '1px solid var(--border-light)', borderRadius: 6,
+                        padding: '2px 4px', fontFamily: 'Geist, sans-serif', outline: 'none', cursor: 'pointer'
+                      }}
+                    >
+                      {DIAGRAM_TYPES.map(d => <option key={d.value} value={d.value}>{d.value ? '📊 ' + d.label : 'No diagram'}</option>)}
+                    </select>
                     <button
                       onClick={() => addChild(ch.id, sub.id)}
                       title="Add a sub-section under this one"
@@ -1143,6 +1197,19 @@ function StructureEditor({ department, guideFound, initialStructure, onBack, onC
                               padding: '2px 0'
                             }}
                           />
+                          <select
+                            value={child.diagramType || ''}
+                            onChange={e => setChildDiagramType(ch.id, sub.id, child.id, e.target.value)}
+                            title="Does this section need a diagram?"
+                            style={{
+                              fontSize: 10.5, color: child.diagramType ? 'var(--accent)' : 'var(--text-dim)',
+                              background: child.diagramType ? 'rgba(0,126,167,0.08)' : 'transparent',
+                              border: '1px solid var(--border-light)', borderRadius: 6,
+                              padding: '1px 3px', fontFamily: 'Geist, sans-serif', outline: 'none', cursor: 'pointer'
+                            }}
+                          >
+                            {DIAGRAM_TYPES.map(d => <option key={d.value} value={d.value}>{d.value ? '📊 ' + d.label : 'No diagram'}</option>)}
+                          </select>
                           <button
                             onClick={() => removeChild(ch.id, sub.id, child.id)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', fontSize: 13, padding: '2px 4px', lineHeight: 1, opacity: 0.6 }}

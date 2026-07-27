@@ -45,6 +45,25 @@ async function callOpenAI(system, user, maxTokens = 1500) {
   return data.choices[0].message.content
 }
 
+const MERMAID_DIAGRAM_KIND = {
+  flowchart: 'flowchart TD',
+  erDiagram: 'erDiagram',
+  sequenceDiagram: 'sequenceDiagram',
+  architecture: 'flowchart LR',
+}
+
+async function generateDiagramMermaid({ topic, subsectionTitle, diagramType, chapterExcerpt }) {
+  const kind = MERMAID_DIAGRAM_KIND[diagramType] || 'flowchart TD'
+  const system = `You are an expert at writing Mermaid.js diagram syntax. Output ONLY valid Mermaid code — no markdown code fences, no explanation, no commentary. Start directly with "${kind}".`
+  const user = `Write a Mermaid "${kind}" diagram for the subsection "${subsectionTitle}" of a Nigerian university final year project on "${topic}".
+${chapterExcerpt ? `\nRelevant chapter context:\n${chapterExcerpt.slice(0, 1500)}\n` : ''}
+Keep node labels short and specific to this project topic — do not use generic placeholder labels like "Step 1" or "Node A". Output only the Mermaid code.`
+
+  let code = await callOpenAI(system, user, 600)
+  code = code.replace(/```mermaid/gi, '').replace(/```/g, '').trim()
+  return code
+}
+
 function serverSafeParseJSON(raw, fallback = null) {
   try {
     const clean = raw.replace(/```json|```/g, '').trim()
@@ -1126,11 +1145,37 @@ Write each subsection in full. Insert the [number] citation markers from the pap
         chapterContent = `Chapter ${chapter.number}: ${chapter.title}\n\nContent generation failed. Please regenerate this chapter.`
       }
 
+      // Generate a Mermaid diagram for any subsection (or sub-subsection) the
+      // student flagged in the structure editor
+      const diagramTargets = []
+      for (const s of chapter.subsections || []) {
+        if (s.diagramType) diagramTargets.push({ subsectionNumber: s.number, title: s.title, diagramType: s.diagramType })
+        for (const c of s.children || []) {
+          if (c.diagramType) diagramTargets.push({ subsectionNumber: c.number, title: c.title, diagramType: c.diagramType })
+        }
+      }
+
+      const chapterDiagrams = []
+      for (const target of diagramTargets) {
+        try {
+          const mermaidCode = await generateDiagramMermaid({
+            topic: projectInfo.topic,
+            subsectionTitle: target.title,
+            diagramType: target.diagramType,
+            chapterExcerpt: chapterContent
+          })
+          chapterDiagrams.push({ subsectionNumber: target.subsectionNumber, type: target.diagramType, mermaidCode })
+        } catch (err) {
+          console.error(`Diagram generation failed for ${target.subsectionNumber}:`, err.message)
+        }
+      }
+
       generatedChapters.push({
         number: chapter.number,
         title: chapter.title,
         subsections: chapter.subsections || [],
-        content: chapterContent
+        content: chapterContent,
+        diagrams: chapterDiagrams
       })
     }
 
@@ -1886,6 +1931,21 @@ app.post('/api/structure-feedback', async (req, res) => {
       args: [JSON.stringify(chapters), nextConfirmations, row.id]
     })
     res.json({ success: true, confirmations: nextConfirmations })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Standalone diagram (re)generation — used by the "Regenerate" button in the
+// diagram viewer, reusing the same prompt logic as the main chapter loop.
+app.post('/api/generate-diagram', requireAuth, async (req, res) => {
+  try {
+    const { topic, subsectionTitle, diagramType, chapterExcerpt } = req.body
+    if (!subsectionTitle || !diagramType) {
+      return res.status(400).json({ error: 'subsectionTitle and diagramType are required' })
+    }
+    const mermaidCode = await generateDiagramMermaid({ topic, subsectionTitle, diagramType, chapterExcerpt })
+    res.json({ mermaidCode })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
