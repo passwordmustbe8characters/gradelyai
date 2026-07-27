@@ -927,7 +927,13 @@ function StructureEditor({ department, guideFound, initialStructure, onBack, onC
     recomputeNumbers(withIds(JSON.parse(JSON.stringify(initialStructure || DEFAULT_STRUCTURE))))
   )
   const [lastAddedId, setLastAddedId] = useState(null)
+  const [showGuide, setShowGuide] = useState(() => localStorage.getItem('gradelyStructureGuideDismissed') !== 'true')
   const fieldRefs = useRef({})
+
+  const dismissGuide = () => {
+    localStorage.setItem('gradelyStructureGuideDismissed', 'true')
+    setShowGuide(false)
+  }
 
   useEffect(() => {
     if (!lastAddedId) return
@@ -1075,6 +1081,34 @@ function StructureEditor({ department, guideFound, initialStructure, onBack, onC
           }
         </p>
       </div>
+
+      {showGuide && (
+        <div style={{
+          position: 'relative', marginBottom: 20, padding: '14px 40px 14px 16px',
+          borderRadius: 12, background: 'rgba(0,126,167,0.06)', border: '1px solid var(--border)'
+        }}>
+          <button
+            onClick={dismissGuide}
+            title="Dismiss"
+            style={{
+              position: 'absolute', top: 10, right: 10, background: 'none', border: 'none',
+              cursor: 'pointer', color: 'var(--text-dim)', fontSize: 14, padding: 4, lineHeight: 1
+            }}
+          >
+            ✕
+          </button>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
+            💡 Quick guide
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+            <li><strong>▲ ▼</strong> reorders sections — numbers update automatically, so moving 1.2 above 1.1 makes it the new 1.1.</li>
+            <li><strong>↳+</strong> adds a sub-section nested under that section (e.g. 3.2.1).</li>
+            <li><strong>📊</strong> lets you flag a section as needing a diagram, and pick what kind.</li>
+            <li><strong>+ Add section</strong> / <strong>+ Add supporting paragraph</strong> add a new numbered section or an unnumbered note under a chapter.</li>
+            <li><strong>✕</strong> removes a section — the rest renumber automatically.</li>
+          </ul>
+        </div>
+      )}
 
       {/* Chapter list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>

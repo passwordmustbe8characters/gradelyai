@@ -685,6 +685,23 @@ app.get('/api/gallery', async (req, res) => {
 
 
 // ─── GITHUB REPO CONTEXT (for Chapters 3-5) ──────────────────────────────────
+const GITHUB_FETCH_TIMEOUT_MS = 8000
+const githubContextCache = new Map() // "owner/repo" → { context, fetchedAt }
+const GITHUB_CACHE_TTL_MS = 30 * 60 * 1000 // 30 min — repo content rarely changes mid-conversation
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Socratic chat calls this on EVERY turn while on chapters 3-5, so this must
+// stay cheap — cached per repo, and every GitHub call is timeout-bounded so a
+// slow/rate-limited GitHub response can't stall chapter generation for minutes.
 async function fetchGithubContext(githubLink) {
   if (!githubLink) return '';
   try {
@@ -692,25 +709,31 @@ async function fetchGithubContext(githubLink) {
     if (!match) return '';
     const owner = match[1];
     const repo = match[2].replace(/\.git$/, '');
+    const cacheKey = `${owner}/${repo}`
+
+    const cached = githubContextCache.get(cacheKey)
+    if (cached && Date.now() - cached.fetchedAt < GITHUB_CACHE_TTL_MS) {
+      return cached.context
+    }
 
     const headers = { 'User-Agent': 'GradelyAI', Accept: 'application/vnd.github.v3+json' };
     if (process.env.GITHUB_TOKEN) headers.Authorization = `token ${process.env.GITHUB_TOKEN}`;
 
     let readmeText = '';
     try {
-      const readmeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, { headers });
+      const readmeRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/readme`, { headers }, GITHUB_FETCH_TIMEOUT_MS);
       if (readmeRes.ok) {
         const readmeData = await readmeRes.json();
         readmeText = Buffer.from(readmeData.content, 'base64').toString('utf-8').slice(0, 2000);
       }
-    } catch { /* ignore readme fetch errors */ }
+    } catch { /* ignore readme fetch errors/timeouts */ }
 
     let fileList = '';
     try {
-      const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+      const repoRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, { headers }, GITHUB_FETCH_TIMEOUT_MS);
       const repoData = await repoRes.json();
       const defaultBranch = repoData.default_branch || 'main';
-      const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`, { headers });
+      const treeRes = await fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`, { headers }, GITHUB_FETCH_TIMEOUT_MS);
       if (treeRes.ok) {
         const treeData = await treeRes.json();
         fileList = (treeData.tree || [])
@@ -719,11 +742,14 @@ async function fetchGithubContext(githubLink) {
           .slice(0, 60)
           .join('\n');
       }
-    } catch { /* ignore file list fetch errors */ }
+    } catch { /* ignore file list fetch errors/timeouts */ }
 
-    if (!readmeText && !fileList) return '';
+    const context = (!readmeText && !fileList)
+      ? ''
+      : `\n\nSTUDENT'S ACTUAL CODE REPOSITORY (use this to write accurate, specific content):\nRepo: ${owner}/${repo}\n\nREADME:\n${readmeText}\n\nKEY FILES:\n${fileList}\n`;
 
-    return `\n\nSTUDENT'S ACTUAL CODE REPOSITORY (use this to write accurate, specific content):\nRepo: ${owner}/${repo}\n\nREADME:\n${readmeText}\n\nKEY FILES:\n${fileList}\n`;
+    githubContextCache.set(cacheKey, { context, fetchedAt: Date.now() })
+    return context;
   } catch (err) {
     console.error('GitHub context fetch failed:', err);
     return '';
@@ -1155,20 +1181,29 @@ Write each subsection in full. Insert the [number] citation markers from the pap
         }
       }
 
-      const chapterDiagrams = []
-      for (const target of diagramTargets) {
-        try {
-          const mermaidCode = await generateDiagramMermaid({
-            topic: projectInfo.topic,
-            subsectionTitle: target.title,
-            diagramType: target.diagramType,
-            chapterExcerpt: chapterContent
-          })
-          chapterDiagrams.push({ subsectionNumber: target.subsectionNumber, type: target.diagramType, mermaidCode })
-        } catch (err) {
-          console.error(`Diagram generation failed for ${target.subsectionNumber}:`, err.message)
-        }
+      // Independent calls, one per flagged subsection — run them concurrently
+      // instead of one-at-a-time, or a chapter with several diagrams pays for
+      // each AI call back-to-back on top of the chapter's own generation time.
+      if (diagramTargets.length > 0) {
+        send('status', { message: `Drawing ${diagramTargets.length} diagram${diagramTargets.length > 1 ? 's' : ''} for Chapter ${chapter.number}...`, progress: Math.round(progressBase) })
       }
+      const diagramResults = await Promise.allSettled(
+        diagramTargets.map(target => generateDiagramMermaid({
+          topic: projectInfo.topic,
+          subsectionTitle: target.title,
+          diagramType: target.diagramType,
+          chapterExcerpt: chapterContent
+        }))
+      )
+      const chapterDiagrams = []
+      diagramResults.forEach((result, i) => {
+        const target = diagramTargets[i]
+        if (result.status === 'fulfilled') {
+          chapterDiagrams.push({ subsectionNumber: target.subsectionNumber, type: target.diagramType, mermaidCode: result.value })
+        } else {
+          console.error(`Diagram generation failed for ${target.subsectionNumber}:`, result.reason?.message)
+        }
+      })
 
       generatedChapters.push({
         number: chapter.number,
