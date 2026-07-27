@@ -137,7 +137,15 @@ setCurrentChapter(chapterIndex)
       let diagrams = []
       if (hasDiagramTargets) {
         addLog(`Drawing diagrams for Chapter ${chapter.number}...`)
-        diagrams = await generateChapterDiagrams(chapter, enrichedInfo, content)
+        try {
+          diagrams = await generateChapterDiagrams(chapter, enrichedInfo, content)
+          if (diagrams.length === 0) {
+            addLog(`⚠️ Diagram generation for Chapter ${chapter.number} returned nothing — check console for details.`)
+          }
+        } catch (err) {
+          console.error(`Diagram generation errored for Chapter ${chapter.number}:`, err)
+          addLog(`⚠️ Diagram generation failed for Chapter ${chapter.number}: ${err.message}`)
+        }
       }
 
       generatedChapters.push({ ...chapter, content, diagrams })

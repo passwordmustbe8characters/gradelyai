@@ -306,6 +306,7 @@ const pageStyles = `
   }
   .res-subsection-item:hover { background: rgba(0,126,167,0.05); color: var(--text); }
   .res-subsection-item.active { background: rgba(0,126,167,0.08); color: var(--accent); }
+  .res-subsection-item .res-subsection-num { color: var(--text-dim); margin-right: 6px; font-size: 11px; }
 
   .res-sidebar-defense { flex-shrink: 0; border-top: 1px solid var(--border); padding: 12px 10px 16px; background: var(--bg-elevated); }
   .res-sidebar-defense-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); padding: 0 6px; margin-bottom: 6px; }
@@ -1465,6 +1466,7 @@ const renderContentWithSources = (text) => {
               const isActive = activeTab === 'project' && activeChapter === i
               const isExpanded = expandedChapters[i] || false
               const subsections = getSubsections(i)
+              const rawSidebarSubsections = result?.structure?.chapters?.[i]?.subsections || []
 
               return (
                 <div key={i} className={`res-chapter-tab${isActive ? ' active' : ''}`}>
@@ -1501,6 +1503,9 @@ const renderContentWithSources = (text) => {
                             scrollToSubsection(i, sub)
                           }}
                         >
+                          {rawSidebarSubsections[idx]?.number && (
+                            <span className="res-subsection-num">{rawSidebarSubsections[idx].number}</span>
+                          )}
                           {sub}
                         </button>
                       ))}

@@ -603,8 +603,11 @@ export async function generateChapterDiagrams(chapter, projectInfo, chapterConte
     const target = targets[i]
     if (result.status === 'fulfilled' && result.value?.mermaidCode) {
       diagrams.push({ subsectionNumber: target.subsectionNumber, type: target.diagramType, mermaidCode: result.value.mermaidCode })
+    } else if (result.status === 'fulfilled') {
+      // fetch() resolves even on 4xx/5xx — surface the server's actual error
+      console.error(`Diagram generation failed for ${target.subsectionNumber}:`, result.value?.error || result.value)
     } else {
-      console.error(`Diagram generation failed for ${target.subsectionNumber}`)
+      console.error(`Diagram generation failed for ${target.subsectionNumber}:`, result.reason)
     }
   })
   return diagrams
