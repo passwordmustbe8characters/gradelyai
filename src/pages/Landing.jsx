@@ -413,7 +413,7 @@ export default function Landing() {
           </button>
         </div>
         <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-          Chapter 1 free · Full project from ₦10,000
+          Chapter 1 free · Full project from ₦5,000
         </p>
 
        {/* Hero card — Socratic Chat mockup (Responsive) */}
@@ -887,6 +887,73 @@ export default function Landing() {
         </div>
       </div>
 
+      {/* Basic */}
+      <div style={{
+        background: 'var(--bg-card)',
+        borderRadius: 20,
+        padding: '32px 28px',
+        boxShadow: 'var(--shadow)',
+        border: '1px solid var(--border)',
+        position: 'relative',
+        overflow: 'hidden',
+        transition: 'transform 0.2s, box-shadow 0.2s',
+        cursor: 'default',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.transform = 'translateY(-4px)'
+        e.currentTarget.style.boxShadow = 'var(--shadow-lg)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = 'none'
+        e.currentTarget.style.boxShadow = 'var(--shadow)'
+      }}>
+        {/* Subtle grid background pattern */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `
+            linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px)
+          `,
+          backgroundSize: '24px 24px',
+          pointerEvents: 'none',
+          opacity: 0.5,
+        }} />
+        {/* Subtle wavy line overlay */}
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, transparent, var(--border), transparent)',
+          opacity: 0.3,
+        }} />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>Basic</p>
+          <p style={{ fontFamily: 'Melodrama, serif', fontSize: 48, fontWeight: 400, marginBottom: 4 }}>₦5,000</p>
+          <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 4 }}>One project fully covered</p>
+          <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 28 }}>All 5 chapters · no humanization</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32 }}>
+            {[
+              'All 5 chapters generated',
+              'Word document export',
+              'Defense prep & flashcards',
+              'Supervisor corrections',
+              'Student breakdown & weak spots',
+            ].map(f => (
+              <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}>
+                <span style={{ color: 'var(--success)', fontWeight: 700 }}>✓</span>
+                <span style={{ color: 'var(--text)' }}>{f}</span>
+              </div>
+            ))}
+          </div>
+          <button className="btn-ghost" onClick={() => navigate('/auth', { state: { mode: 'register' } })} style={{ width: '100%', justifyContent: 'center' }}>
+            Get Basic →
+          </button>
+        </div>
+      </div>
+
       {/* Pro */}
       <div style={{
         background: 'var(--text)',
@@ -1155,7 +1222,7 @@ export default function Landing() {
           Start my project — free →
         </button>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 20 }}>
-          Chapter 1 free · Full project from ₦10,000
+          Chapter 1 free · Full project from ₦5,000
         </p>
       </div>
     </section>

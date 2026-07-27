@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { generateTopics, generateAreas } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
@@ -38,6 +38,7 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
     hasGuide: null,
     guideContent: '',
     customStructure: null,
+    learnedStructure: null,
     supervisorNotes: '',
     projectType: '',
     builtContext: '',
@@ -59,6 +60,32 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
       return null
     } catch {
       return null
+    }
+  }
+
+  // Structures earlier students from the same university+department confirmed —
+  // gives the next student a better starting point than the generic default.
+  const fetchLearnedStructure = async (university, department, projectType) => {
+    try {
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${BASE_URL}/api/structure-feedback?university=${encodeURIComponent(university)}&department=${encodeURIComponent(department)}&projectType=${encodeURIComponent(projectType)}`)
+      const data = await res.json()
+      return data.structure || null
+    } catch {
+      return null
+    }
+  }
+
+  const saveStructureFeedback = async (university, department, projectType, editedStructure) => {
+    try {
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      await fetch(`${BASE_URL}/api/structure-feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ university, department, projectType, chapters: editedStructure.chapters })
+      })
+    } catch {
+      // best-effort — a failed save here shouldn't block the student's flow
     }
   }
 
@@ -588,12 +615,15 @@ const removePhoto = (index) => {
                 onClick={async () => {
                   update('hasGuide', false)
                   setLoading(true)
+                  const projectType = form.selectedTopic?.type || form.projectType || 'software'
                   const guide = await fetchGuideFromDB(form.university, form.department)
                   if (guide) {
                     update('guideContent', guide.structure)
                     update('guideFound', guide.label)
                     update('ragGuideContent', guide.structure)
                   }
+                  const learned = await fetchLearnedStructure(form.university, form.department, projectType)
+                  if (learned?.length > 0) update('learnedStructure', learned)
                   setLoading(false)
                   setStep('8b') // go to structure editor first
                 }}>
@@ -625,9 +655,11 @@ const removePhoto = (index) => {
             department={form.department}
             projectType={form.selectedTopic?.type || form.projectType || 'software'}
             guideFound={form.guideFound}
+            initialStructure={form.learnedStructure}
             onBack={() => setStep(7)}
             onConfirm={(editedStructure) => {
               update('customStructure', editedStructure)
+              saveStructureFeedback(form.university, form.department, form.selectedTopic?.type || form.projectType || 'software', editedStructure)
               setStep(9)
             }}
           />
@@ -815,47 +847,178 @@ const DEFAULT_STRUCTURE = [
   }
 ]
 
-function StructureEditor({ department, guideFound, onBack, onConfirm }) {
-  const [chapters, setChapters] = useState(
-    JSON.parse(JSON.stringify(DEFAULT_STRUCTURE)) // deep clone
+// ─── STRUCTURE HELPERS ─────────────────────────────────────────────────────────
+// Numbers are always derived from array position, never freely typed — this is
+// what makes reordering ("change 1.2 to 1.1") cascade correctly for siblings
+// while never touching unrelated groups (e.g. a different chapter's 1.2.3).
+const makeId = () => (typeof crypto !== 'undefined' && crypto.randomUUID)
+  ? crypto.randomUUID()
+  : `id_${Date.now()}_${Math.random().toString(36).slice(2)}`
+
+function withIds(structure) {
+  return structure.map(ch => ({
+    ...ch,
+    id: ch.id || makeId(),
+    paragraphs: (ch.paragraphs || []).map(p => ({ id: p.id || makeId(), text: p.text || '' })),
+    subsections: (ch.subsections || []).map(sub => ({
+      ...sub,
+      id: sub.id || makeId(),
+      children: (sub.children || []).map(c => ({ ...c, id: c.id || makeId() }))
+    }))
+  }))
+}
+
+function recomputeNumbers(chapters) {
+  return chapters.map((ch, ci) => {
+    const chNum = ci + 1
+    return {
+      ...ch,
+      number: chNum,
+      subsections: ch.subsections.map((sub, si) => {
+        const subNum = `${chNum}.${si + 1}`
+        return {
+          ...sub,
+          number: subNum,
+          children: (sub.children || []).map((child, gi) => ({
+            ...child,
+            number: `${subNum}.${gi + 1}`
+          }))
+        }
+      })
+    }
+  })
+}
+
+function moveInArray(arr, index, direction) {
+  const target = index + direction
+  if (target < 0 || target >= arr.length) return arr
+  const copy = [...arr]
+  const [item] = copy.splice(index, 1)
+  copy.splice(target, 0, item)
+  return copy
+}
+
+function StructureEditor({ department, guideFound, initialStructure, onBack, onConfirm }) {
+  const [chapters, setChapters] = useState(() =>
+    recomputeNumbers(withIds(JSON.parse(JSON.stringify(initialStructure || DEFAULT_STRUCTURE))))
   )
+  const [lastAddedId, setLastAddedId] = useState(null)
+  const fieldRefs = useRef({})
 
-  const updateChapterTitle = (chIdx, value) => {
-    setChapters(prev => prev.map((ch, i) =>
-      i === chIdx ? { ...ch, title: value } : ch
-    ))
+  useEffect(() => {
+    if (!lastAddedId) return
+    const el = fieldRefs.current[lastAddedId]
+    if (el) {
+      el.focus()
+      if (el.select) el.select()
+    }
+    // Intentionally not reset here — makeId() never repeats, so this effect
+    // only re-fires when a genuinely new item is added, without needing to
+    // clear the id back to null (which would just cause an extra render).
+  }, [lastAddedId])
+
+  const mutate = (fn) => setChapters(prev => recomputeNumbers(fn(prev)))
+
+  const updateChapterTitle = (chId, value) => {
+    mutate(prev => prev.map(ch => ch.id === chId ? { ...ch, title: value } : ch))
   }
 
-  const updateSubTitle = (chIdx, subIdx, value) => {
-    setChapters(prev => prev.map((ch, i) =>
-      i === chIdx ? {
-        ...ch,
-        subsections: ch.subsections.map((s, j) =>
-          j === subIdx ? { ...s, title: value } : s
-        )
-      } : ch
-    ))
-  }
-
-  const removeSubsection = (chIdx, subIdx) => {
-    setChapters(prev => prev.map((ch, i) =>
-      i === chIdx ? {
-        ...ch,
-        subsections: ch.subsections.filter((_, j) => j !== subIdx)
-      } : ch
-    ))
-  }
-
-  const addSubsection = (chIdx) => {
-    setChapters(prev => prev.map((ch, i) => {
-      if (i !== chIdx) return ch
-      const newNum = `${ch.number}.${ch.subsections.length + 1}`
-      return {
-        ...ch,
-        subsections: [...ch.subsections, { number: newNum, title: 'New Section' }]
-      }
+  const updateSubTitle = (chId, subId, value) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id === subId ? { ...s, title: value } : s)
     }))
   }
+
+  const updateChildTitle = (chId, subId, childId, value) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id !== subId ? s : {
+        ...s,
+        children: s.children.map(c => c.id === childId ? { ...c, title: value } : c)
+      })
+    }))
+  }
+
+  const updateParagraph = (chId, paraId, value) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      paragraphs: ch.paragraphs.map(p => p.id === paraId ? { ...p, text: value } : p)
+    }))
+  }
+
+  const removeSubsection = (chId, subId) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.filter(s => s.id !== subId)
+    }))
+  }
+
+  const removeChild = (chId, subId, childId) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id !== subId ? s : {
+        ...s,
+        children: s.children.filter(c => c.id !== childId)
+      })
+    }))
+  }
+
+  const removeParagraph = (chId, paraId) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      paragraphs: ch.paragraphs.filter(p => p.id !== paraId)
+    }))
+  }
+
+  const addSubsection = (chId) => {
+    const newId = makeId()
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: [...ch.subsections, { id: newId, title: 'New Section', children: [] }]
+    }))
+    setLastAddedId(newId)
+  }
+
+  const addChild = (chId, subId) => {
+    const newId = makeId()
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id !== subId ? s : {
+        ...s,
+        children: [...s.children, { id: newId, title: 'New Section' }]
+      })
+    }))
+    setLastAddedId(newId)
+  }
+
+  const addParagraph = (chId) => {
+    const newId = makeId()
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      paragraphs: [...ch.paragraphs, { id: newId, text: '' }]
+    }))
+    setLastAddedId(newId)
+  }
+
+  const moveSubsection = (chId, subIdx, direction) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: moveInArray(ch.subsections, subIdx, direction)
+    }))
+  }
+
+  const moveChild = (chId, subId, childIdx, direction) => {
+    mutate(prev => prev.map(ch => ch.id !== chId ? ch : {
+      ...ch,
+      subsections: ch.subsections.map(s => s.id !== subId ? s : {
+        ...s,
+        children: moveInArray(s.children, childIdx, direction)
+      })
+    }))
+  }
+
+  const registerRef = (id) => (el) => { if (el) fieldRefs.current[id] = el }
 
   return (
     <div style={{ width: '100%' }}>
@@ -874,8 +1037,8 @@ function StructureEditor({ department, guideFound, onBack, onConfirm }) {
 
       {/* Chapter list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-        {chapters.map((ch, chIdx) => (
-          <div key={chIdx} style={{
+        {chapters.map((ch) => (
+          <div key={ch.id} style={{
             border: '1px solid var(--border)',
             borderRadius: 12,
             overflow: 'hidden',
@@ -893,11 +1056,11 @@ function StructureEditor({ department, guideFound, onBack, onConfirm }) {
                 background: 'rgba(0,126,167,0.12)', borderRadius: 6,
                 padding: '2px 8px', whiteSpace: 'nowrap'
               }}>
-                CH {ch.number}
+                {ch.number}.0
               </span>
               <input
                 value={ch.title}
-                onChange={e => updateChapterTitle(chIdx, e.target.value)}
+                onChange={e => updateChapterTitle(ch.id, e.target.value)}
                 style={{
                   flex: 1, background: 'transparent', border: 'none',
                   fontSize: 13, fontWeight: 700, color: 'var(--text)',
@@ -909,42 +1072,94 @@ function StructureEditor({ department, guideFound, onBack, onConfirm }) {
             {/* Subsections */}
             <div style={{ padding: '8px 14px' }}>
               {ch.subsections.map((sub, subIdx) => (
-                <div key={subIdx} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '6px 0',
-                  borderBottom: subIdx < ch.subsections.length - 1 ? '1px solid var(--border-light)' : 'none'
-                }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-dim)', minWidth: 28 }}>
-                    {sub.number}
-                  </span>
-                  <input
-                    value={sub.title}
-                    onChange={e => updateSubTitle(chIdx, subIdx, e.target.value)}
-                    style={{
-                      flex: 1, background: 'transparent', border: 'none',
-                      fontSize: 13, color: 'var(--text)',
-                      fontFamily: 'Geist, sans-serif', outline: 'none',
-                      padding: '2px 0'
-                    }}
-                  />
-                  <button
-                    onClick={() => removeSubsection(chIdx, subIdx)}
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: 'var(--text-dim)', fontSize: 14, padding: '2px 4px',
-                      lineHeight: 1, opacity: 0.6,
-                      display: ch.subsections.length <= 1 ? 'none' : 'block'
-                    }}
-                    title="Remove this section"
-                  >
-                    ✕
-                  </button>
+                <div key={sub.id}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 0',
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      <button onClick={() => moveSubsection(ch.id, subIdx, -1)} disabled={subIdx === 0}
+                        title="Move up" style={{ background: 'none', border: 'none', cursor: subIdx === 0 ? 'default' : 'pointer', color: 'var(--text-dim)', opacity: subIdx === 0 ? 0.25 : 0.7, fontSize: 10, lineHeight: 1, padding: '1px 2px' }}>▲</button>
+                      <button onClick={() => moveSubsection(ch.id, subIdx, 1)} disabled={subIdx === ch.subsections.length - 1}
+                        title="Move down" style={{ background: 'none', border: 'none', cursor: subIdx === ch.subsections.length - 1 ? 'default' : 'pointer', color: 'var(--text-dim)', opacity: subIdx === ch.subsections.length - 1 ? 0.25 : 0.7, fontSize: 10, lineHeight: 1, padding: '1px 2px' }}>▼</button>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-dim)', minWidth: 32 }}>
+                      {sub.number}
+                    </span>
+                    <input
+                      ref={registerRef(sub.id)}
+                      value={sub.title}
+                      onChange={e => updateSubTitle(ch.id, sub.id, e.target.value)}
+                      style={{
+                        flex: 1, background: 'transparent', border: 'none',
+                        fontSize: 13, color: 'var(--text)',
+                        fontFamily: 'Geist, sans-serif', outline: 'none',
+                        padding: '2px 0'
+                      }}
+                    />
+                    <button
+                      onClick={() => addChild(ch.id, sub.id)}
+                      title="Add a sub-section under this one"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 13, padding: '2px 4px', lineHeight: 1, opacity: 0.75 }}
+                    >
+                      ↳+
+                    </button>
+                    <button
+                      onClick={() => removeSubsection(ch.id, sub.id)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-dim)', fontSize: 14, padding: '2px 4px',
+                        lineHeight: 1, opacity: 0.6,
+                        display: ch.subsections.length <= 1 ? 'none' : 'block'
+                      }}
+                      title="Remove this section"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Sub-subsections (3rd level) */}
+                  {sub.children.length > 0 && (
+                    <div style={{ paddingLeft: 34, display: 'flex', flexDirection: 'column' }}>
+                      {sub.children.map((child, childIdx) => (
+                        <div key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                            <button onClick={() => moveChild(ch.id, sub.id, childIdx, -1)} disabled={childIdx === 0}
+                              title="Move up" style={{ background: 'none', border: 'none', cursor: childIdx === 0 ? 'default' : 'pointer', color: 'var(--text-dim)', opacity: childIdx === 0 ? 0.25 : 0.7, fontSize: 9, lineHeight: 1, padding: '1px 2px' }}>▲</button>
+                            <button onClick={() => moveChild(ch.id, sub.id, childIdx, 1)} disabled={childIdx === sub.children.length - 1}
+                              title="Move down" style={{ background: 'none', border: 'none', cursor: childIdx === sub.children.length - 1 ? 'default' : 'pointer', color: 'var(--text-dim)', opacity: childIdx === sub.children.length - 1 ? 0.25 : 0.7, fontSize: 9, lineHeight: 1, padding: '1px 2px' }}>▼</button>
+                          </div>
+                          <span style={{ fontSize: 10.5, color: 'var(--text-dim)', minWidth: 42 }}>
+                            {child.number}
+                          </span>
+                          <input
+                            ref={registerRef(child.id)}
+                            value={child.title}
+                            onChange={e => updateChildTitle(ch.id, sub.id, child.id, e.target.value)}
+                            style={{
+                              flex: 1, background: 'transparent', border: 'none',
+                              fontSize: 12.5, color: 'var(--text)',
+                              fontFamily: 'Geist, sans-serif', outline: 'none',
+                              padding: '2px 0'
+                            }}
+                          />
+                          <button
+                            onClick={() => removeChild(ch.id, sub.id, child.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', fontSize: 13, padding: '2px 4px', lineHeight: 1, opacity: 0.6 }}
+                            title="Remove this sub-section"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
 
               {/* Add subsection */}
               <button
-                onClick={() => addSubsection(chIdx)}
+                onClick={() => addSubsection(ch.id)}
                 style={{
                   marginTop: 8, background: 'none', border: 'none',
                   cursor: 'pointer', color: 'var(--accent)', fontSize: 12,
@@ -954,6 +1169,49 @@ function StructureEditor({ department, guideFound, onBack, onConfirm }) {
               >
                 + Add section
               </button>
+
+              {/* Add supporting paragraph */}
+              <button
+                onClick={() => addParagraph(ch.id)}
+                style={{
+                  marginTop: 2, background: 'none', border: 'none',
+                  cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12,
+                  fontFamily: 'Geist, sans-serif', fontWeight: 600,
+                  padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4
+                }}
+              >
+                + Add supporting paragraph (if any)
+              </button>
+
+              {/* Supporting paragraphs — unnumbered free text under this chapter */}
+              {ch.paragraphs.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                  {ch.paragraphs.map(p => (
+                    <div key={p.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      <textarea
+                        ref={registerRef(p.id)}
+                        value={p.text}
+                        onChange={e => updateParagraph(ch.id, p.id, e.target.value)}
+                        placeholder="Supporting paragraph text — no section number attached"
+                        rows={2}
+                        style={{
+                          flex: 1, resize: 'vertical', border: '1px solid var(--border-light)',
+                          borderRadius: 8, background: 'var(--bg-elevated)', color: 'var(--text)',
+                          fontSize: 12.5, fontFamily: 'Geist, sans-serif', outline: 'none',
+                          padding: '6px 8px'
+                        }}
+                      />
+                      <button
+                        onClick={() => removeParagraph(ch.id, p.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', fontSize: 14, padding: '2px 4px', lineHeight: 1, opacity: 0.6 }}
+                        title="Remove this paragraph"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}

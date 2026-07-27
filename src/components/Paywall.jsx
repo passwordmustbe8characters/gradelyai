@@ -21,7 +21,7 @@ const PLANS = {
     features: [
       'Everything in Basic',
       'AI Humanization (unlimited)',
-      'Plagiarism-safe guarantee',
+      'AI-humanized to beat Turnitin',
       'Priority support',
     ]
   },

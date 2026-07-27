@@ -8,6 +8,7 @@ import fs from 'fs'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import mammoth from 'mammoth'
+import crypto from 'crypto'
 import db from './database.js'
 
 console.log('=== SERVER STARTING ===');
@@ -102,7 +103,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-app.use(express.json());
+// `verify` stashes the raw body bytes so the Paystack webhook handler can
+// recompute the HMAC signature over the exact bytes Paystack signed — the
+// parsed/re-serialized JS object is not guaranteed to match byte-for-byte.
+app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf } }));
 
 app.set('trust proxy', 1)
 
@@ -399,36 +403,53 @@ app.post('/api/humanize', requireAuth, async (req, res) => {
 
 
 
-// Add this to your server.js
+// Paystack's real webhook shape is `{ event, data: { reference, status, amount,
+// customer: { email }, metadata } }` (amount in kobo) — signed with an
+// `x-paystack-signature` header (HMAC-SHA512 of the raw body, using the secret
+// key). Reject anything that doesn't carry a valid signature so this endpoint
+// can't be used to credit accounts with a forged request.
 app.post('/api/payments/webhook', async (req, res) => {
-    // These are the variables that were causing the warning
-    const { transactionReference, status, amount, customerEmail, metaData } = req.body;
+    const signature = req.headers['x-paystack-signature']
+    const expectedSignature = req.rawBody && process.env.PAYSTACK_SECRET_KEY
+      ? crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY).update(req.rawBody).digest('hex')
+      : null
 
-    if (status === 'SUCCESSFUL') {
-        const userId = metaData.userId;
-        let creditsToAdd = 0;
-
-        // Logic: Allocate fair share of credits
-        if (amount >= 15000) creditsToAdd = 20000; // Premium Plan
-        else if (amount >= 10000) creditsToAdd = 10000; // Standard Plan
-
-        // 1. Update the User's Wallet
-        await db.execute({
-            sql: 'UPDATE users SET humanization_credits = humanization_credits + ? WHERE id = ?',
-            args: [creditsToAdd, userId]
-        });
-
-        // 2. Log the payment (Using the variables that were "unused")
-        // This clears your ESLint errors because you are now using them!
-        await db.execute({
-            sql: 'INSERT INTO payments (reference, email, user_id, amount, status) VALUES (?, ?, ?, ?, ?)',
-            args: [transactionReference, customerEmail, userId, amount, 'success']
-        });
-
-        console.log(`Successfully credited user ${userId} with ${creditsToAdd} tokens.`);
+    if (!expectedSignature || signature !== expectedSignature) {
+        console.error('Paystack webhook: invalid or missing signature')
+        return res.status(401).send('Invalid signature')
     }
-    
-    res.status(200).send('Webhook Received');
+
+    const { event, data } = req.body
+    if (event === 'charge.success' && data?.status === 'success') {
+        const reference = data.reference
+        const amountPaid = data.amount / 100 // kobo → naira
+        const customerEmail = data.customer?.email
+        const userId = data.metadata?.userId
+
+        let creditsToAdd = 0
+        if (amountPaid >= 15000) creditsToAdd = 20000
+        else if (amountPaid >= 10000) creditsToAdd = 10000
+
+        if (userId && creditsToAdd > 0) {
+            await db.execute({
+                sql: 'UPDATE users SET humanization_credits = humanization_credits + ? WHERE id = ?',
+                args: [creditsToAdd, userId]
+            })
+        }
+
+        try {
+            await db.execute({
+                sql: 'INSERT INTO payments (reference, email, user_id, amount, status) VALUES (?, ?, ?, ?, ?)',
+                args: [reference, customerEmail || '', userId || null, amountPaid, 'success']
+            })
+        } catch {
+            // reference is UNIQUE — already recorded by /api/payments/paystack/verify, ignore
+        }
+
+        console.log(`Webhook confirmed payment ${reference}: ₦${amountPaid} from ${customerEmail}`)
+    }
+
+    res.status(200).send('Webhook Received')
 });
 
 // ─── PAYSTACK PAYMENT VERIFICATION ────────────────────────────────────────────
@@ -488,8 +509,15 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
       return res.json({ success: true, amount: amountPaid, plan, creditsAdded: alreadyProcessed ? 0 : creditsAdded, message: 'Payment verified successfully' })
     }
 
-    // Default purpose: unlock a project
-    if (projectId && !alreadyProcessed) {
+    // Default purpose: unlock a project — the payment is already recorded above,
+    // but without a projectId we have nothing to mark as paid, so this must be
+    // a real error rather than a silent "success" the student can't act on.
+    if (!projectId) {
+      console.error(`Paystack verify: payment ${reference} succeeded but no projectId was provided — nothing was unlocked`)
+      return res.status(400).json({ error: 'Payment verified but no project was specified. Please contact support with your payment reference: ' + reference })
+    }
+
+    if (!alreadyProcessed) {
       await db.execute({
         sql: 'UPDATE projects SET is_paid = 1, plan = ?, updated_at = datetime("now") WHERE id = ? AND user_id = ?',
         args: [plan, projectId, req.user.id]
@@ -1028,9 +1056,16 @@ Use ${ref} as the in-text citation marker wherever this paper's findings are rel
       const progressBase = 25 + ((chapter.number / totalChapters) * 55)
       send('status', { message: `Writing Chapter ${chapter.number}: ${chapter.title}...`, progress: Math.round(progressBase) })
 
-      const subsectionList = chapter.subsections?.map(s =>
-        `${s.number} ${typeof s === 'string' ? s : s.title}`
-      ).join('\n') || ''
+      const subsectionList = chapter.subsections?.map(s => {
+        const line = `${s.number} ${typeof s === 'string' ? s : s.title}`
+        const childLines = (s.children || []).map(c => `  ${c.number} ${c.title}`).join('\n')
+        return childLines ? `${line}\n${childLines}` : line
+      }).join('\n') || ''
+
+      const supportingNotes = (chapter.paragraphs || [])
+        .map(p => (typeof p === 'string' ? p : p.text))
+        .filter(Boolean)
+        .join('\n')
 
       const isImplementation = chapter.number >= 3 && projectInfo.projectType !== 'research'
       const githubContext = isImplementation && projectInfo.githubLink
@@ -1070,6 +1105,7 @@ Department: ${projectInfo.department}
 Project Type: ${projectInfo.projectType || 'software'}
 
 ${subsectionList ? `Required subsections:\n${subsectionList}\n` : ''}
+${supportingNotes ? `\nMust also cover these supporting notes for this chapter (no section number of their own — weave them in naturally):\n${supportingNotes}\n` : ''}
 ${paperContext ? `\nREAL ACADEMIC PAPERS — use these as sources for your claims. Insert the [number] marker as the in-text citation wherever relevant:\n\n${paperContext}\n\nIMPORTANT: Only cite using the markers above, written exactly as [1], [2] etc. Never write an author name or year yourself, and never invent a marker not in this list.\n` : 'No external papers available — write from established academic knowledge without citations.\n'}
 ${projectInfo.supervisorNotes ? `\nSupervisor notes: ${projectInfo.supervisorNotes}\n` : ''}
 
@@ -1786,6 +1822,70 @@ app.delete('/api/admin/guides/:id', requireAdmin, async (req, res) => {
   try {
     await db.execute({ sql: 'DELETE FROM guides WHERE id = ?', args: [req.params.id] })
     res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ─── STRUCTURE FEEDBACK (per-university/department learned structure) ────────
+// Strips ids and whitespace so two structurally-identical corrections from
+// different students are recognized as "the same" structure.
+function canonicalizeStructure(chapters) {
+  return JSON.stringify((chapters || []).map(ch => ({
+    title: (ch.title || '').trim().toUpperCase(),
+    subsections: (ch.subsections || []).map(s => ({
+      title: (s.title || '').trim().toUpperCase(),
+      children: (s.children || []).map(c => (c.title || '').trim().toUpperCase())
+    })),
+    paragraphs: (ch.paragraphs || []).map(p => (typeof p === 'string' ? p : p.text || '').trim())
+  })))
+}
+
+app.get('/api/structure-feedback', async (req, res) => {
+  try {
+    const { university, department, projectType } = req.query
+    if (!university || !department || !projectType) {
+      return res.status(400).json({ error: 'university, department and projectType are required' })
+    }
+    const result = await db.execute({
+      sql: 'SELECT chapters, confirmations FROM structure_feedback WHERE university = ? AND department = ? AND project_type = ?',
+      args: [university, department, projectType]
+    })
+    if (!result.rows.length) return res.json({ structure: null })
+    res.json({ structure: JSON.parse(result.rows[0].chapters), confirmations: result.rows[0].confirmations })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/structure-feedback', async (req, res) => {
+  try {
+    const { university, department, projectType, chapters } = req.body
+    if (!university || !department || !projectType || !chapters?.length) {
+      return res.status(400).json({ error: 'university, department, projectType and chapters are required' })
+    }
+    const existing = await db.execute({
+      sql: 'SELECT id, chapters, confirmations FROM structure_feedback WHERE university = ? AND department = ? AND project_type = ?',
+      args: [university, department, projectType]
+    })
+
+    if (!existing.rows.length) {
+      await db.execute({
+        sql: 'INSERT INTO structure_feedback (university, department, project_type, chapters, confirmations) VALUES (?, ?, ?, ?, 1)',
+        args: [university, department, projectType, JSON.stringify(chapters)]
+      })
+      return res.json({ success: true, confirmations: 1 })
+    }
+
+    const row = existing.rows[0]
+    const same = canonicalizeStructure(JSON.parse(row.chapters)) === canonicalizeStructure(chapters)
+    const nextConfirmations = same ? row.confirmations + 1 : 1
+
+    await db.execute({
+      sql: 'UPDATE structure_feedback SET chapters = ?, confirmations = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      args: [JSON.stringify(chapters), nextConfirmations, row.id]
+    })
+    res.json({ success: true, confirmations: nextConfirmations })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

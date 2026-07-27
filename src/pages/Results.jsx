@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
-import { exportToWord } from '../lib/export'
+import { exportToWord, exportToPdf } from '../lib/export'
 // isPaid replaced by direct check on parsed.isPaidUser
 import { updateProject, fetchProject } from '../lib/auth'
 import { fetchRealPapers, generateReferences } from '../lib/ai'
 import Paywall from '../components/Paywall'
+import ExportFormatModal from '../components/ExportFormatModal'
 import logoPrimary from '../assets/primary-logo.png' 
 import logoSubmark from '../assets/submark-logo.png'
 
@@ -1203,7 +1204,7 @@ export default function Results() {
     }
   }
 
-  const handleExport = async (isClean) => {
+  const handleExport = async (isClean, formatOptions) => {
     if (!result || exporting) return
 
     // Soft gate — check defense readiness
@@ -1224,13 +1225,21 @@ export default function Results() {
     setExporting(true)
     try {
       // Add readiness score to result before export
-      await exportToWord({ ...result, defenseReadiness: readiness }, isClean)
+      const resultWithReadiness = { ...result, defenseReadiness: readiness }
+      if (formatOptions?.fileType === 'pdf') {
+        await exportToPdf(resultWithReadiness, isClean, formatOptions)
+      } else {
+        await exportToWord(resultWithReadiness, isClean, formatOptions)
+      }
     } catch (err) {
       console.error(err)
       alert('Export failed. Please try again.')
     }
     setExporting(false)
   }
+
+  const [formatModalFor, setFormatModalFor] = useState(null) // 'clean' | 'working' | null
+  const requestExport = (isClean) => setFormatModalFor(isClean ? 'clean' : 'working')
 
   const applyChapterCorrections = (revisedContent, correctionText) => {
     const updatedChapters = result.chapters.map((c, ci) =>
@@ -1597,7 +1606,7 @@ const renderContentWithSources = (text) => {
                     </div>
                   )}
 
-                  <SpinningButton onClick={() => handleExport(true)} loading={exporting}
+                  <SpinningButton onClick={() => requestExport(true)} loading={exporting}
                     className="res-btn-accent desktop-download-btn"
                     style={{ fontSize: 12, padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 5 }}>
                     <DownloadIcon /> <span>{exporting ? 'Exporting...' : 'Download'}</span>
@@ -1906,7 +1915,7 @@ const renderContentWithSources = (text) => {
                       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
                         The working copy includes inline source markers so you can see where each claim came from.
                       </p>
-                      <SpinningButton onClick={() => handleExport(false)} loading={exporting}
+                      <SpinningButton onClick={() => requestExport(false)} loading={exporting}
                         style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <DownloadIcon /> Download Working Copy
                       </SpinningButton>
@@ -1935,7 +1944,7 @@ const renderContentWithSources = (text) => {
       >
         <button 
           className="floating-icon-btn"
-          onClick={() => paid ? handleExport(true) : setShowPaywall(true)}
+          onClick={() => paid ? requestExport(true) : setShowPaywall(true)}
           title={paid ? "Download Project" : "Unlock to Download"}
         >
           {paid ? <DownloadIcon /> : <ShieldIcon />}
@@ -1977,6 +1986,17 @@ const renderContentWithSources = (text) => {
           onUnlock={handleUnlock}
           userEmail={user?.email}
           onClose={() => setShowPaywall(false)}
+        />
+      )}
+      {formatModalFor && (
+        <ExportFormatModal
+          projectId={result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')}
+          onClose={() => setFormatModalFor(null)}
+          onConfirm={(formatOptions) => {
+            const isClean = formatModalFor === 'clean'
+            setFormatModalFor(null)
+            handleExport(isClean, formatOptions)
+          }}
         />
       )}
       <CorrectionsModal

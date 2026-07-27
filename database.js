@@ -99,6 +99,20 @@ await client.execute(`
 `)
 
 await client.execute(`
+  CREATE TABLE IF NOT EXISTS structure_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    university TEXT NOT NULL,
+    department TEXT NOT NULL,
+    project_type TEXT NOT NULL,
+    chapters TEXT NOT NULL,
+    confirmations INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(university, department, project_type)
+  )
+`)
+
+await client.execute(`
   CREATE TABLE IF NOT EXISTS test_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
