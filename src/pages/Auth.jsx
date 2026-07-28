@@ -365,7 +365,7 @@ export default function Auth() {
           {mode === 'login' && (
             <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
               Forgot your password?{' '}
-              <a href="mailto:hello@gradely.ai" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>
+              <a href="mailto:support@getgradely.xyz" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>
                 Contact support
               </a>
             </p>

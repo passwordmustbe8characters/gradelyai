@@ -150,7 +150,7 @@ export default function Terms() {
               <li><strong>Free Tier:</strong> No payment is required, so no refunds apply.</li>
               <li><strong>Pro and Premium:</strong> If you are not satisfied with the quality of your generated project, you may request a refund within 7 days of payment. Refunds are issued on a case-by-case basis and require reasonable justification.</li>
               <li>Refunds are not provided for projects that have been fully generated and exported.</li>
-              <li>To request a refund, contact us at <a href="mailto:support@gradelyai.com" style={{ color: 'var(--accent)' }}>support@gradelyai.com</a>.</li>
+              <li>To request a refund, contact us at <a href="mailto:support@getgradely.xyz" style={{ color: 'var(--accent)' }}>support@getgradely.xyz</a>.</li>
             </ul>
           </Section>
 

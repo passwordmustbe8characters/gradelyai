@@ -487,7 +487,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
     // Verify with Paystack API
     if (!process.env.PAYSTACK_SECRET_KEY) {
       console.error('PAYSTACK_SECRET_KEY is not set in environment variables')
-      return res.status(500).json({ error: 'Payment service not configured. Please contact support.' })
+      return res.status(500).json({ error: 'Payment service not configured. Please contact support@getgradely.xyz.' })
     }
     console.log('Verifying Paystack reference:', reference)
     const verifyRes = await fetch(
@@ -504,7 +504,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
 
     if (!verifyData.status || verifyData.data?.status !== 'success') {
       console.error('Paystack verification failed:', verifyData)
-      return res.status(400).json({ error: 'Payment could not be verified. Please contact support.' })
+      return res.status(400).json({ error: 'Payment could not be verified. Please contact support@getgradely.xyz.' })
     }
 
     const amountPaid = verifyData.data.amount / 100 // kobo → naira
@@ -540,7 +540,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
     // a real error rather than a silent "success" the student can't act on.
     if (!projectId) {
       console.error(`Paystack verify: payment ${reference} succeeded but no projectId was provided — nothing was unlocked`)
-      return res.status(400).json({ error: 'Payment verified but no project was specified. Please contact support with your payment reference: ' + reference })
+      return res.status(400).json({ error: 'Payment verified but no project was specified. Please contact support@getgradely.xyz with your payment reference: ' + reference })
     }
 
     if (!alreadyProcessed) {
@@ -559,7 +559,7 @@ app.post('/api/payments/paystack/verify', requireAuth, async (req, res) => {
 
   } catch (err) {
     console.error('Paystack verify error:', err)
-    res.status(500).json({ error: 'Verification failed. Please try again or contact support.' })
+    res.status(500).json({ error: 'Verification failed. Please try again or contact support@getgradely.xyz.' })
   }
 })
 

@@ -72,11 +72,11 @@ export default function Paywall({ projectInfo, onUnlock, userEmail, onClose }) {
             setLoading(false)
             onUnlock()
           } else {
-            setError(data.error || 'Payment verified but activation failed. Please contact support.')
+            setError(data.error || 'Payment verified but activation failed. Please contact support@getgradely.xyz.')
             setLoading(false)
           }
         } catch {
-          setError('Could not verify payment. Contact support with reference: ' + reference)
+          setError('Could not verify payment. Contact support@getgradely.xyz with reference: ' + reference)
           setLoading(false)
         }
       },

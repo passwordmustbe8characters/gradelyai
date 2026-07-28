@@ -16,9 +16,47 @@ export async function loginUser(email, password) {
   return data;
 }
 
+// Sweeps every gradely*-prefixed key out of both storages. Mobile Safari can
+// keep a tab's sessionStorage alive across app-switches for a long time
+// (unlike a real tab close), so leftover data from earlier testing can sit
+// near the per-origin quota indefinitely — silently breaking unrelated writes
+// (like saving a fresh login token) with no obvious cause to the person
+// hitting it. Self-healing this automatically means nobody has to be told to
+// go clear site data by hand.
+function clearAppStorage() {
+  for (const store of [localStorage, sessionStorage]) {
+    try {
+      const staleKeys = []
+      for (let i = 0; i < store.length; i++) {
+        const key = store.key(i)
+        if (key && key.startsWith('gradely')) staleKeys.push(key)
+      }
+      staleKeys.forEach(k => store.removeItem(k))
+    } catch {
+      // storage inaccessible entirely (private-mode edge cases, etc.) — nothing to clean up
+    }
+  }
+}
+
+function safeSetItem(store, key, value) {
+  try {
+    store.setItem(key, value)
+    return true
+  } catch {
+    // Likely QuotaExceededError from accumulated stale data — wipe it and retry once
+    clearAppStorage()
+    try {
+      store.setItem(key, value)
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
 export function saveAuth(token, user) {
-  localStorage.setItem(TOKEN_KEY, token)
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  safeSetItem(localStorage, TOKEN_KEY, token)
+  safeSetItem(localStorage, USER_KEY, JSON.stringify(user))
 }
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)
@@ -39,8 +77,7 @@ export function isLoggedIn() {
 }
 
 export function logout() {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  clearAppStorage()
 }
 
 export function authHeaders() {
@@ -67,6 +104,10 @@ async function fetchWithRetry(url, options, retries = 1) {
 }
 
 export async function register(name, email, password) {
+  // Starting a new session is a natural boundary to sweep out any stale
+  // leftover data before it can interfere with anything — cheaper to prevent
+  // than to wait for a quota error to happen and retry after the fact.
+  clearAppStorage()
   let res
   try {
     res = await fetchWithRetry(`${BASE_URL}/api/auth/register`, {
@@ -84,6 +125,7 @@ export async function register(name, email, password) {
 }
 
 export async function login(email, password) {
+  clearAppStorage()
   let res
   try {
     res = await fetchWithRetry(`${BASE_URL}/api/auth/login`, {

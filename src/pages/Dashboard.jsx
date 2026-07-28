@@ -44,11 +44,11 @@ export default function Dashboard() {
             await refreshUser()
             alert(`✅ Payment verified — ${data.creditsAdded.toLocaleString()} humanization credits added.`)
           } else {
-            alert(data.error || 'Payment verified but crediting failed. Please contact support.')
+            alert(data.error || 'Payment verified but crediting failed. Please contact support@getgradely.xyz.')
           }
         } catch (err) {
           console.error('Credit purchase verify error:', err)
-          alert('Could not verify payment. Please contact support with your payment reference: ' + reference)
+          alert('Could not verify payment. Please contact support@getgradely.xyz with your payment reference: ' + reference)
         }
       }
     })
