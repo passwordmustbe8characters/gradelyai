@@ -520,6 +520,12 @@ Match their vocabulary level, sentence rhythm, and natural transitions.
   const system = `You are a professional Nigerian academic writer with expertise in writing final year
 project reports for Nigerian universities. You write rich, detailed, academically rigorous content.
 
+FORMATTING RULES — CRITICAL:
+- Write in plain paragraphs ONLY — no markdown whatsoever
+- Do NOT use # ## ### or any heading markers — write the subsection number and title as plain text (e.g. "1.1 Background to the Study"), never prefixed with hashes
+- Do NOT use ** for bold or * for italic
+- Do NOT use bullet points (-, *, +) or numbered lists unless the content absolutely requires enumeration
+
 WRITING RULES:
 - Write in formal academic English appropriate for Nigerian universities
 - EVERY subsection must be at least 500 to 600 words on its own — this applies individually to each subsection, not just the chapter as a whole. A subsection under 500 words is incomplete and unacceptable
@@ -568,7 +574,16 @@ ${isImplementation && projectInfo.builtContext
 Write each subsection with its number and title as a heading then write rich academic content — at least 500-600 words per subsection.
 Make this chapter comprehensive, rigorous, and specific to the exact project topic.`
 
-  const raw = await callAI(system, user, 7500)
+  let raw = await callAI(system, user, 7500)
+  // Defensive cleanup — the AI is told not to use markdown but leaks it often
+  // enough (code fences, "## " heading prefixes) that this can't be skipped;
+  // stripped once here so every consumer (live view, Word/PDF export) sees
+  // plain text without needing its own copy of this cleanup.
+  raw = raw
+    .replace(/```[a-z]*/gi, '')
+    .replace(/```/g, '')
+    .replace(/^#{1,6}\s*/gm, '')
+    .trim()
   return resolveCitationMarkers(raw, paperLookup)
 }
 
@@ -631,13 +646,24 @@ export async function generateReferences(projectInfo, realPapers = []) {
       : 'Unknown Author'
 
     const year = p.year || 'n.d.'
-    const title = p.title || 'Untitled'
+    // Article titles end with a single period — avoid doubling up if the
+    // source title already ends in its own punctuation (a question mark, etc.)
+    const rawTitle = (p.title || 'Untitled').trim()
+    const title = /[.?!]$/.test(rawTitle) ? rawTitle : `${rawTitle}.`
     const journal = p.journal?.name || p.publicationVenue?.name || ''
+    const volume = p.journal?.volume || ''
+    const issue = p.journal?.issue || ''
+    const pages = p.journal?.pages || ''
     const doi = p.externalIds?.DOI || ''
     const url = p.openAccessPdf?.url || (doi ? `https://doi.org/${doi}` : '')
 
-    let citation = `${authors} (${year}). ${title}.`
-    if (journal) citation += ` *${journal}*.`
+    let citation = `${authors} (${year}). ${title}`
+    if (journal) {
+      citation += ` *${journal}*`
+      if (volume) citation += `, ${volume}${issue ? `(${issue})` : ''}`
+      if (pages) citation += `, ${pages}`
+      citation += '.'
+    }
     if (doi) citation += ` https://doi.org/${doi}`
     else if (url) citation += ` ${url}`
 

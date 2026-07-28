@@ -47,8 +47,14 @@ export function saveFormatOptions(projectId, options) {
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 function cleanText(text) {
-  // Remove [SOURCE: ...] markers for clean export version
-  return text.replace(/\[SOURCE:[^\]]+\]/g, '').replace(/\s+/g, ' ').trim()
+  // Remove [SOURCE: ...] markers plus any markdown the AI leaked despite being
+  // told not to (heading hashes, bold/italic asterisks) for the clean export version
+  return text
+    .replace(/\[SOURCE:[^\]]+\]/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function parseChapterContent(content) {
@@ -56,7 +62,12 @@ function parseChapterContent(content) {
   const paragraphs = []
 
   for (const line of lines) {
-    const trimmed = line.trim()
+    // Strip leading markdown heading markers (#, ##, ...) BEFORE matching —
+    // otherwise a line like "## 1.1 Background to the Study" fails both
+    // heading regexes below (they require the line to start with a digit or
+    // an uppercase letter) and falls through as a body paragraph with the
+    // literal "##" left sitting in front of it.
+    const trimmed = line.trim().replace(/^#{1,6}\s*/, '')
     if (!trimmed) continue
 
     // Detect subsection headings like "1.1 Background to the Study"
@@ -284,6 +295,22 @@ function buildAbstractPage(abstract, fmt) {
   ]
 }
 
+// References embed the journal/periodical name in *asterisks* as a lightweight
+// italics marker (APA requires the periodical title in italics) — split on
+// that here into separate runs instead of leaving the literal asterisks in
+// the exported document.
+function buildItalicRuns(text, size, font) {
+  const parts = text.split(/(\*[^*]+\*)/g).filter(Boolean)
+  return parts.map(part => {
+    const isItalic = part.startsWith('*') && part.endsWith('*')
+    return new TextRun({
+      text: isItalic ? part.slice(1, -1) : part,
+      italics: isItalic,
+      size, font
+    })
+  })
+}
+
 function buildReferencesPage(references, fmt) {
   if (!references || references.length === 0) return []
   const sizeHalfPoints = fmt.fontSize * 2
@@ -300,7 +327,7 @@ function buildReferencesPage(references, fmt) {
   for (const ref of references) {
     paragraphs.push(
       new Paragraph({
-        children: [new TextRun({ text: ref.citation, size: sizeHalfPoints, font: fmt.font })],
+        children: buildItalicRuns(ref.citation, sizeHalfPoints, fmt.font),
         spacing: { after: 200 },
         indent: { hanging: 720 },
       })
@@ -508,7 +535,9 @@ export async function exportToPdf(result, isClean = true, formatOptions = {}) {
     newPage()
     writeCentered('REFERENCES', fmt.fontSize + 4, { style: 'bold', after: 8 })
     for (const ref of references) {
-      writeBody(ref.citation, fmt.fontSize, { after: 3 })
+      // jsPDF's text wrapping doesn't support mixed inline styles on one
+      // line — drop the italics marker rather than show literal asterisks
+      writeBody(ref.citation.replace(/\*/g, ''), fmt.fontSize, { after: 3 })
     }
   }
 

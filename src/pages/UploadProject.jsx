@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import logoPrimary from '../assets/primary-logo.png'
+import { saveResultToSession } from '../lib/sessionResult'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -60,7 +61,7 @@ export default function UploadProject() {
         isPaidUser: proj.is_paid === 1,
         source: proj.source,
       }
-      sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+      saveResultToSession(resultData)
       sessionStorage.setItem('gradelyProjectDbId', proj.id)
       if (!user?.onboarded) {
         try { await markOnboarded() } catch (e) { console.error(e) }

@@ -1771,11 +1771,28 @@ async function searchSemanticScholar(query) {
   }
 }
 
+// CrossRef's publisher-submitted metadata frequently ships with literal,
+// undecoded HTML/XML entities baked into titles and journal names (e.g.
+// "Journal of Science &amp; Technology") — decode them once at the source so
+// "&amp;" never ends up visible in a student's references section.
+function decodeHtmlEntities(str) {
+  if (!str) return str
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+}
+
 // CrossRef needs no API key and has a far more generous rate limit — used when
 // Semantic Scholar's shared unauthenticated quota (429s constantly in practice) is exhausted.
 async function searchCrossRef(query) {
   const encoded = encodeURIComponent(query)
-  const url = `https://api.crossref.org/works?query.bibliographic=${encoded}&rows=15&select=title,author,published,container-title,DOI,URL`
+  const url = `https://api.crossref.org/works?query.bibliographic=${encoded}&rows=15&select=title,author,published,container-title,DOI,URL,volume,issue,page`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
@@ -1789,7 +1806,7 @@ async function searchCrossRef(query) {
         title: it.title[0],
         authors: (it.author || []).map(a => ({ name: [a.given, a.family].filter(Boolean).join(' ') })),
         year: it.published?.['date-parts']?.[0]?.[0] || null,
-        journal: { name: it['container-title']?.[0] || '' },
+        journal: { name: it['container-title']?.[0] || '', volume: it.volume || '', issue: it.issue || '', pages: it.page || '' },
         externalIds: { DOI: it.DOI },
         openAccessPdf: it.URL ? { url: it.URL } : null
       }))
@@ -1800,15 +1817,28 @@ async function searchCrossRef(query) {
   }
 }
 
+// Semantic Scholar aggregates metadata from many upstream sources (including
+// CrossRef), so it can carry the same undecoded-entity problem — decode
+// defensively here regardless of which source actually answered.
+function decodePaperEntities(papers) {
+  return (papers || []).map(p => ({
+    ...p,
+    title: decodeHtmlEntities(p.title),
+    authors: (p.authors || []).map(a => ({ ...a, name: decodeHtmlEntities(a.name) })),
+    journal: p.journal ? { ...p.journal, name: decodeHtmlEntities(p.journal.name) } : p.journal,
+    publicationVenue: p.publicationVenue ? { ...p.publicationVenue, name: decodeHtmlEntities(p.publicationVenue.name) } : p.publicationVenue,
+  }))
+}
+
 app.get('/api/papers', async (req, res) => {
   const { query } = req.query
   if (!query) return res.json({ data: [] })
 
   const fromSemanticScholar = await searchSemanticScholar(query)
-  if (fromSemanticScholar) return res.json({ data: fromSemanticScholar })
+  if (fromSemanticScholar) return res.json({ data: decodePaperEntities(fromSemanticScholar) })
 
   const fromCrossRef = await searchCrossRef(query)
-  res.json({ data: fromCrossRef || [] })
+  res.json({ data: decodePaperEntities(fromCrossRef) })
 })
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────
@@ -1869,6 +1899,28 @@ app.get('/api/admin/guides', requireAdmin, async (req, res) => {
   try {
     const result = await db.execute('SELECT * FROM guides ORDER BY university, department')
     res.json({ guides: result.rows })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// For monitoring beta testers: who signed up, how far they got, whether they paid.
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.execute(`
+      SELECT
+        u.id, u.name, u.email, u.onboarded, u.created_at,
+        COUNT(p.id) AS project_count,
+        SUM(CASE WHEN p.is_paid = 1 THEN 1 ELSE 0 END) AS paid_count,
+        MAX(p.updated_at) AS last_activity,
+        (SELECT p2.university FROM projects p2 WHERE p2.user_id = u.id ORDER BY p2.created_at DESC LIMIT 1) AS university,
+        (SELECT p2.department FROM projects p2 WHERE p2.user_id = u.id ORDER BY p2.created_at DESC LIMIT 1) AS department
+      FROM users u
+      LEFT JOIN projects p ON p.user_id = u.id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `)
+    res.json({ users: result.rows })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

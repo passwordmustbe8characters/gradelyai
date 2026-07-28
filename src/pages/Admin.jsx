@@ -9,6 +9,9 @@ export default function Admin() {
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
   const [guides, setGuides] = useState([])
+  const [section, setSection] = useState('guides') // guides | users
+  const [users, setUsers] = useState([])
+  const [usersLoading, setUsersLoading] = useState(false)
   const [view, setView] = useState('list') // list | add | edit | upload
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -100,6 +103,25 @@ export default function Admin() {
     })
     const data = await res.json()
     setGuides(data.guides || [])
+  }
+
+  async function loadUsers() {
+    setUsersLoading(true)
+    try {
+      const res = await fetch(`${BASE_URL}/api/admin/users`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('gradelyAdminToken')}` }
+      })
+      const data = await res.json()
+      setUsers(data.users || [])
+    } catch (err) {
+      console.error(err)
+    }
+    setUsersLoading(false)
+  }
+
+  const openUsersTab = () => {
+    setSection('users')
+    if (users.length === 0) loadUsers()
   }
 
   const updateForm = (key, value) => setForm(f => ({ ...f, [key]: value }))
@@ -261,12 +283,12 @@ export default function Admin() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          {view !== 'list' && (
+          {section === 'guides' && view !== 'list' && (
             <button className="btn-ghost" onClick={() => { setView('list'); setMessage('') }} style={{ fontSize: 13 }}>
               ← Back to list
             </button>
           )}
-          {view === 'list' && (
+          {section === 'guides' && view === 'list' && (
             <>
               <button className="btn-ghost" onClick={() => { setView('upload'); setMessage('') }} style={{ fontSize: 13 }}>
                 Upload PDF
@@ -280,6 +302,32 @@ export default function Admin() {
             Logout
           </button>
         </div>
+      </div>
+
+      {/* Section tabs */}
+      <div style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', padding: '0 32px', display: 'flex', gap: 4 }}>
+        <button
+          onClick={() => { setSection('guides'); setMessage('') }}
+          style={{
+            padding: '12px 16px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif',
+            color: section === 'guides' ? 'var(--accent)' : 'var(--text-muted)',
+            borderBottom: section === 'guides' ? '2px solid var(--accent)' : '2px solid transparent'
+          }}
+        >
+          Guides
+        </button>
+        <button
+          onClick={openUsersTab}
+          style={{
+            padding: '12px 16px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans, sans-serif',
+            color: section === 'users' ? 'var(--accent)' : 'var(--text-muted)',
+            borderBottom: section === 'users' ? '2px solid var(--accent)' : '2px solid transparent'
+          }}
+        >
+          Users {users.length > 0 && `(${users.length})`}
+        </button>
       </div>
 
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '32px 24px' }}>
@@ -297,7 +345,7 @@ export default function Admin() {
         )}
 
         {/* LIST VIEW */}
-        {view === 'list' && (
+        {section === 'guides' && view === 'list' && (
           <div>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 700, marginBottom: 24 }}>
               Project Guides

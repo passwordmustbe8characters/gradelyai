@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import { fetchProjects, deleteProject, fetchProject } from '../lib/auth'
 import logoSubmark from '../assets/submark-logo.png'
 import { initializePaystackPayment } from "../lib/payment";
+import { saveResultToSession } from '../lib/sessionResult'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 const UNLIMITED_PROJECTS_EMAIL = 'josephdelight87@gmail.com'
@@ -348,7 +349,7 @@ const resultData = {
   correctionsHistory: safeParseJSON(proj.corrections_history, {}),
   source: proj.source,
 }
-                          sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+                          saveResultToSession(resultData)
                           if (proj.is_paid) sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true }))
                           navigate('/results')
                         } catch (err) { alert('Failed to load project: ' + err.message) }

@@ -1,4 +1,5 @@
 import { saveProject, updateProject, getToken } from '../lib/auth'
+import { saveResultToSession } from '../lib/sessionResult'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -168,12 +169,11 @@ setCurrentChapter(chapterIndex)
       chapters: generatedChapters,
       abstract,
       references: refs.references,
-      realPapers,
       isPaidUser: paidStatus,
       dbProjectId: projectId,
     }
 
-    sessionStorage.setItem('gradelyResult', JSON.stringify(resultData))
+    saveResultToSession(resultData)
 
     if (projectId && getToken()) {
       try {

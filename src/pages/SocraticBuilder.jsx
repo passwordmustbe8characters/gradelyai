@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { socraticChat, generateProjectStructure } from '../lib/ai'
 import { useAuth } from '../lib/AuthContext'
 import { createProject, updateProject, fetchProject } from '../lib/auth'
+import { saveResultToSession } from '../lib/sessionResult'
 import logoSubmark from '../assets/submark-logo.png'; // Import your Submark icon or image
 
 
@@ -480,7 +481,7 @@ const showFullLogo = sidebarOpen && !isMobile;
           projectInfo: projInfo,
           humanized: false
         }
-        sessionStorage.setItem('gradelyResult', JSON.stringify(newResult))
+        saveResultToSession(newResult)
         window.location.reload()
       } catch (err) {
         console.error('Failed to generate structure:', err)
@@ -531,7 +532,7 @@ const showFullLogo = sidebarOpen && !isMobile;
       if (newId) {
         sessionStorage.setItem('gradelyProjectDbId', String(newId))
         const updated = { ...currentResult, dbProjectId: newId, projectInfo: projInfo }
-        sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+        saveResultToSession(updated)
       }
     } catch (err) {
       console.error('[Gradely] Auto-save failed silently:', err)
@@ -609,7 +610,7 @@ const handleSend = async (overrideInput = null) => {
           }
 
           targetChapter.content = (targetChapter.content || '') + '\n\n' + parsed.draftContent
-          sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+          saveResultToSession(cur)
 
           const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
           if (dbId) {
@@ -941,7 +942,7 @@ const handleSaveAndExit = async () => {
           }
 
           targetChapter.content = (targetChapter.content || '') + '\n\n' + parsed.draftContent
-          sessionStorage.setItem('gradelyResult', JSON.stringify(cur))
+          saveResultToSession(cur)
 
           const dbId = cur.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
           if (dbId) {

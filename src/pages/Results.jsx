@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import { exportToWord, exportToPdf } from '../lib/export'
 // isPaid replaced by direct check on parsed.isPaidUser
 import { updateProject, fetchProject } from '../lib/auth'
+import { saveResultToSession } from '../lib/sessionResult'
 import { fetchRealPapers, generateReferences, generateSectionDiagram } from '../lib/ai'
 import Paywall from '../components/Paywall'
 import ExportFormatModal from '../components/ExportFormatModal'
@@ -1130,7 +1131,7 @@ export default function Results() {
                 projectInfo: proj.project_info && Object.keys(proj.project_info).length ? proj.project_info : parsed.projectInfo,
                 correctionsHistory: proj.corrections_history && Object.keys(proj.corrections_history).length ? proj.corrections_history : parsed.correctionsHistory,
               }
-              sessionStorage.setItem('gradelyResult', JSON.stringify(merged))
+              saveResultToSession(merged)
               setTimeout(() => setResult(merged), 0)
             }
           })
@@ -1178,7 +1179,7 @@ export default function Results() {
       }
       const updated = { ...result, chapters: humanizedChapters, humanized: true }
       setResult(updated)
-      sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+      saveResultToSession(updated)
       setHumanized(true)
       await refreshUser()
       alert('🎉 Your entire project has been fully humanized successfully!')
@@ -1260,7 +1261,7 @@ export default function Results() {
       if (data?.references?.length > 0) {
         const updated = { ...result, references: data.references }
         setResult(updated)
-        sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+        saveResultToSession(updated)
         const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
         if (projectId) updateProject(projectId, { references: data.references }).catch(() => {})
       }
@@ -1334,7 +1335,7 @@ export default function Results() {
     }
     const updated = { ...result, chapters: updatedChapters, correctionsHistory: updatedHistory }
     setResult(updated)
-    sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+    saveResultToSession(updated)
     setCorrectionsModalOpen(false)
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
     if (projectId) updateProject(projectId, { chapters: updatedChapters, corrections_history: updatedHistory }).catch(console.error)
@@ -1365,7 +1366,7 @@ export default function Results() {
 
     // Update sessionStorage immediately
     const curResult = JSON.parse(sessionStorage.getItem('gradelyResult') || '{}')
-    sessionStorage.setItem('gradelyResult', JSON.stringify({ ...curResult, isPaidUser: true }))
+    saveResultToSession({ ...curResult, isPaidUser: true })
     sessionStorage.setItem('gradelyPaid', JSON.stringify({ paid: true, timestamp: Date.now() }))
 
     // Mark as paid in DB
@@ -1413,7 +1414,7 @@ export default function Results() {
     })
     const updatedResultPayload = { ...result, chapters: updatedChapters }
     setResult(updatedResultPayload)
-    sessionStorage.setItem('gradelyResult', JSON.stringify(updatedResultPayload))
+    saveResultToSession(updatedResultPayload)
     const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
     if (projectId) {
       try {
@@ -1426,6 +1427,17 @@ export default function Results() {
       } catch (saveErr) { console.error("Failed to synchronize edits:", saveErr) }
     }
   }
+
+// References embed the journal/periodical name in *asterisks* as a lightweight
+// italics marker — render it as actual italics instead of leaving literal
+// asterisks visible in the citation.
+const renderCitationWithItalics = (citation) => {
+  const parts = citation.split(/(\*[^*]+\*)/g).filter(Boolean)
+  return parts.map((part, i) => {
+    const isItalic = part.startsWith('*') && part.endsWith('*')
+    return isItalic ? <em key={i}>{part.slice(1, -1)}</em> : <span key={i}>{part}</span>
+  })
+}
 
 const renderContentWithSources = (text) => {
   if (!text) return null
@@ -1759,7 +1771,7 @@ const renderContentWithSources = (text) => {
                     })
                     const updated = { ...result, chapters: updatedChapters }
                     setResult(updated)
-                    sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+                    saveResultToSession(updated)
                   }
 
                   return (
@@ -1834,7 +1846,7 @@ const renderContentWithSources = (text) => {
                                             })
                                             const updated = { ...result, chapters: updatedChapters }
                                             setResult(updated)
-                                            sessionStorage.setItem('gradelyResult', JSON.stringify(updated))
+                                            saveResultToSession(updated)
                                           }}
                                         />
                                       )}
@@ -2016,7 +2028,7 @@ const renderContentWithSources = (text) => {
                       <div key={i} style={{ display: 'flex', gap: 14, padding: '14px 0', borderBottom: '1px solid var(--border-light)' }}>
                         <span style={{ color: 'var(--text-dim)', fontFamily: 'monospace', fontSize: 12, minWidth: 24, paddingTop: 2 }}>{i + 1}.</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word' }}>{ref.citation}</p>
+                          <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text)', wordBreak: 'break-word' }}>{renderCitationWithItalics(ref.citation)}</p>
                           {ref.url && (
                             <a href={ref.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4, display: 'block', wordBreak: 'break-all' }}>
                               {ref.url}
