@@ -2,7 +2,7 @@
 
 const TOKEN_KEY = 'gradelyToken'
 const USER_KEY = 'gradelyUser'
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export async function loginUser(email, password) {
   const response = await fetch(`${BASE_URL}/api/auth/login`, {
@@ -50,12 +50,33 @@ export function authHeaders() {
 
 // ─── AUTH API ─────────────────────────────────────────────────────────────────
 
+// Mobile networks (cellular handoffs, momentary drops, iOS backgrounding an
+// in-flight request) fail a fetch at the network layer often enough that a
+// single blip shouldn't force the student to re-type their password and hit
+// submit again. Only retries on an actual network-level failure (fetch()
+// throwing — Safari reports this as "Load failed") — an HTTP error response
+// (wrong password, etc.) is a real answer from the server and never retried.
+async function fetchWithRetry(url, options, retries = 1) {
+  try {
+    return await fetch(url, options)
+  } catch (err) {
+    if (retries <= 0) throw err
+    await new Promise(r => setTimeout(r, 800))
+    return fetchWithRetry(url, options, retries - 1)
+  }
+}
+
 export async function register(name, email, password) {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password })
-  })
+  let res
+  try {
+    res = await fetchWithRetry(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    })
+  } catch {
+    throw new Error('Could not reach the server. Please check your connection and try again.')
+  }
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Registration failed')
   saveAuth(data.token, data.user)
@@ -63,11 +84,16 @@ export async function register(name, email, password) {
 }
 
 export async function login(email, password) {
-  const res = await fetch(`${BASE_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  })
+  let res
+  try {
+    res = await fetchWithRetry(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    })
+  } catch {
+    throw new Error('Could not reach the server. Please check your connection and try again.')
+  }
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Login failed')
   saveAuth(data.token, data.user)
