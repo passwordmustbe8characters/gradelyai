@@ -39,6 +39,7 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
     guideContent: '',
     customStructure: null,
     learnedStructure: null,
+    projectBrief: null,
     supervisorNotes: '',
     projectType: '',
     builtContext: '',
@@ -277,6 +278,7 @@ const removePhoto = (index) => {
         ragGuideContent: form.ragGuideContent || '',
         hasGuide: form.hasGuide,
         customStructure: form.customStructure || null,
+        projectBrief: form.projectBrief || null,
         studentName: user?.name || form.name || '',
       }
 
@@ -660,6 +662,21 @@ const removePhoto = (index) => {
             onConfirm={(editedStructure) => {
               update('customStructure', editedStructure)
               saveStructureFeedback(form.university, form.department, form.selectedTopic?.type || form.projectType || 'software', editedStructure)
+              setStep('8c')
+            }}
+          />
+        )}
+
+        {/* Step 8c — Project brief (scoping interview, after structure is confirmed) */}
+        {step === '8c' && (
+          <ProjectBriefStep
+            topic={form.hasTopic ? form.topicInput : form.selectedTopic?.title}
+            department={form.department}
+            projectType={form.selectedTopic?.type || form.projectType || 'software'}
+            structure={form.customStructure}
+            onBack={() => setStep('8b')}
+            onConfirm={(brief) => {
+              update('projectBrief', brief)
               setStep(9)
             }}
           />
@@ -1348,6 +1365,148 @@ function StructureEditor({ department, guideFound, initialStructure, onBack, onC
 }
 
 
+
+// ─── PROJECT BRIEF (scoping interview, after structure is confirmed) ──────────
+function ProjectBriefStep({ topic, department, projectType, structure, onBack, onConfirm }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [questions, setQuestions] = useState([])
+  const [answers, setAnswers] = useState({})
+  const [suggestingId, setSuggestingId] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const BASE_URL = import.meta.env.VITE_API_URL || ''
+        const res = await fetch(`${BASE_URL}/api/generate-brief-questions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ topic, department, projectType, structure })
+        })
+        const data = await res.json()
+        if (cancelled) return
+        if (!res.ok || !data.questions?.length) {
+          setError(data.error || 'Could not load questions. You can skip this step for now.')
+        } else {
+          setQuestions(data.questions)
+        }
+      } catch {
+        if (!cancelled) setError('Could not load questions. You can skip this step for now.')
+      }
+      if (!cancelled) setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [topic, department, projectType])
+
+  const updateAnswer = (id, value) => setAnswers(a => ({ ...a, [id]: value }))
+
+  const handleSuggest = async (q) => {
+    setSuggestingId(q.id)
+    try {
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const res = await fetch(`${BASE_URL}/api/suggest-brief-answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ topic, department, question: q.question })
+      })
+      const data = await res.json()
+      if (data.answer) updateAnswer(q.id, data.answer)
+    } catch {
+      // best-effort — leave the field empty if this fails, not a hard blocker
+    }
+    setSuggestingId(null)
+  }
+
+  const handleContinue = () => {
+    setSubmitting(true)
+    const brief = questions
+      .map(q => ({ question: q.question, answer: (answers[q.id] || '').trim() }))
+      .filter(qa => qa.answer)
+    onConfirm(brief)
+  }
+
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, color: 'var(--text)', marginBottom: 6 }}>
+          Help us understand your project
+        </h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          A few questions specific to your topic and structure — the answers ground every chapter in what your project actually does, not just its title.
+        </p>
+      </div>
+
+      {loading && (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+          Thinking about what to ask...
+        </div>
+      )}
+
+      {!loading && error && questions.length === 0 && (
+        <p style={{ fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>{error}</p>
+      )}
+
+      {!loading && questions.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 24 }}>
+          {questions.map(q => (
+            <div key={q.id}>
+              <label className="label" style={{ display: 'block', marginBottom: 8 }}>{q.question}</label>
+              <textarea
+                className="input"
+                rows={3}
+                placeholder="Your answer..."
+                value={answers[q.id] || ''}
+                onChange={e => updateAnswer(q.id, e.target.value)}
+                style={{ resize: 'vertical', marginBottom: 6 }}
+              />
+              <button
+                onClick={() => handleSuggest(q)}
+                disabled={suggestingId === q.id}
+                style={{
+                  background: 'none', border: 'none', cursor: suggestingId === q.id ? 'default' : 'pointer',
+                  color: 'var(--accent)', fontSize: 12, fontWeight: 600, fontFamily: 'Geist, sans-serif', padding: 0
+                }}
+              >
+                {suggestingId === q.id ? 'Thinking...' : '✨ Not sure — suggest an answer'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button
+          onClick={onBack}
+          style={{
+            padding: '12px 20px', borderRadius: 40,
+            border: '1.5px solid var(--border)',
+            background: 'transparent', color: 'var(--text-muted)',
+            fontSize: 14, cursor: 'pointer', fontFamily: 'Geist, sans-serif'
+          }}
+        >
+          ← Back
+        </button>
+        <button
+          onClick={handleContinue}
+          disabled={submitting}
+          style={{
+            flex: 1, padding: '12px 24px', borderRadius: 40,
+            border: 'none', background: '#1a1a1a', color: 'white',
+            fontSize: 14, fontWeight: 600, cursor: submitting ? 'default' : 'pointer',
+            fontFamily: 'Geist, sans-serif', opacity: submitting ? 0.7 : 1
+          }}
+        >
+          Continue →
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── STEP CARD ────────────────────────────────────────────────────────────────
 function StepCard({ title, subtitle, children }) {

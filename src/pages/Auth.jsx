@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { register, login } from '../lib/auth'
+import { register, login, verifyOtp, resendOtp } from '../lib/auth'
 import { useAuth } from '../lib/AuthContext'
 import logoPrimary from '../assets/primary-logo-b.png';
 
@@ -27,6 +27,21 @@ export default function Auth() {
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+
+  // Email OTP verification
+  const [pendingVerification, setPendingVerification] = useState(false)
+  const [verificationEmail, setVerificationEmail] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpError, setOtpError] = useState('')
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [resendMessage, setResendMessage] = useState('')
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setTimeout(() => setResendCooldown(c => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendCooldown])
 
   // Touched flags
   const [emailTouched, setEmailTouched] = useState(false)
@@ -101,6 +116,24 @@ export default function Auth() {
     }
   }
 
+  const completeLogin = (user) => {
+    setUser(user)
+
+    // Explicit redirect takes priority (e.g. ProtectedRoute sent them here)
+    const explicitRedirect = location.state?.redirect
+    if (explicitRedirect && explicitRedirect !== '/auth' && explicitRedirect !== '/') {
+      navigate(explicitRedirect)
+      return
+    }
+
+    // Use DB onboarded flag — not the form mode — to decide where to send them
+    if (user?.onboarded) {
+      navigate('/dashboard')
+    } else {
+      navigate('/start')
+    }
+  }
+
   const handleSubmit = async () => {
     setError('')
     if (mode === 'register') {
@@ -120,25 +153,50 @@ export default function Auth() {
         ? await register(form.name, form.email, form.password)
         : await login(form.email, form.password)
 
-     setUser(data.user)
-
-      // Explicit redirect takes priority (e.g. ProtectedRoute sent them here)
-     const explicitRedirect = location.state?.redirect
-      if (explicitRedirect && explicitRedirect !== '/auth' && explicitRedirect !== '/') {
-        navigate(explicitRedirect)
+      // Fresh signup, or an old account that never finished verifying — a
+      // code is already on its way, show the entry screen instead of an error
+      if (data.pendingVerification || data.needsVerification) {
+        setVerificationEmail(data.email)
+        setPendingVerification(true)
+        setResendCooldown(60)
+        setLoading(false)
         return
       }
 
-      // Use DB onboarded flag — not the form mode — to decide where to send them
-      if (data.user?.onboarded) {
-        navigate('/dashboard')
-      } else {
-        navigate('/start')
-      }
+      completeLogin(data.user)
     } catch (err) {
       setError(err.message)
     }
     setLoading(false)
+  }
+
+  const handleVerifyOtp = async () => {
+    setOtpError('')
+    if (!otpCode.trim() || otpCode.trim().length !== 6) {
+      setOtpError('Enter the 6-digit code from your email')
+      return
+    }
+    setOtpLoading(true)
+    try {
+      const data = await verifyOtp(verificationEmail, otpCode.trim())
+      completeLogin(data.user)
+    } catch (err) {
+      setOtpError(err.message)
+    }
+    setOtpLoading(false)
+  }
+
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return
+    setOtpError('')
+    setResendMessage('')
+    try {
+      await resendOtp(verificationEmail)
+      setResendMessage('A new code is on its way.')
+      setResendCooldown(60)
+    } catch (err) {
+      setOtpError(err.message)
+    }
   }
 
   const actualShowPassword = confirmFocused ? false : showPassword
@@ -174,6 +232,76 @@ export default function Auth() {
           {/* Card */}
       <div className="container" style={{ maxWidth: 440 }}>
         <div className="card">
+          {pendingVerification ? (
+            <>
+              <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 22, marginBottom: 8, color: 'var(--text)' }}>
+                Check your email
+              </h2>
+              <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 24, fontFamily: 'Geist, sans-serif' }}>
+                We sent a 6-digit code to <strong style={{ color: 'var(--text)' }}>{verificationEmail}</strong>. Enter it below to verify your account.
+              </p>
+
+              <label className="label">Verification code</label>
+              <input
+                className="input"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="123456"
+                value={otpCode}
+                onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
+                style={{ fontSize: 22, letterSpacing: 8, textAlign: 'center', fontWeight: 700 }}
+              />
+
+              {otpError && (
+                <div style={{
+                  marginTop: 12, padding: '12px 16px', borderRadius: 10,
+                  background: 'rgba(217,79,79,0.08)', border: '1px solid rgba(217,79,79,0.2)',
+                  color: 'var(--danger)', fontSize: 14, fontFamily: 'Geist, sans-serif'
+                }}>
+                  {otpError}
+                </div>
+              )}
+              {resendMessage && !otpError && (
+                <p style={{ marginTop: 12, fontSize: 13, color: 'var(--success)', fontFamily: 'Geist, sans-serif' }}>
+                  {resendMessage}
+                </p>
+              )}
+
+              <button className="btn-primary" onClick={handleVerifyOtp}
+                disabled={otpLoading || otpCode.length !== 6}
+                style={{
+                  width: '100%', justifyContent: 'center', marginTop: 20,
+                  padding: '14px', fontSize: 15,
+                  opacity: (!otpLoading && otpCode.length === 6) ? 1 : 0.6,
+                  cursor: (!otpLoading && otpCode.length === 6) ? 'pointer' : 'not-allowed'
+                }}>
+                {otpLoading ? 'Verifying...' : 'Verify →'}
+              </button>
+
+              <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
+                Didn't get it?{' '}
+                <span
+                  onClick={handleResendOtp}
+                  style={{
+                    color: resendCooldown > 0 ? 'var(--text-dim)' : 'var(--accent)',
+                    cursor: resendCooldown > 0 ? 'default' : 'pointer',
+                    fontWeight: 500
+                  }}>
+                  {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}
+                </span>
+              </p>
+
+              <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'var(--text-muted)', fontFamily: 'Geist, sans-serif' }}>
+                <span onClick={() => { setPendingVerification(false); setOtpCode(''); setOtpError(''); setResendMessage('') }}
+                  style={{ color: 'var(--accent)', cursor: 'pointer' }}>
+                  ← Use a different email
+                </span>
+              </p>
+            </>
+          ) : (
+          <>
           {/* Mode tabs */}
           <div style={{
             display: 'flex', gap: 0, marginBottom: 32,
@@ -378,6 +506,8 @@ export default function Auth() {
               {' '}and{' '}
               <a href="/privacy" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Privacy Policy</a>
             </p>
+          )}
+          </>
           )}
         </div>
       </div>

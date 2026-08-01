@@ -1099,6 +1099,9 @@ export default function Results() {
   const [loadingFlashcards, setLoadingFlashcards] = useState(false)
   const [loadingRefs, setLoadingRefs] = useState(false)
   const [defenseError, setDefenseError] = useState('')
+  const [pitch, setPitch] = useState('')
+  const [loadingPitch, setLoadingPitch] = useState(false)
+  const [pitchError, setPitchError] = useState('')
   const [exporting, setExporting] = useState(false)
   const [paid, setPaid] = useState(false)
   const [showPaywall, setShowPaywall] = useState(false)
@@ -1224,6 +1227,36 @@ export default function Results() {
       setDefenseError("Could not load defense data. Please try again.")
     } finally {
       setLoadingBreakdown(false); setLoadingWeaknesses(false)
+    }
+  }
+
+  const loadDefensePitch = async (regenerate = false) => {
+    if (pitch && !regenerate) return
+    setPitchError('')
+    setLoadingPitch(true)
+    try {
+      const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+      const token = localStorage.getItem('token') || localStorage.getItem('gradelyToken')
+      if (!projectId) return
+      const BASE_URL = import.meta.env.VITE_API_URL || ''
+      const response = await fetch(`${BASE_URL}/api/projects/${projectId}/defense-pitch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ regenerate })
+      })
+      if (response.status === 402) {
+        setShowPaywall(true)
+        return
+      }
+      const resData = await response.json()
+      if (resData.success) {
+        setPitch(resData.pitch)
+      } else throw new Error(resData.error)
+    } catch (err) {
+      console.error('Defense pitch generation failed:', err)
+      setPitchError('Could not generate your defense pitch. Please try again.')
+    } finally {
+      setLoadingPitch(false)
     }
   }
 
@@ -1613,6 +1646,7 @@ const renderContentWithSources = (text) => {
             { key: 'breakdown', label: 'Student Breakdown', icon: <BookIcon />, requiresPaid: false },
             { key: 'weaknesses', label: 'Weak Spots', icon: <ShieldIcon />, requiresPaid: true },
             { key: 'simulation', label: 'Defense Simulation', icon: <span style={{fontSize:13}}>🎓</span>, requiresPaid: true },
+            { key: 'pitch', label: 'Defense Pitch', icon: <span style={{fontSize:13}}>🎤</span>, requiresPaid: true },
             { key: 'references', label: 'References', icon: <RefsIcon />, requiresPaid: false },
           ].map(t => {
             const freeViaUpload = t.key === 'simulation' && isUploaded
@@ -2002,6 +2036,70 @@ const renderContentWithSources = (text) => {
                   }}
                 />
               )}
+
+            {/* ── DEFENSE PITCH TAB ── */}
+            {activeTab === 'pitch' && (
+              <div className="res-doc">
+                <div className="res-doc-top-row">
+                  <button className="res-doc-back" onClick={() => navigate('/dashboard')}>
+                    <ArrowLeftIcon /> Back to dashboard
+                  </button>
+                  <span className="res-doc-university">
+                    {result.projectInfo?.department} · {result.projectInfo?.university}
+                  </span>
+                </div>
+                <p className="res-tab-eyebrow">Defense Prep</p>
+                <h1 className="res-tab-title">Defense Pitch</h1>
+                <p className="res-tab-sub">Your full opening statement — what you say before the panel starts asking questions.</p>
+                <div className="res-tab-divider" />
+
+                {pitchError && (
+                  <p style={{ color: 'var(--danger)', fontSize: 14, marginBottom: 16 }}>{pitchError}</p>
+                )}
+
+                {loadingPitch ? (
+                  <div style={{ textAlign: 'center', padding: 48 }}>
+                    <div style={{ width: 24, height: 24, border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+                    <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Writing your defense pitch — this covers every chapter, so it takes a moment...</p>
+                  </div>
+                ) : pitch ? (
+                  <>
+                    <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16 }}>
+                      {pitch.trim().split(/\s+/).length} words · roughly {Math.round(pitch.trim().split(/\s+/).length / 130)} min spoken
+                    </p>
+                    <div style={{ lineHeight: 1.9, fontSize: 15, whiteSpace: 'pre-wrap', color: 'var(--text)', marginBottom: 24 }}>
+                      {pitch}
+                    </div>
+                    <button
+                      onClick={() => loadDefensePitch(true)}
+                      style={{
+                        padding: '10px 20px', borderRadius: 100, border: '1.5px solid var(--border)',
+                        background: 'transparent', color: 'var(--text-muted)', fontSize: 13,
+                        cursor: 'pointer', fontFamily: 'Geist, sans-serif'
+                      }}
+                    >
+                      ↻ Regenerate
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                    <p style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 20, maxWidth: 420, margin: '0 auto 20px' }}>
+                      One button — generates a full opening statement covering your whole project in detail, ready to rehearse.
+                    </p>
+                    <button
+                      onClick={() => loadDefensePitch(false)}
+                      style={{
+                        padding: '13px 28px', borderRadius: 100, border: 'none',
+                        background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 600,
+                        cursor: 'pointer', fontFamily: 'Geist, sans-serif'
+                      }}
+                    >
+                      Generate My Defense Pitch →
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── REFERENCES TAB ── */}
             {activeTab === 'references' && (

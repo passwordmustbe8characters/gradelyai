@@ -379,6 +379,16 @@ function getFallbackTopics(department) {
 
 // ─── STRUCTURE GENERATION ─────────────────────────────────────────────────────
 
+// Turns the Project Brief Q&A (collected after structure confirmation) into a
+// prompt block reused by every generation call — the point of asking isn't
+// the answers themselves, it's that every chapter stays grounded in the same
+// understanding of the project instead of being written from a topic string alone.
+function buildBriefContext(projectBrief) {
+  if (!projectBrief || projectBrief.length === 0) return ''
+  const qa = projectBrief.map(item => `Q: ${item.question}\nA: ${item.answer}`).join('\n\n')
+  return `\n\nPROJECT BRIEF — the student's own answers about this specific project. Ground everything you write in this; never contradict it:\n${qa}\n`
+}
+
 export async function generateProjectStructure(projectInfo) {
   // Honor the student's edits from the structure editor instead of asking the
   // AI to invent a new structure from scratch — this is also what carries
@@ -401,6 +411,7 @@ Always respond with valid JSON only. No markdown. No preamble. Keep it concise.`
 ${projectInfo.guideContent ? `\nProject Guide Content (use this to determine exact chapter and subsection structure):\n${projectInfo.guideContent.substring(0, 2000)}` : ''}
 ${projectInfo.ragGuideContent ? `\nDepartmental Guide from Database (use this if no guide uploaded):\n${projectInfo.ragGuideContent.substring(0, 1500)}` : ''}
 - IMPORTANT: If any guide content is provided above, use it to determine the exact subsection titles and structure. Do not use generic defaults.
+${buildBriefContext(projectInfo.projectBrief)}
 
 Rules:
 - Return exactly 5 chapters
@@ -556,6 +567,7 @@ PROJECT DETAILS:
 - Project Type: ${projectInfo.projectType}
 ${builtContext}
 ${projectInfo.supervisorNotes ? `\nSupervisor instructions: ${projectInfo.supervisorNotes}` : ''}
+${buildBriefContext(projectInfo.projectBrief)}
 
 CHAPTER STRUCTURE (${chapter.subsections.length} subsections — each MUST be at least 500-600 words individually):
 ${chapter.subsections.map(s => {

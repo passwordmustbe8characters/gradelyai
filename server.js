@@ -1574,6 +1574,71 @@ app.post('/api/projects/:id/defense-prep', requireAuth, async (req, res) => {
   }
 });
 
+// ─── DEFENSE PITCH (full-project opening statement — no options, one button) ──
+// Deliberately does NOT truncate to a few thousand characters the way the
+// breakdown/weaknesses functions above do — gpt-4o-mini's context window
+// comfortably fits a full 5-chapter project, and the whole point of this
+// feature is covering every chapter in real detail, not just the first page.
+async function generateDefensePitch(projectInfo, fullProjectText) {
+  const system = `You are coaching a Nigerian university final year student on the opening statement they will deliver to their defense panel — the first thing they say before questions begin. Write in natural SPOKEN register, not academic essay prose: the way a confident, well-prepared student would actually talk out loud. Short, clear sentences. No headings, no bullet points, no markdown — just a continuous spoken script with natural paragraph breaks.`
+
+  const user = `Write a comprehensive defense opening statement for this final year project, covering every chapter in real detail — not a short highlight reel.
+
+Project Title: "${projectInfo.topic}"
+Department: ${projectInfo.department}
+University: ${projectInfo.university}
+
+Full project content (all chapters):
+${fullProjectText}
+
+Structure the script to naturally cover, in order:
+1. A brief greeting and introduction of the project title and its purpose
+2. The specific problem/gap this project addresses and why it matters (from the Introduction/Literature Review)
+3. The methodology or approach taken, and why this approach specifically (from System Analysis/Design or Methodology)
+4. What was actually built or done, with concrete specifics — not vague summaries (from Implementation/Results)
+5. The key findings, results, or what the system demonstrates
+6. The conclusion, contribution, and real-world impact
+
+Reference specific, concrete details from the actual project content above throughout — technologies used, specific findings, specific methodology choices — not generic statements that could apply to any project. This should be substantial enough for a real 7-10 minute spoken defense opening (roughly 900-1300 words), not a short pitch.
+
+Write ONLY the spoken script itself — no title, no labels, no markdown.`
+
+  return await callOpenAI(system, user, 2600)
+}
+
+app.post('/api/projects/:id/defense-pitch', requireAuth, async (req, res) => {
+  try {
+    const { regenerate } = req.body || {}
+    const existing = await db.execute({
+      sql: 'SELECT chapters, project_info, is_paid, defense_pitch FROM projects WHERE id = ? AND user_id = ?',
+      args: [req.params.id, req.user.id]
+    })
+    if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Project not found.' })
+    const project = existing.rows[0]
+    if (!project.is_paid) return res.status(402).json({ success: false, error: 'Defense pitch requires premium access.' })
+
+    if (project.defense_pitch && !regenerate) {
+      return res.json({ success: true, pitch: project.defense_pitch })
+    }
+
+    const parsedChapters = JSON.parse(project.chapters || '[]')
+    const parsedInfo = JSON.parse(project.project_info || '{}')
+    const fullProjectText = parsedChapters.map(c => `CHAPTER ${c.number}: ${c.title}\n${c.content}`).join('\n\n')
+
+    const pitch = (await generateDefensePitch(parsedInfo, fullProjectText)).trim()
+
+    await db.execute({
+      sql: 'UPDATE projects SET defense_pitch = ? WHERE id = ?',
+      args: [pitch, req.params.id]
+    })
+
+    res.json({ success: true, pitch })
+  } catch (error) {
+    console.error('[Defense Pitch Route Error]:', error)
+    res.status(500).json({ success: false, error: 'Failed to generate defense pitch.' })
+  }
+})
+
 
 // ─── FREE SIMULATION QUESTIONS (uploaded projects only) ───────────────────────
 // Lets a student who uploaded an already-finished project practice Defense Simulation
@@ -2045,6 +2110,65 @@ app.post('/api/generate-diagram', requireAuth, async (req, res) => {
   }
 })
 
+// ─── PROJECT BRIEF (scoping interview before generation) ──────────────────────
+async function generateBriefQuestions({ topic, department, projectType, structure }) {
+  const structureSummary = (structure?.chapters || [])
+    .map(ch => `${ch.title}: ${(ch.subsections || []).map(s => s.title).join(', ')}`)
+    .join('\n')
+
+  const system = `You are a Nigerian university project supervisor conducting a short scoping interview with a student before they start writing their final year project. Return only valid JSON. No markdown. No preamble.`
+
+  const user = `A student confirmed their chapter structure and is about to start writing. Before generation begins, ask the questions a good supervisor would ask to really understand THIS specific project — not a generic template, questions grounded in this exact topic and the sections they already confirmed.
+
+Topic: "${topic}"
+Department: ${department}
+Project Type: ${projectType}
+
+Confirmed chapter/section structure:
+${structureSummary || '(standard structure — not customized)'}
+
+Generate 5 to 8 questions that surface: the specific problem/gap being addressed, who it's for, why this particular approach or methodology was chosen over alternatives, what makes it different from existing solutions, and any technical/data specifics implied by the sections above (e.g. if there's an ER Diagram or Methodology section, ask about the data/approach that section will need).
+
+Return ONLY this JSON:
+{
+  "questions": [
+    { "id": 1, "question": "..." }
+  ]
+}`
+
+  return await callOpenAI(system, user, 1000)
+}
+
+app.post('/api/generate-brief-questions', requireAuth, async (req, res) => {
+  try {
+    const { topic, department, projectType, structure } = req.body
+    if (!topic) return res.status(400).json({ error: 'topic is required' })
+    const raw = await generateBriefQuestions({ topic, department, projectType, structure })
+    const parsed = serverSafeParseJSON(raw, null)
+    if (!parsed?.questions?.length) {
+      return res.status(500).json({ error: 'Could not generate questions. Please try again.' })
+    }
+    res.json({ questions: parsed.questions })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// One-off fallback for a student who doesn't know how to answer a specific
+// brief question — used by the "✨ Not sure — suggest an answer" button.
+app.post('/api/suggest-brief-answer', requireAuth, async (req, res) => {
+  try {
+    const { topic, department, question } = req.body
+    if (!topic || !question) return res.status(400).json({ error: 'topic and question are required' })
+    const system = `You are a Nigerian university project supervisor helping a student who is unsure how to answer a scoping question about their own project. Write a plausible, specific, one-paragraph suggested answer they can edit — never generic filler.`
+    const user = `Topic: "${topic}"\nDepartment: ${department}\n\nQuestion: ${question}\n\nSuggest a specific, reasonable answer (2-3 sentences) the student could use as a starting point.`
+    const answer = await callOpenAI(system, user, 300)
+    res.json({ answer: answer.trim() })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 app.post('/api/admin/guides/upload', requireAdmin, upload.single('file'), async (req, res) => {
   try {
     const { university, department, year, label } = req.body
@@ -2116,23 +2240,156 @@ WRITING EXPECTATIONS:
   }
 })
 
+// ─── EMAIL (Resend) ─────────────────────────────────────────────────────────
+async function sendOtpEmail(to, code) {
+  if (!process.env.RESEND_API_KEY) {
+    console.error('RESEND_API_KEY is not set — cannot send OTP email')
+    return false
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'GradelyAI <support@getgradely.xyz>',
+        to: [to],
+        subject: `Your GradelyAI verification code: ${code}`,
+        html: `<div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color:#1a1a1a;">Verify your email</h2>
+          <p style="color:#333;">Your GradelyAI verification code is:</p>
+          <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #007ea7;">${code}</p>
+          <p style="color:#666; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
+        </div>`
+      })
+    })
+    if (!res.ok) {
+      console.error('Resend API error:', res.status, await res.text())
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('Failed to send OTP email:', err.message)
+    return false
+  }
+}
+
+function generateOtp() {
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+  return { code, expiresAt }
+}
+
+function safeUserFields(user) {
+  const safe = { ...user, onboarded: user.onboarded === 1, is_admin: user.is_admin === 1 }
+  delete safe.password
+  delete safe.otp_code_hash
+  return safe
+}
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   const { name, email, password } = req.body
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
   try {
-    const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [email.toLowerCase().trim()] })
+    const normalizedEmail = email.toLowerCase().trim()
+    const existing = await db.execute({ sql: 'SELECT id FROM users WHERE email = ?', args: [normalizedEmail] })
     if (existing.rows.length > 0) return res.status(400).json({ error: 'An account with this email already exists' })
     const hashed = await bcrypt.hash(password, 10)
+
+    const { code, expiresAt } = generateOtp()
+    const codeHash = await bcrypt.hash(code, 10)
+
     const result = await db.execute({
-      sql: 'INSERT INTO users (name, email, password, onboarded, is_admin) VALUES (?, ?, ?, 0, 0)',
-      args: [name, email.toLowerCase().trim(), hashed]
+      sql: 'INSERT INTO users (name, email, password, onboarded, is_admin, email_verified, otp_code_hash, otp_expires_at, otp_attempts) VALUES (?, ?, ?, 0, 0, 0, ?, ?, 0)',
+      args: [name, normalizedEmail, hashed, codeHash, expiresAt]
     })
-   const userResult = await db.execute({ sql: 'SELECT id, name, email, created_at, onboarded FROM users WHERE id = ?', args: [result.lastInsertRowid] })
-    const user = { ...userResult.rows[0], onboarded: false }
+
+    const sent = await sendOtpEmail(normalizedEmail, code)
+    if (!sent) {
+      // Don't leave the student stuck with an account they can never verify
+      await db.execute({ sql: 'DELETE FROM users WHERE id = ?', args: [result.lastInsertRowid] })
+      return res.status(500).json({ error: 'Could not send verification email. Please try again.' })
+    }
+
+    res.json({ pendingVerification: true, email: normalizedEmail })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/auth/verify-otp', async (req, res) => {
+  const { email, code } = req.body
+  if (!email || !code) return res.status(400).json({ error: 'Email and code are required' })
+  try {
+    const normalizedEmail = email.toLowerCase().trim()
+    const result = await db.execute({ sql: 'SELECT * FROM users WHERE email = ?', args: [normalizedEmail] })
+    if (result.rows.length === 0) return res.status(404).json({ error: 'No account found with this email' })
+    const user = result.rows[0]
+
+    if (user.email_verified === 1) {
+      const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
+      return res.json({ user: safeUserFields(user), token })
+    }
+    if (!user.otp_code_hash || !user.otp_expires_at) {
+      return res.status(400).json({ error: 'No verification code pending. Please request a new one.' })
+    }
+    if (new Date(user.otp_expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This code has expired. Please request a new one.' })
+    }
+    if ((user.otp_attempts || 0) >= 5) {
+      return res.status(429).json({ error: 'Too many incorrect attempts. Please request a new code.' })
+    }
+
+    const valid = await bcrypt.compare(code, user.otp_code_hash)
+    if (!valid) {
+      await db.execute({ sql: 'UPDATE users SET otp_attempts = otp_attempts + 1 WHERE id = ?', args: [user.id] })
+      return res.status(401).json({ error: 'Incorrect code. Please try again.' })
+    }
+
+    await db.execute({
+      sql: 'UPDATE users SET email_verified = 1, otp_code_hash = NULL, otp_expires_at = NULL, otp_attempts = 0 WHERE id = ?',
+      args: [user.id]
+    })
+
     const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
-    res.json({ user, token })
+    res.json({ user: safeUserFields({ ...user, email_verified: 1 }), token })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/auth/resend-otp', async (req, res) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'Email is required' })
+  try {
+    const normalizedEmail = email.toLowerCase().trim()
+    const result = await db.execute({ sql: 'SELECT * FROM users WHERE email = ?', args: [normalizedEmail] })
+    if (result.rows.length === 0) return res.status(404).json({ error: 'No account found with this email' })
+    const user = result.rows[0]
+    if (user.email_verified === 1) return res.status(400).json({ error: 'This email is already verified. Please log in.' })
+
+    // A code issued less than a minute ago still has >9 of its 10 minutes left —
+    // use that instead of a separate "last sent" column to rate-limit resends.
+    if (user.otp_expires_at) {
+      const secondsRemaining = (new Date(user.otp_expires_at) - new Date()) / 1000
+      if (secondsRemaining > 9 * 60) {
+        return res.status(429).json({ error: 'Please wait a moment before requesting another code.' })
+      }
+    }
+
+    const { code, expiresAt } = generateOtp()
+    const codeHash = await bcrypt.hash(code, 10)
+    await db.execute({
+      sql: 'UPDATE users SET otp_code_hash = ?, otp_expires_at = ?, otp_attempts = 0 WHERE id = ?',
+      args: [codeHash, expiresAt, user.id]
+    })
+    const sent = await sendOtpEmail(normalizedEmail, code)
+    if (!sent) return res.status(500).json({ error: 'Could not send verification email. Please try again.' })
+    res.json({ success: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -2147,14 +2404,22 @@ app.post('/api/auth/login', async (req, res) => {
     const user = result.rows[0]
     const valid = await bcrypt.compare(password, user.password)
     if (!valid) return res.status(401).json({ error: 'Incorrect password' })
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
-    const safeUser = { 
-      ...user, 
-      onboarded: user.onboarded === 1,
-      is_admin: user.is_admin === 1
+
+    if (user.email_verified === 0) {
+      // Abandoned mid-verification on a previous visit — send them back into
+      // the OTP flow with a fresh code instead of a dead end.
+      const { code, expiresAt } = generateOtp()
+      const codeHash = await bcrypt.hash(code, 10)
+      await db.execute({
+        sql: 'UPDATE users SET otp_code_hash = ?, otp_expires_at = ?, otp_attempts = 0 WHERE id = ?',
+        args: [codeHash, expiresAt, user.id]
+      })
+      await sendOtpEmail(user.email, code)
+      return res.status(403).json({ needsVerification: true, email: user.email })
     }
-    delete safeUser.password
-    res.json({ user: safeUser, token })
+
+    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '30d' })
+    res.json({ user: safeUserFields(user), token })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

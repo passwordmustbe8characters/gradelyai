@@ -406,7 +406,7 @@ export default function Admin() {
         )}
 
         {/* ADD VIEW */}
-        {view === 'add' && (
+        {section === 'guides' && view === 'add' && (
           <div>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 700, marginBottom: 24 }}>
               Add New Guide
@@ -420,7 +420,7 @@ export default function Admin() {
         )}
 
         {/* EDIT VIEW */}
-        {view === 'edit' && selected && (
+        {section === 'guides' && view === 'edit' && selected && (
           <div>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
               Edit Guide
@@ -435,7 +435,7 @@ export default function Admin() {
         )}
 
         {/* UPLOAD VIEW */}
-        {view === 'upload' && (
+        {section === 'guides' && view === 'upload' && (
           <div>
             <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
               Upload PDF Guide
@@ -498,6 +498,71 @@ export default function Admin() {
               style={{ padding: '13px 32px' }}>
               {loading ? 'Processing...' : 'Upload and Process →'}
             </button>
+          </div>
+        )}
+
+        {/* USERS VIEW */}
+        {section === 'users' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 700 }}>
+                Users
+              </h2>
+              <button className="btn-ghost" onClick={loadUsers} style={{ fontSize: 13 }} disabled={usersLoading}>
+                {usersLoading ? 'Refreshing...' : '↻ Refresh'}
+              </button>
+            </div>
+
+            {usersLoading ? (
+              <div className="card" style={{ textAlign: 'center', padding: '48px' }}>
+                <p style={{ color: 'var(--text-muted)' }}>Loading users...</p>
+              </div>
+            ) : users.length === 0 ? (
+              <div className="card" style={{ textAlign: 'center', padding: '48px' }}>
+                <p style={{ fontWeight: 600, marginBottom: 8 }}>No users yet</p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Name</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Email</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Verified</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>University / Dept</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Projects</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Paid</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Signed up</th>
+                      <th style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>Last activity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 600 }}>{u.name}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{u.email}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          {u.email_verified === 1
+                            ? <span style={{ color: 'var(--success)' }}>✓</span>
+                            : <span style={{ color: 'var(--danger)' }}>✕</span>}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                          {u.university ? `${u.university}${u.department ? ' — ' + u.department : ''}` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>{u.project_count || 0}</td>
+                        <td style={{ padding: '10px 12px' }}>{u.paid_count || 0}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>
+                          {u.last_activity ? new Date(u.last_activity).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

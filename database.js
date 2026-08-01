@@ -86,6 +86,36 @@ try {
   // column already exists
 }
 
+// email_verified defaults to 1 so every existing row is grandfathered in as
+// verified automatically — only new signups (which explicitly insert 0) go
+// through the OTP flow.
+try {
+  await client.execute(`ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 1`)
+} catch {
+  // column already exists
+}
+try {
+  await client.execute(`ALTER TABLE users ADD COLUMN otp_code_hash TEXT`)
+} catch {
+  // column already exists
+}
+try {
+  await client.execute(`ALTER TABLE users ADD COLUMN otp_expires_at DATETIME`)
+} catch {
+  // column already exists
+}
+try {
+  await client.execute(`ALTER TABLE users ADD COLUMN otp_attempts INTEGER DEFAULT 0`)
+} catch {
+  // column already exists
+}
+
+try {
+  await client.execute(`ALTER TABLE projects ADD COLUMN defense_pitch TEXT`)
+} catch {
+  // column already exists
+}
+
 await client.execute(`
   CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

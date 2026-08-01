@@ -120,6 +120,9 @@ export async function register(name, email, password) {
   }
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Registration failed')
+  // No token yet — a fresh signup must verify its email first (returns
+  // { pendingVerification: true, email }). The caller shows the OTP screen.
+  if (data.pendingVerification) return data
   saveAuth(data.token, data.user)
   return data
 }
@@ -137,8 +140,42 @@ export async function login(email, password) {
     throw new Error('Could not reach the server. Please check your connection and try again.')
   }
   const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Login failed')
+  if (!res.ok) {
+    // Account exists and password is correct, but signup verification was
+    // never completed — the server already sent a fresh code; the caller
+    // shows the OTP screen instead of a generic error.
+    if (data.needsVerification) return data
+    throw new Error(data.error || 'Login failed')
+  }
   saveAuth(data.token, data.user)
+  return data
+}
+
+export async function verifyOtp(email, code) {
+  let res
+  try {
+    res = await fetchWithRetry(`${BASE_URL}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    })
+  } catch {
+    throw new Error('Could not reach the server. Please check your connection and try again.')
+  }
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Verification failed')
+  saveAuth(data.token, data.user)
+  return data
+}
+
+export async function resendOtp(email) {
+  const res = await fetch(`${BASE_URL}/api/auth/resend-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Could not resend code')
   return data
 }
 
