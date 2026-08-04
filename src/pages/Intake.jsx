@@ -22,6 +22,7 @@ export default function Intake() {
   const [areasLoading, setAreasLoading] = useState(false)
   const [projectPhotos, setProjectPhotos] = useState([])
 const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
+  const [supervisorSuggestions, setSupervisorSuggestions] = useState([])
 
   const [form, setForm] = useState({
     name: '',
@@ -208,6 +209,25 @@ const [photoPreviewUrls, setPhotoPreviewUrls] = useState([])
       fetchAreas()
     }
   }, [form.department, form.university, step])
+
+  // Real supervisor instructions other students at the same school/department
+  // already entered — shown as clickable suggestions on the final-details step.
+  useEffect(() => {
+    if (step !== 9 || !form.university || !form.department) return
+    let cancelled = false
+    const fetchSuggestions = async () => {
+      try {
+        const BASE_URL = import.meta.env.VITE_API_URL || ''
+        const res = await fetch(`${BASE_URL}/api/supervisor-notes-suggestions?university=${encodeURIComponent(form.university)}&department=${encodeURIComponent(form.department)}`)
+        const data = await res.json()
+        if (!cancelled) setSupervisorSuggestions(data.suggestions || [])
+      } catch {
+        if (!cancelled) setSupervisorSuggestions([])
+      }
+    }
+    fetchSuggestions()
+    return () => { cancelled = true }
+  }, [step, form.university, form.department])
 
   const progress = (step / 10) * 100
 
@@ -715,7 +735,31 @@ const removePhoto = (index) => {
             <textarea className="input" rows={3}
               placeholder="e.g. My supervisor wants the literature review to focus on Nigerian case studies..."
               value={form.supervisorNotes} onChange={e => update('supervisorNotes', e.target.value)}
-              style={{ resize: 'vertical', marginBottom: 20 }} />
+              style={{ resize: 'vertical', marginBottom: supervisorSuggestions.length > 0 ? 10 : 20 }} />
+
+            {supervisorSuggestions.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--text-dim)', marginBottom: 6 }}>
+                  💡 Instructions other students at {form.department} have entered — tap to use:
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {supervisorSuggestions.map((note, i) => (
+                    <button
+                      key={i}
+                      onClick={() => update('supervisorNotes', form.supervisorNotes?.trim() ? `${form.supervisorNotes}\n${note}` : note)}
+                      style={{
+                        textAlign: 'left', fontSize: 12.5, padding: '8px 12px', borderRadius: 8,
+                        border: '1px solid var(--border-light)', background: 'var(--bg-elevated)',
+                        color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'Geist, sans-serif',
+                        lineHeight: 1.5
+                      }}
+                    >
+                      {note}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {(form.projectType === 'software' || form.projectType === 'hardware' || form.projectType === 'mixed' ||
               form.selectedTopic?.type === 'software' || form.selectedTopic?.type === 'hardware' || form.selectedTopic?.type === 'mixed') && (

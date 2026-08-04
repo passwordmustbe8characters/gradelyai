@@ -52,14 +52,27 @@ const MERMAID_DIAGRAM_KIND = {
   architecture: 'flowchart LR',
 }
 
+// Type-specific guidance so diagrams look like they were actually designed for
+// this project, not a generic 3-box placeholder — the most common complaint
+// with AI-generated diagrams is that they're too shallow to look intentional.
+const MERMAID_DIAGRAM_GUIDANCE = {
+  flowchart: 'Include realistic decision branches (diamond nodes) where the process actually forks, not just a single straight line. Aim for 8-14 nodes with clear, specific labels.',
+  erDiagram: 'Include realistic entities with their key attributes (e.g. id, name, foreign keys) and correct relationship cardinality (||--o{, }o--||, etc.) between them. Aim for 4-7 entities minimum, each with attributes listed.',
+  sequenceDiagram: 'Include realistic actors/participants (e.g. User, Frontend, API, Database — named specifically for this project, not generically) and a full realistic message sequence with both request and response arrows. Aim for 8-14 messages.',
+  architecture: 'Use subgraphs to group related components into logical layers (e.g. "Client Layer", "Application Layer", "Data Layer") rather than one flat row of boxes. Aim for 8-14 components across at least 3 layers.',
+}
+
 async function generateDiagramMermaid({ topic, subsectionTitle, diagramType, chapterExcerpt }) {
   const kind = MERMAID_DIAGRAM_KIND[diagramType] || 'flowchart TD'
-  const system = `You are an expert at writing Mermaid.js diagram syntax. Output ONLY valid Mermaid code — no markdown code fences, no explanation, no commentary. Start directly with "${kind}".`
-  const user = `Write a Mermaid "${kind}" diagram for the subsection "${subsectionTitle}" of a Nigerian university final year project on "${topic}".
+  const guidance = MERMAID_DIAGRAM_GUIDANCE[diagramType] || MERMAID_DIAGRAM_GUIDANCE.flowchart
+  const system = `You are a senior software architect producing detailed, professional-quality Mermaid.js diagrams for a Nigerian university final year project. Output ONLY valid Mermaid code — no markdown code fences, no explanation, no commentary. Start directly with "${kind}".`
+  const user = `Write a detailed, substantive Mermaid "${kind}" diagram for the subsection "${subsectionTitle}" of a final year project on "${topic}".
 ${chapterExcerpt ? `\nRelevant chapter context:\n${chapterExcerpt.slice(0, 1500)}\n` : ''}
-Keep node labels short and specific to this project topic — do not use generic placeholder labels like "Step 1" or "Node A". Output only the Mermaid code.`
+${guidance}
 
-  let code = await callOpenAI(system, user, 600)
+Node labels must be short but specific to THIS project's actual topic and domain — never generic placeholders like "Step 1", "Node A", "Process X", or "Component 1". A reviewer should be able to tell what project this diagram belongs to just by reading it. Output only the Mermaid code.`
+
+  let code = await callOpenAI(system, user, 900)
   code = code.replace(/```mermaid/gi, '').replace(/```/g, '').trim()
   return code
 }
@@ -2044,6 +2057,38 @@ function canonicalizeStructure(chapters) {
     paragraphs: (ch.paragraphs || []).map(p => (typeof p === 'string' ? p : p.text || '').trim())
   })))
 }
+
+// Surfaces real supervisor instructions other students at the same
+// university+department already entered, so a new student sees what's
+// actually been asked of people in their department before typing their own —
+// same "learn from what students already told us" spirit as structure-feedback.
+app.get('/api/supervisor-notes-suggestions', async (req, res) => {
+  try {
+    const { university, department } = req.query
+    if (!university || !department) return res.json({ suggestions: [] })
+    const result = await db.execute({
+      sql: `SELECT project_info FROM projects WHERE university = ? AND department = ? ORDER BY created_at DESC LIMIT 50`,
+      args: [university, department]
+    })
+    const suggestions = []
+    const seen = new Set()
+    for (const row of result.rows) {
+      let note = ''
+      try {
+        note = (JSON.parse(row.project_info || '{}').supervisorNotes || '').trim()
+      } catch { continue }
+      const key = note.toLowerCase()
+      if (note.length > 10 && !seen.has(key)) {
+        seen.add(key)
+        suggestions.push(note)
+      }
+      if (suggestions.length >= 5) break
+    }
+    res.json({ suggestions })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
 app.get('/api/structure-feedback', async (req, res) => {
   try {

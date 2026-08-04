@@ -2,6 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Page
 import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
 import mermaid from 'mermaid'
+import { MERMAID_CONFIG } from './mermaidTheme'
 
 // ─── FORMAT OPTIONS ────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ function parseChapterContent(content) {
 let mermaidInitialized = false
 function ensureMermaidInitialized() {
   if (mermaidInitialized) return
-  mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict' })
+  mermaid.initialize(MERMAID_CONFIG)
   mermaidInitialized = true
 }
 

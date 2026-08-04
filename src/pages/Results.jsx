@@ -1788,9 +1788,10 @@ const renderContentWithSources = (text) => {
                     const num = rawSubsections[subIdx]?.number
                     return num ? ch.diagrams?.find(d => d.subsectionNumber === num) : null
                   }
-                  const setDiagramForSection = (subIdx, mermaidCode) => {
+                  const setDiagramForSection = (subIdx, mermaidCode, newType) => {
                     const num = rawSubsections[subIdx]?.number
-                    const type = rawSubsections[subIdx]?.diagramType
+                    const existingType = diagramFor(subIdx)?.type || rawSubsections[subIdx]?.diagramType
+                    const type = newType || existingType
                     if (!num) return
                     const updatedChapters = result.chapters.map((c, ci) => {
                       if (ci !== idx) return c
@@ -1799,7 +1800,7 @@ const renderContentWithSources = (text) => {
                       return {
                         ...c,
                         diagrams: hasEntry
-                          ? existing.map(d => d.subsectionNumber === num ? { ...d, mermaidCode } : d)
+                          ? existing.map(d => d.subsectionNumber === num ? { ...d, mermaidCode, type } : d)
                           : [...existing, { subsectionNumber: num, type, mermaidCode }]
                       }
                     })
@@ -1865,7 +1866,21 @@ const renderContentWithSources = (text) => {
                                   if (!chunk) return null
                                  return (
                                     <div key={subIdx} id={`subsection-${idx}-${sub}`} className="res-subsection-anchor">
-                                      <h3 className="res-subsection-heading">{sub}</h3>
+                                      <h3 className="res-subsection-heading">
+                                        {sub}
+                                        {!isLocked && rawSubsections[subIdx]?.diagramType && !diagramFor(subIdx) && (
+                                          <span
+                                            title="Open 'Understand this section' below to generate this diagram"
+                                            style={{
+                                              marginLeft: 10, fontSize: 11, fontWeight: 600, verticalAlign: 'middle',
+                                              padding: '3px 9px', borderRadius: 20, background: 'rgba(0,126,167,0.1)',
+                                              color: 'var(--accent)', border: '1px solid rgba(0,126,167,0.2)'
+                                            }}
+                                          >
+                                            📊 Diagram available below
+                                          </span>
+                                        )}
+                                      </h3>
                                       {renderContentWithSources(chunk)}
                                       {!isLocked && (
                                         <UnderstandPanel
@@ -1874,7 +1889,7 @@ const renderContentWithSources = (text) => {
                                           topic={result.projectInfo?.topic}
                                           diagramType={rawSubsections[subIdx]?.diagramType}
                                           existingDiagram={diagramFor(subIdx)}
-                                          onDiagramChange={(mermaidCode) => setDiagramForSection(subIdx, mermaidCode)}
+                                          onDiagramChange={(mermaidCode, newType) => setDiagramForSection(subIdx, mermaidCode, newType)}
                                           onUpdateParagraph={(newPara) => {
                                             const updatedChapters = result.chapters.map((c, ci) => {
                                               if (ci !== idx) return c
