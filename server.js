@@ -2240,33 +2240,39 @@ WRITING EXPECTATIONS:
   }
 })
 
-// ─── EMAIL (Resend) ─────────────────────────────────────────────────────────
+// ─── EMAIL (Mailjet) ────────────────────────────────────────────────────────
 async function sendOtpEmail(to, code) {
-  if (!process.env.RESEND_API_KEY) {
-    console.error('RESEND_API_KEY is not set — cannot send OTP email')
+  if (!process.env.MAILJET_API_KEY || !process.env.MAILJET_SECRET_KEY) {
+    console.error('MAILJET_API_KEY / MAILJET_SECRET_KEY are not set — cannot send OTP email')
     return false
   }
   try {
-    const res = await fetch('https://api.resend.com/emails', {
+    // Mailjet authenticates with HTTP Basic Auth: API key as the username,
+    // secret key as the password — not a single bearer/api-key header like
+    // Resend or Brevo.
+    const basicAuth = Buffer.from(`${process.env.MAILJET_API_KEY}:${process.env.MAILJET_SECRET_KEY}`).toString('base64')
+    const res = await fetch('https://api.mailjet.com/v3.1/send', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Authorization': `Basic ${basicAuth}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'GradelyAI <support@getgradely.xyz>',
-        to: [to],
-        subject: `Your GradelyAI verification code: ${code}`,
-        html: `<div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto;">
-          <h2 style="color:#1a1a1a;">Verify your email</h2>
-          <p style="color:#333;">Your GradelyAI verification code is:</p>
-          <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #007ea7;">${code}</p>
-          <p style="color:#666; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
-        </div>`
+        Messages: [{
+          From: { Email: 'support@getgradely.xyz', Name: 'GradelyAI' },
+          To: [{ Email: to }],
+          Subject: `Your GradelyAI verification code: ${code}`,
+          HTMLPart: `<div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color:#1a1a1a;">Verify your email</h2>
+            <p style="color:#333;">Your GradelyAI verification code is:</p>
+            <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #007ea7;">${code}</p>
+            <p style="color:#666; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
+          </div>`
+        }]
       })
     })
     if (!res.ok) {
-      console.error('Resend API error:', res.status, await res.text())
+      console.error('Mailjet API error:', res.status, await res.text())
       return false
     }
     return true
