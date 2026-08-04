@@ -1806,6 +1806,8 @@ const renderContentWithSources = (text) => {
                     const updated = { ...result, chapters: updatedChapters }
                     setResult(updated)
                     saveResultToSession(updated)
+                    const projectId = result.dbProjectId || sessionStorage.getItem('gradelyProjectDbId')
+                    if (projectId) updateProject(projectId, { chapters: updatedChapters }).catch(console.error)
                   }
 
                   return (

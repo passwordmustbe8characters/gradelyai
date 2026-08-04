@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import logoPrimary from '../assets/primary-logo.png';
 import logoPrimaryW from '../assets/primary-logo-w.png';
@@ -8,13 +8,18 @@ const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 export default function Landing() {
   const navigate = useNavigate()
+  const location = useLocation()
  const { user, loading } = useAuth()
 
   useEffect(() => {
+    // Skip the auto-redirect when a logged-in user deliberately clicked the
+    // logo from inside the app to come look at the landing page — a fresh,
+    // unattributed visit to "/" still goes straight to their dashboard.
+    if (location.state?.stayOnLanding) return
     if (!loading && user?.onboarded) {
       navigate('/dashboard')
     }
-  }, [user, loading, navigate])
+  }, [user, loading, navigate, location.state])
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [stats, setStats] = useState({

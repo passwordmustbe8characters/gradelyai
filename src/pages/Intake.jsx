@@ -677,6 +677,13 @@ const removePhoto = (index) => {
             onBack={() => setStep('8b')}
             onConfirm={(brief) => {
               update('projectBrief', brief)
+              // Pre-fill "what you built" from the brief answers — the student
+              // already described their approach/implementation here, no reason
+              // to make them retype it. Still a normal editable textarea on
+              // step 9, so they can adjust or add to it before continuing.
+              if (!form.builtContext?.trim() && brief.length > 0) {
+                update('builtContext', brief.map(qa => qa.answer).join('\n\n'))
+              }
               setStep(9)
             }}
           />

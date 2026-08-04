@@ -171,10 +171,13 @@ export default function Dashboard() {
           borderBottom: '1px solid var(--border)'
         }}>
           <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
-            <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <div onClick={() => navigate('/', { state: { stayOnLanding: true } })} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
               <img src={logoSubmark} alt="GradelyAI" style={{ width: 32, height: 32 }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button className="btn-ghost" onClick={() => navigate('/gallery')} style={{ fontSize: 13 }}>
+                Gallery
+              </button>
               <button className="btn-ghost" onClick={handleLogout} style={{ fontSize: 13, transition: 'all 0.2s' }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--danger)'; e.currentTarget.style.color = 'var(--danger)' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}>
