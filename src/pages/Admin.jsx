@@ -271,10 +271,24 @@ export default function Admin() {
   // ─── ADMIN PANEL ────────────────────────────────────────────────────────────
 
   return (
+    <>
+      <style>{`
+        .admin-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        @media (max-width: 640px) {
+          .admin-form-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+          .admin-topbar { flex-wrap: wrap; padding: 16px 20px !important; gap: 12px; }
+          .admin-topbar-actions { width: 100%; }
+          .admin-topbar-actions button { flex: 1; }
+          .admin-guide-row { flex-wrap: wrap; }
+          .admin-guide-row > div:first-child { min-width: 0; flex-basis: 100%; }
+        }
+      `}</style>
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
 
       {/* Top bar */}
-      <div style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="admin-topbar" style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: 'white' }}>G</div>
           <span style={{ fontFamily: 'Playfair Display, serif', fontSize: 18, fontWeight: 700 }}>GradelyAI Admin</span>
@@ -282,7 +296,7 @@ export default function Admin() {
             {guides.length} guides
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="admin-topbar-actions" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {section === 'guides' && view !== 'list' && (
             <button className="btn-ghost" onClick={() => { setView('list'); setMessage('') }} style={{ fontSize: 13 }}>
               ← Back to list
@@ -363,7 +377,7 @@ export default function Admin() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {guides.map(guide => (
-                  <div key={guide.id} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                  <div key={guide.id} className="card admin-guide-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{guide.label}</p>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -445,7 +459,7 @@ export default function Admin() {
             </p>
 
             <div className="card" style={{ marginBottom: 20 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="admin-form-grid">
                 <div>
                   <label className="label">University</label>
                   <select id="university" name="university" className="input" value={uploadForm.university}
@@ -464,7 +478,7 @@ export default function Admin() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div className="admin-form-grid">
                 <div>
                   <label className="label">Year</label>
                   <input id="year" name="year"  className="input" placeholder="e.g. 2024"
@@ -568,6 +582,7 @@ export default function Admin() {
 
       </div>
     </div>
+    </>
   )
 }
 
@@ -576,7 +591,7 @@ export default function Admin() {
 function GuideForm({ form, updateForm, universities, ALL_DEPARTMENTS }) {
   return (
     <div className="card">
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="admin-form-grid">
         <div>
           <label className="label">University</label>
           <select id="university" name="university"  className="input" value={form.university}
@@ -595,7 +610,7 @@ function GuideForm({ form, updateForm, universities, ALL_DEPARTMENTS }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="admin-form-grid">
         <div>
           <label className="label">Year</label>
           <input id="year" name="year" className="input" placeholder="e.g. 2024"

@@ -77,6 +77,22 @@ Node labels must be short but specific to THIS project's actual topic and domain
   return code
 }
 
+async function correctDiagramMermaid({ mermaidCode, diagramType, instruction, topic, subsectionTitle }) {
+  const kind = MERMAID_DIAGRAM_KIND[diagramType] || 'flowchart TD'
+  const system = `You are a senior software architect editing an existing Mermaid.js diagram for a Nigerian university final year project. Output ONLY valid Mermaid code — no markdown code fences, no explanation, no commentary. Start directly with "${kind}".`
+  const user = `Here is the current Mermaid diagram for the subsection "${subsectionTitle}" of a final year project on "${topic}":
+
+${mermaidCode}
+
+Apply this correction from the student: "${instruction}"
+
+Return the full corrected Mermaid code. Keep everything else about the diagram intact except what the correction specifically asks to change.`
+
+  let code = await callOpenAI(system, user, 900)
+  code = code.replace(/```mermaid/gi, '').replace(/```/g, '').trim()
+  return code
+}
+
 function serverSafeParseJSON(raw, fallback = null) {
   try {
     const clean = raw.replace(/```json|```/g, '').trim()
@@ -2150,6 +2166,50 @@ app.post('/api/generate-diagram', requireAuth, async (req, res) => {
     }
     const mermaidCode = await generateDiagramMermaid({ topic, subsectionTitle, diagramType, chapterExcerpt })
     res.json({ mermaidCode })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Generates one diagram of every supported type at once, so the student can browse
+// all of them in the carousel instead of guessing which type fits best up front.
+app.post('/api/generate-diagrams-batch', requireAuth, async (req, res) => {
+  try {
+    const { topic, subsectionTitle, chapterExcerpt } = req.body
+    if (!subsectionTitle) {
+      return res.status(400).json({ error: 'subsectionTitle is required' })
+    }
+    const types = Object.keys(MERMAID_DIAGRAM_KIND)
+    const results = await Promise.allSettled(
+      types.map(diagramType => generateDiagramMermaid({ topic, subsectionTitle, diagramType, chapterExcerpt }))
+    )
+    const diagrams = []
+    results.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        diagrams.push({ type: types[i], mermaidCode: result.value })
+      } else {
+        console.error(`Batch diagram generation failed for type ${types[i]}:`, result.reason?.message)
+      }
+    })
+    if (diagrams.length === 0) {
+      return res.status(500).json({ error: 'Could not generate any diagrams. Please try again.' })
+    }
+    res.json({ diagrams })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Applies a student's typed correction to one specific diagram already on file,
+// rather than regenerating it from scratch.
+app.post('/api/correct-diagram', requireAuth, async (req, res) => {
+  try {
+    const { topic, subsectionTitle, diagramType, mermaidCode, instruction } = req.body
+    if (!mermaidCode || !instruction) {
+      return res.status(400).json({ error: 'mermaidCode and instruction are required' })
+    }
+    const corrected = await correctDiagramMermaid({ mermaidCode, diagramType, instruction, topic, subsectionTitle })
+    res.json({ mermaidCode: corrected })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

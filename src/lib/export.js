@@ -3,6 +3,7 @@ import { saveAs } from 'file-saver'
 import { jsPDF } from 'jspdf'
 import mermaid from 'mermaid'
 import { MERMAID_CONFIG } from './mermaidTheme'
+import { svgToPngDataUrl as rasterizeSvgHighRes } from './svgRaster'
 
 // ─── FORMAT OPTIONS ────────────────────────────────────────────────────────────
 
@@ -100,29 +101,10 @@ function ensureMermaidInitialized() {
 const DIAGRAM_MAX_WIDTH_PX = 480
 
 async function svgToPngDataUrl(svgString) {
-  const dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`
-  const img = new Image()
-  await new Promise((resolve, reject) => {
-    img.onload = resolve
-    img.onerror = reject
-    img.src = dataUri
-  })
-
-  const naturalWidth = img.naturalWidth || 600
-  const naturalHeight = img.naturalHeight || 400
-  const scale = 2 // rasterize at 2x for crisper embedded output
-  const canvas = document.createElement('canvas')
-  canvas.width = naturalWidth * scale
-  canvas.height = naturalHeight * scale
-  const ctx = canvas.getContext('2d')
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
+  const { dataUrl, naturalWidth, naturalHeight } = await rasterizeSvgHighRes(svgString, { scale: 3 })
   const displayWidth = Math.min(DIAGRAM_MAX_WIDTH_PX, naturalWidth)
   const displayHeight = Math.round(displayWidth * (naturalHeight / naturalWidth))
-
-  return { dataUrl: canvas.toDataURL('image/png'), displayWidth, displayHeight }
+  return { dataUrl, displayWidth, displayHeight }
 }
 
 function dataUrlToUint8Array(dataUrl) {
@@ -141,7 +123,14 @@ async function rasterizeDiagrams(chapters) {
   ensureMermaidInitialized()
   const images = {}
   for (const chapter of chapters) {
-    for (const diagram of chapter.diagrams || []) {
+    // A subsection can have several generated diagrams (one per type) — only
+    // the one the student picked (or the first, if none was explicitly picked)
+    // belongs in the exported document.
+    const bySubsection = {}
+    for (const d of chapter.diagrams || []) {
+      if (!bySubsection[d.subsectionNumber] || d.selected) bySubsection[d.subsectionNumber] = d
+    }
+    for (const diagram of Object.values(bySubsection)) {
       if (!diagram.mermaidCode?.trim()) continue
       try {
         const id = `export-diagram-${chapter.number}-${diagram.subsectionNumber.replace(/\./g, '-')}`

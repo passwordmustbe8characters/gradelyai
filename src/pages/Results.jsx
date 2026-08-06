@@ -5,10 +5,10 @@ import { exportToWord, exportToPdf } from '../lib/export'
 // isPaid replaced by direct check on parsed.isPaidUser
 import { updateProject, fetchProject } from '../lib/auth'
 import { saveResultToSession } from '../lib/sessionResult'
-import { fetchRealPapers, generateReferences, generateSectionDiagram } from '../lib/ai'
+import { fetchRealPapers, generateReferences, generateSectionDiagramsBatch } from '../lib/ai'
 import Paywall from '../components/Paywall'
 import ExportFormatModal from '../components/ExportFormatModal'
-import MermaidDiagram from '../components/MermaidDiagram'
+import DiagramCarousel from '../components/DiagramCarousel'
 import logoPrimary from '../assets/primary-logo.png' 
 import logoSubmark from '../assets/submark-logo.png'
 
@@ -608,14 +608,7 @@ function CorrectionsModal({ open, onClose, chapterTitle, chapterContent, history
 // ─── UNDERSTAND PANEL COMPONENT ───────────────────────────────────────────────
 const IMPLEMENTATION_KEYWORDS = ['implementation', 'system design', 'methodology', 'architecture', 'results', 'testing', 'evaluation', 'development', 'design', 'analysis']
 
-const DIAGRAM_TYPE_OPTIONS = [
-  { value: 'flowchart', label: 'Flowchart' },
-  { value: 'erDiagram', label: 'ER Diagram' },
-  { value: 'sequenceDiagram', label: 'Sequence' },
-  { value: 'architecture', label: 'Architecture' },
-]
-
-function UnderstandPanel({ sectionTitle, sectionContent, topic, diagramType, existingDiagram, onDiagramChange, onUpdateParagraph }) {
+function UnderstandPanel({ sectionTitle, sectionContent, topic, diagramType, existingDiagrams, onDiagramsChange, onUpdateParagraph }) {
   const [open, setOpen] = useState(false)
   const [data, setData] = useState(null)
   const [answer, setAnswer] = useState('')
@@ -623,8 +616,7 @@ function UnderstandPanel({ sectionTitle, sectionContent, topic, diagramType, exi
   const [photos, setPhotos] = useState([])
   const [photoUrls, setPhotoUrls] = useState([])
   const [loading, setLoading] = useState(false)
-  const [selectedDiagramType, setSelectedDiagramType] = useState(diagramType || '')
-  const [generatingDiagram, setGeneratingDiagram] = useState(false)
+  const [generatingDiagrams, setGeneratingDiagrams] = useState(false)
   const [diagramError, setDiagramError] = useState('')
   const [uploadingPhotos, setUploadingPhotos] = useState(false)
   const [updates, setUpdates] = useState([])
@@ -636,21 +628,24 @@ function UnderstandPanel({ sectionTitle, sectionContent, topic, diagramType, exi
 
   const getToken = () => localStorage.getItem('token') || localStorage.getItem('gradelyToken')
 
-  const handleGenerateDiagram = async () => {
-    setGeneratingDiagram(true)
+  const handleGenerateDiagrams = async () => {
+    setGeneratingDiagrams(true)
     setDiagramError('')
     try {
-      const mermaidCode = await generateSectionDiagram({
+      const diagrams = await generateSectionDiagramsBatch({
         topic,
         subsectionTitle: sectionTitle,
-        diagramType: selectedDiagramType,
         chapterExcerpt: sectionContent
       })
-      onDiagramChange?.(mermaidCode)
+      // Default the selection to whichever type was originally flagged in the
+      // structure editor, since that's the one the student actually asked for.
+      const preferredIdx = diagrams.findIndex(d => d.type === diagramType)
+      const withSelection = diagrams.map((d, i) => ({ ...d, selected: i === (preferredIdx >= 0 ? preferredIdx : 0) }))
+      onDiagramsChange?.(withSelection)
     } catch (err) {
-      setDiagramError(err.message || 'Could not generate a diagram for this section. Please try again.')
+      setDiagramError(err.message || 'Could not generate diagrams for this section. Please try again.')
     }
-    setGeneratingDiagram(false)
+    setGeneratingDiagrams(false)
   }
 
   const load = async () => {
@@ -764,42 +759,30 @@ function UnderstandPanel({ sectionTitle, sectionContent, topic, diagramType, exi
                 📊 This section was flagged for a diagram
               </p>
 
-              {existingDiagram ? (
-                <MermaidDiagram
-                  mermaidCode={existingDiagram.mermaidCode}
+              {existingDiagrams?.length > 0 ? (
+                <DiagramCarousel
+                  diagrams={existingDiagrams}
                   topic={topic}
                   subsectionTitle={sectionTitle}
-                  diagramType={existingDiagram.type}
-                  onCodeChange={onDiagramChange}
+                  onChange={onDiagramsChange}
                 />
               ) : (
                 <>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                    <select
-                      value={selectedDiagramType}
-                      onChange={e => setSelectedDiagramType(e.target.value)}
-                      style={{
-                        fontSize: 12, padding: '6px 8px', borderRadius: 8,
-                        border: '1px solid var(--border)', background: 'var(--bg-card)',
-                        color: 'var(--text)', fontFamily: 'Geist, sans-serif', outline: 'none'
-                      }}
-                    >
-                      {DIAGRAM_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-                    </select>
                     <button
-                      onClick={handleGenerateDiagram}
-                      disabled={generatingDiagram}
+                      onClick={handleGenerateDiagrams}
+                      disabled={generatingDiagrams}
                       style={{
                         fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 20,
                         border: 'none', background: 'var(--accent)', color: 'white',
-                        cursor: generatingDiagram ? 'default' : 'pointer', fontFamily: 'Geist, sans-serif'
+                        cursor: generatingDiagrams ? 'default' : 'pointer', fontFamily: 'Geist, sans-serif'
                       }}
                     >
-                      {generatingDiagram ? 'Generating…' : 'Generate diagram'}
+                      {generatingDiagrams ? 'Generating diagrams…' : 'Generate diagrams'}
                     </button>
                   </div>
                   <p style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>
-                    Review the section above, adjust the diagram type if needed, then generate — you can edit or regenerate it afterward.
+                    Review the section above, then generate — you'll get a Flowchart, ER Diagram, Sequence, and Architecture version to browse and pick from.
                   </p>
                   {diagramError && (
                     <p style={{ fontSize: 12, color: 'var(--danger)', marginTop: 8 }}>⚠️ {diagramError}</p>
@@ -1784,25 +1767,20 @@ const renderContentWithSources = (text) => {
                   const hasContent = ch.content && ch.content.trim().length > 0
                   const subsections = getSubsections(idx)
                   const rawSubsections = result?.structure?.chapters?.[idx]?.subsections || []
-                  const diagramFor = (subIdx) => {
+                  // A subsection can now have several diagrams on file at once (one per
+                  // type, from a batch generation), so this returns all of them rather
+                  // than a single match.
+                  const diagramsFor = (subIdx) => {
                     const num = rawSubsections[subIdx]?.number
-                    return num ? ch.diagrams?.find(d => d.subsectionNumber === num) : null
+                    return num ? (ch.diagrams || []).filter(d => d.subsectionNumber === num) : []
                   }
-                  const setDiagramForSection = (subIdx, mermaidCode, newType) => {
+                  const setDiagramsForSection = (subIdx, updatedDiagrams) => {
                     const num = rawSubsections[subIdx]?.number
-                    const existingType = diagramFor(subIdx)?.type || rawSubsections[subIdx]?.diagramType
-                    const type = newType || existingType
                     if (!num) return
                     const updatedChapters = result.chapters.map((c, ci) => {
                       if (ci !== idx) return c
-                      const existing = c.diagrams || []
-                      const hasEntry = existing.some(d => d.subsectionNumber === num)
-                      return {
-                        ...c,
-                        diagrams: hasEntry
-                          ? existing.map(d => d.subsectionNumber === num ? { ...d, mermaidCode, type } : d)
-                          : [...existing, { subsectionNumber: num, type, mermaidCode }]
-                      }
+                      const others = (c.diagrams || []).filter(d => d.subsectionNumber !== num)
+                      return { ...c, diagrams: [...others, ...updatedDiagrams] }
                     })
                     const updated = { ...result, chapters: updatedChapters }
                     setResult(updated)
@@ -1868,7 +1846,7 @@ const renderContentWithSources = (text) => {
                                     <div key={subIdx} id={`subsection-${idx}-${sub}`} className="res-subsection-anchor">
                                       <h3 className="res-subsection-heading">
                                         {sub}
-                                        {!isLocked && rawSubsections[subIdx]?.diagramType && !diagramFor(subIdx) && (
+                                        {!isLocked && rawSubsections[subIdx]?.diagramType && diagramsFor(subIdx).length === 0 && (
                                           <span
                                             title="Open 'Understand this section' below to generate this diagram"
                                             style={{
@@ -1888,8 +1866,8 @@ const renderContentWithSources = (text) => {
                                           sectionContent={chunk}
                                           topic={result.projectInfo?.topic}
                                           diagramType={rawSubsections[subIdx]?.diagramType}
-                                          existingDiagram={diagramFor(subIdx)}
-                                          onDiagramChange={(mermaidCode, newType) => setDiagramForSection(subIdx, mermaidCode, newType)}
+                                          existingDiagrams={diagramsFor(subIdx)}
+                                          onDiagramsChange={(updated) => setDiagramsForSection(subIdx, updated)}
                                           onUpdateParagraph={(newPara) => {
                                             const updatedChapters = result.chapters.map((c, ci) => {
                                               if (ci !== idx) return c

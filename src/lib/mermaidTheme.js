@@ -1,5 +1,5 @@
 // Shared Mermaid init config — used by both the live diagram viewer
-// (MermaidDiagram.jsx) and the Word/PDF export rasterizer (export.js) so a
+// (DiagramCarousel.jsx) and the Word/PDF export rasterizer (export.js) so a
 // diagram looks the same wherever it's rendered. 'base' + explicit
 // themeVariables gives a branded, intentional look instead of the flat
 // default 'neutral' theme, which is the main reason AI-generated diagrams

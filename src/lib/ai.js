@@ -603,16 +603,33 @@ Make this chapter comprehensive, rigorous, and specific to the exact project top
 // Manual, on-demand — triggered by a button in the "Understand this section"
 // panel rather than automatically during generation, so a failure is visible
 // and immediately retriable instead of silently missing from the final project.
-export async function generateSectionDiagram({ topic, subsectionTitle, diagramType, chapterExcerpt = '' }) {
+
+// Generates one diagram of every supported type at once for a section.
+export async function generateSectionDiagramsBatch({ topic, subsectionTitle, chapterExcerpt = '' }) {
   const token = localStorage.getItem('gradelyToken')
-  const res = await fetch(`${BASE_URL}/api/generate-diagram`, {
+  const res = await fetch(`${BASE_URL}/api/generate-diagrams-batch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ topic, subsectionTitle, diagramType, chapterExcerpt: chapterExcerpt.slice(0, 1500) })
+    body: JSON.stringify({ topic, subsectionTitle, chapterExcerpt: chapterExcerpt.slice(0, 1500) })
+  })
+  const data = await res.json()
+  if (!res.ok || !data.diagrams) {
+    throw new Error(data.error || 'Diagram generation failed')
+  }
+  return data.diagrams
+}
+
+// Applies a typed correction to one existing diagram, keeping the rest intact.
+export async function correctSectionDiagram({ topic, subsectionTitle, diagramType, mermaidCode, instruction }) {
+  const token = localStorage.getItem('gradelyToken')
+  const res = await fetch(`${BASE_URL}/api/correct-diagram`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ topic, subsectionTitle, diagramType, mermaidCode, instruction })
   })
   const data = await res.json()
   if (!res.ok || !data.mermaidCode) {
-    throw new Error(data.error || 'Diagram generation failed')
+    throw new Error(data.error || 'Could not apply that correction')
   }
   return data.mermaidCode
 }

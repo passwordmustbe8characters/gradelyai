@@ -51,6 +51,17 @@ export default function Landing() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <style>{`
+        /* Between ~769px and 950px the absolutely-centered nav links have no
+           room to compress and can overlap the logo/buttons on either side —
+           hide them earlier than the general 768px mobile-menu breakpoint,
+           and show the hamburger menu in that same range so they're still
+           reachable rather than just disappearing. */
+        @media (max-width: 950px) {
+          .landing-nav-links { display: none !important; }
+          .landing-mobile-trigger { display: flex !important; }
+        }
+      `}</style>
 
       {mobileMenuOpen && (
         <div
@@ -89,7 +100,7 @@ export default function Landing() {
 </div>
 
     {/* Centered Nav Links */}
-    <div className="hide-mobile" style={{
+    <div className="hide-mobile landing-nav-links" style={{
       display: 'flex',
       alignItems: 'center',
       gap: 48,
@@ -273,7 +284,7 @@ export default function Landing() {
     </div>
 
     {/* Mobile hamburger - unchanged */}
-    <button className="show-mobile" onClick={() => setMobileMenuOpen(o => !o)}
+    <button className="show-mobile landing-mobile-trigger" onClick={() => setMobileMenuOpen(o => !o)}
       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, zIndex: 60 }}>
       {mobileMenuOpen ? (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -805,7 +816,7 @@ export default function Landing() {
 
 {/* Pricing */}
 <section id="pricing" style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-  <div style={{ maxWidth: 1100, margin: '0 auto', padding: '80px 24px' }}>
+  <div style={{ maxWidth: 1280, margin: '0 auto', padding: '80px 24px' }}>
     <div style={{ textAlign: 'center', marginBottom: 48 }}>
       <p style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>Pricing</p>
       <h2 style={{ fontFamily: 'Melodrama, serif', fontSize: 'clamp(28px, 3vw, 44px)', fontWeight: 400, lineHeight: 1.1, marginBottom: 16, letterSpacing: '-0.02em' }}>
@@ -816,12 +827,12 @@ export default function Landing() {
       </p>
     </div>
 
-    <div style={{ 
-      display: 'grid', 
-      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
-      gap: 24, 
-      maxWidth: 1000, 
-      margin: '0 auto' 
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+      gap: 20,
+      maxWidth: 1180,
+      margin: '0 auto'
     }}>
       {/* Free */}
       <div style={{
