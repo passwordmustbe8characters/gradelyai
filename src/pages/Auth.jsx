@@ -45,7 +45,6 @@ export default function Auth() {
 
   // Touched flags
   const [emailTouched, setEmailTouched] = useState(false)
-  const [setPasswordTouched] = useState(false)
   const [confirmTouched, setConfirmTouched] = useState(false)
   const [passwordFocused, setPasswordFocused] = useState(false)
   const [confirmFocused, setConfirmFocused] = useState(false)
@@ -66,7 +65,6 @@ export default function Auth() {
     setShowPassword(false)
     setShowConfirm(false)
     setEmailTouched(false)
-    setPasswordTouched(false)
     setConfirmTouched(false)
     setPasswordEverFocused(false)
   }
@@ -374,7 +372,6 @@ export default function Auth() {
                   onFocus={() => {
                     setPasswordFocused(true)
                     setPasswordEverFocused(true)
-                    setPasswordTouched(true)
                   }}
                   onBlur={() => setPasswordFocused(false)}
                   onKeyDown={e => e.key === 'Enter' && handleSubmit()}

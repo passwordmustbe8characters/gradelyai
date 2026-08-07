@@ -3,4 +3,5 @@ uploads/
 *.db
 dist/
 .env
+.env.local
 node_modules/

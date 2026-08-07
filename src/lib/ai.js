@@ -1,6 +1,6 @@
 // GradelyAI — Core AI Engine (Claude)
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 async function callAI(systemPrompt, userPrompt, maxTokens = 4000) {
   const token = localStorage.getItem('gradelyToken');

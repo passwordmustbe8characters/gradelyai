@@ -2354,7 +2354,7 @@ async function sendOtpEmail(to, code) {
   try {
     // Mailjet authenticates with HTTP Basic Auth: API key as the username,
     // secret key as the password — not a single bearer/api-key header like
-    // Resend or Brevo.
+    // Resend, Brevo, or SMTP2GO.
     const basicAuth = Buffer.from(`${process.env.MAILJET_API_KEY}:${process.env.MAILJET_SECRET_KEY}`).toString('base64')
     const res = await fetch('https://api.mailjet.com/v3.1/send', {
       method: 'POST',
