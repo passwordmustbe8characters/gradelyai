@@ -1777,10 +1777,14 @@ const renderContentWithSources = (text) => {
                   const setDiagramsForSection = (subIdx, updatedDiagrams) => {
                     const num = rawSubsections[subIdx]?.number
                     if (!num) return
+                    // Stamp subsectionNumber on every diagram here rather than trusting
+                    // the caller to have set it — a batch-generated diagram from the API
+                    // has no idea which subsection it belongs to, only this closure does.
+                    const stamped = updatedDiagrams.map(d => ({ ...d, subsectionNumber: num }))
                     const updatedChapters = result.chapters.map((c, ci) => {
                       if (ci !== idx) return c
                       const others = (c.diagrams || []).filter(d => d.subsectionNumber !== num)
-                      return { ...c, diagrams: [...others, ...updatedDiagrams] }
+                      return { ...c, diagrams: [...others, ...stamped] }
                     })
                     const updated = { ...result, chapters: updatedChapters }
                     setResult(updated)

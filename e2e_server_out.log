@@ -1,8 +1,0 @@
-◇ injected env (19) from .env // tip: ⌘ enable debugging { debug: true }
-=== SERVER STARTING ===
-GROQ_API_KEY from env: KEY IS SET (length: 56)
-OPENAI_API_KEY from env: SET
-========================
-◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
-GROQ_API_KEY loaded: YES (length: 56)
-Server is running open on port 3001
